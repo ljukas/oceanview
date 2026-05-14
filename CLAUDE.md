@@ -18,12 +18,11 @@ None are implemented yet. This file captures the stack and the reasoning so futu
 |---|---|
 | Framework | TanStack Start (RC, May 2026) |
 | Hosting | Vercel Hobby |
-| Auth | Better Auth (self-hosted) — magic-link sign-in only |
+| Auth | Neon Auth (built on Better Auth 1.4.18, managed) — magic-link sign-in only |
 | Database | Neon Postgres (added via Vercel Marketplace) |
 | ORM | Drizzle |
 | File storage | Cloudflare R2 |
 | UI | shadcn/ui + Tailwind v4 |
-| Email | Resend (for magic links) |
 | Package manager | pnpm |
 
 Primary docs reference: https://tanstack.com/start/latest
@@ -38,14 +37,24 @@ Picked by the project owner up front. Single framework for frontend + server fun
 ### Vercel Hobby
 Easiest TanStack Start deploys, generous free tier (1M function invocations, 100 GB-Hrs duration, 100 GB transfer). The Hobby plan is technically *non-commercial*; a private boat-owners app is borderline under Vercel's fair-use rules. **Accepted risk**: if Vercel flags it, upgrade to Pro at $20/mo. Don't add commercial features (ads, paid signups) without reassessing.
 
-### Better Auth
-Free and self-hosted — no recurring auth bill. Has an official TanStack Start integration (`tanstackStartCookies` plugin, handler at `/api/auth/$`) and an **admin plugin** that ships built-in `user` / `admin` roles, ban, impersonate, session listing. Matches our two-role model with zero custom code.
+### Neon Auth
+Managed auth service built on Better Auth 1.4.18, with identity stored in the `neon_auth` schema of our Neon database (already auto-provisioned by the Vercel Marketplace integration). Same Better Auth API surface, same plugin ecosystem — but Neon hosts the auth server and handles email delivery.
 
-Chose over Clerk: Clerk is easier but adds a vendor and a future paid tier ($25/mo above 10K MAU). At our scale we'd stay free, but the admin plugin in Better Auth is a tighter fit and there's no external dependency.
+Free tier: **60,000 MAU** — three orders of magnitude above our ceiling.
 
-Chose over Supabase Auth: Supabase free tier *pauses projects after 7 days of inactivity*, which is exactly our usage pattern (rare logins). Cold-start on every visit after a quiet week would be visibly bad UX.
+**Plugins we rely on:**
+- **Magic Link** — `authClient.signIn.magicLink({ email, callbackURL })`. Neon sends the email by default; we can subscribe to the `send.magic_link` webhook later if we want custom branding.
+- **Admin** (Beta) — built-in `admin` / user role distinction, ban, impersonate, session listing. Matches our two-role model with zero custom schema.
 
-**Sign-in method: magic link only.** No passwords. Admin invites a new owner by triggering a magic link to their email. Closed group, low login frequency — passwords would just be a reset-flow tax.
+Chose over self-hosted Better Auth: same engine, but Neon Auth removes the auth-server ops (secrets, key rotation, email sender wiring). Vendor coupling is acceptable since we're already locked to Neon for the database — adding Neon Auth doesn't introduce *new* vendor risk.
+
+Chose over Clerk: Clerk is another vendor and trends paid above 10K MAU. We're already on Neon for the DB; using Neon Auth keeps the dependency surface at one provider for auth + data.
+
+Chose over Supabase Auth: Supabase free tier *pauses projects after 7 days of inactivity*, which exactly matches our usage pattern. Neon scales-to-zero per-branch but resumes in milliseconds.
+
+**Sign-in method: magic link only.** No passwords. Admin invites a new owner by triggering a magic link to their email. Disable other sign-in methods in the Neon Console → Auth → Plugins panel.
+
+**TanStack Start caveat:** Neon Auth's official quick-start covers TanStack Router, not TanStack Start (SSR). Since Neon Auth is Better Auth under the hood, the Better Auth `tanstackStartCookies` plugin + `/api/auth/$` handler pattern should apply — to be confirmed when we implement.
 
 ### Neon Postgres
 Free tier: 0.5 GB storage, 100 compute-hours/month, scale-to-zero after 5 min idle. Idle weeks cost zero compute. Postgres (not SQLite) keeps us flexible for the scheduling/file-metadata schemas. Added via Vercel Marketplace so `DATABASE_URL` auto-provisions across Preview/Production. Use the `-pooler` URL in serverless.
@@ -55,9 +64,9 @@ Over-limit behavior: compute suspends until next billing month — no surprise b
 **Local development uses Neon Local** — Neon's docker proxy (`neondatabase/neon_local`) creates an ephemeral branch off production on `pnpm db:up` and deletes it on `pnpm db:down`. Same Postgres version, same platform behavior in dev and prod. Per-PR preview deploys also get their own Neon branch via the Vercel integration.
 
 ### Drizzle
-Lightweight, TypeScript-first, small cold-start footprint on serverless. Schema lives in TypeScript (`src/lib/db/schema.ts`); migrations via `drizzle-kit`. Better Auth's most-used adapter in 2026 community.
+Lightweight, TypeScript-first, small cold-start footprint on serverless. Schema lives in TypeScript (`src/lib/db/schema.ts`); migrations via `drizzle-kit`. Neon Auth owns the `neon_auth` schema directly — Drizzle only manages app-owned tables under `public`.
 
-Driver: `postgres-js` via `drizzle-orm/postgres-js`. Picked over `drizzle-orm/neon-http` because (a) Neon Local only supports the `@neondatabase/serverless` driver over HTTP, not the WebSocket Pool variant, and (b) `neon-http` lacks multi-statement transactions that Better Auth's adapter requires. `postgres-js` works identically against Neon Local and Neon cloud, with full transactions.
+Driver: `postgres-js` via `drizzle-orm/postgres-js`. Picked over `drizzle-orm/neon-http` because (a) Neon Local only supports the `@neondatabase/serverless` driver over HTTP, not the WebSocket Pool variant, and (b) `neon-http` lacks multi-statement transactions. `postgres-js` works identically against Neon Local and Neon cloud, with full transactions.
 
 Chose over Prisma: Prisma is heavier in serverless (separate query engine) and uses its own `.prisma` DSL. At our scale either works; Drizzle is the lighter default.
 
@@ -69,9 +78,6 @@ Chose over Vercel Blob: R2 has 2× the free storage and zero egress vs Blob's 10
 ### shadcn/ui + Tailwind v4
 Copy-paste accessible components (Radix under the hood) — no runtime library to update, full code ownership. Tailwind v4 for styling. Biggest example/community pool to lift patterns from when building the scheduling and file UIs.
 
-### Resend
-Better Auth's `sendMagicLink` callback hits Resend's API. Free tier (100/day, 3K/month) is 10–100× more than we'll need. Verify a sending domain (e.g. `mail.<domain>`) for deliverability.
-
 ### pnpm
 Default in the TanStack/Vercel ecosystem. Fast, disk-efficient, strict resolution catches bugs early.
 
@@ -79,16 +85,21 @@ Default in the TanStack/Vercel ecosystem. Fast, disk-efficient, strict resolutio
 
 ## Environment variables
 
-Set in Vercel project (and `.env` locally):
+All Neon-related vars below are **auto-provisioned by the Vercel Marketplace integration** for Production / Preview / Development. R2 vars are manual additions when we wire up file storage.
 
-- `DATABASE_URL` — Neon pooled connection (auto-provisioned via Marketplace)
-- `BETTER_AUTH_SECRET` — random 32+ char secret
-- `BETTER_AUTH_URL` — site origin (e.g. `https://oceanview.example.com`)
-- `RESEND_API_KEY`
-- `R2_ACCOUNT_ID`
-- `R2_ACCESS_KEY_ID`
-- `R2_SECRET_ACCESS_KEY`
-- `R2_BUCKET`
+Auto-provisioned (don't add manually):
+- `DATABASE_URL` — Neon pooled connection
+- `DATABASE_URL_UNPOOLED` — direct connection, used for migrations
+- `NEON_AUTH_BASE_URL` — server-side Neon Auth endpoint
+- `VITE_NEON_AUTH_URL` — client-side Neon Auth endpoint (exposed to browser via Vite's `VITE_` prefix)
+- `NEON_PROJECT_ID`, plus various `POSTGRES_*` / `PG*` aliases — used by some tooling
+
+Local-only (in `.env`, gitignored):
+- `NEON_API_KEY` — personal Neon API key for the Neon Local docker container (create at https://console.neon.tech/app/settings/api-keys)
+- `PARENT_BRANCH_ID` — production branch ID, parent for our ephemeral local branches
+
+Manual (will be added when we wire up R2):
+- `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET`
 
 ---
 
