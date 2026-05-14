@@ -1,0 +1,15 @@
+services:
+  db:
+    image: neondatabase/neon_local:latest
+    ports:
+      - "5432:5432"
+    environment:
+      NEON_API_KEY: ${NEON_API_KEY}
+      NEON_PROJECT_ID: ${NEON_PROJECT_ID}
+      PARENT_BRANCH_ID: ${PARENT_BRANCH_ID}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h localhost -U neon"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 10s

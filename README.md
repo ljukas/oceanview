@@ -17,9 +17,18 @@ Internal web app for the Oceanview sailboat co-ownership group.
 
 ```bash
 pnpm install
-pnpm dev      # http://localhost:3000
-pnpm build    # production build (Nitro → .output/)
+cp .env.example .env
+# Fill in NEON_API_KEY (create one at https://console.neon.tech/app/settings/api-keys)
+
+pnpm db:up        # start Neon Local docker proxy → ephemeral DB branch
+pnpm db:migrate   # apply pending migrations (no-op until first table)
+pnpm dev          # http://localhost:3000
+
+pnpm db:studio    # browse the DB at https://local.drizzle.studio
+pnpm db:down      # stop docker; ephemeral branch is auto-deleted
 ```
+
+`pnpm build` produces the Nitro output in `.output/`.
 
 ## Documentation
 

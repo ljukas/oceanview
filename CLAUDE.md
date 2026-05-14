@@ -52,8 +52,12 @@ Free tier: 0.5 GB storage, 100 compute-hours/month, scale-to-zero after 5 min id
 
 Over-limit behavior: compute suspends until next billing month — no surprise bill.
 
+**Local development uses Neon Local** — Neon's docker proxy (`neondatabase/neon_local`) creates an ephemeral branch off production on `pnpm db:up` and deletes it on `pnpm db:down`. Same Postgres version, same platform behavior in dev and prod. Per-PR preview deploys also get their own Neon branch via the Vercel integration.
+
 ### Drizzle
 Lightweight, TypeScript-first, small cold-start footprint on serverless. Schema lives in TypeScript (`src/lib/db/schema.ts`); migrations via `drizzle-kit`. Better Auth's most-used adapter in 2026 community.
+
+Driver: `postgres-js` via `drizzle-orm/postgres-js`. Picked over `drizzle-orm/neon-http` because (a) Neon Local only supports the `@neondatabase/serverless` driver over HTTP, not the WebSocket Pool variant, and (b) `neon-http` lacks multi-statement transactions that Better Auth's adapter requires. `postgres-js` works identically against Neon Local and Neon cloud, with full transactions.
 
 Chose over Prisma: Prisma is heavier in serverless (separate query engine) and uses its own `.prisma` DSL. At our scale either works; Drizzle is the lighter default.
 
@@ -96,3 +100,5 @@ Set in Vercel project (and `.env` locally):
 - Magic-link only — don't add password sign-in without revisiting the auth design.
 - Always lock TanStack Start to a specific RC version in `package.json` until 1.0 ships.
 - Before adding any new third-party service: confirm there's a free tier sufficient for ~20 users.
+- **Don't run `vercel env pull` locally without thinking**: it pulls prod-tier `DATABASE_URL` and `DATABASE_URL_UNPOOLED` into `.env.local`, which Vite + Drizzle will prefer over the Neon Local pointer in `.env`. Running `pnpm db:migrate` after such a pull would migrate **production**, not the ephemeral branch. If you must pull, delete `.env.local` (or at least the `DATABASE_URL*` lines) before any DB command.
+- Migrations apply automatically on Vercel deploy via the `vercel-build` script. Local `pnpm build` does *not* run migrations — use `pnpm db:migrate` explicitly when you want to apply pending migrations to the local ephemeral branch.
