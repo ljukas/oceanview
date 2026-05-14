@@ -1,13 +1,22 @@
 /// <reference types="vite/client" />
-import { HeadContent, Scripts, createRootRoute } from '@tanstack/react-router'
+import { HeadContent, Scripts, createRootRoute, redirect } from '@tanstack/react-router'
 import { TanStackRouterDevtools } from '@tanstack/react-router-devtools'
 import * as React from 'react'
 import { DefaultCatchBoundary } from '~/components/DefaultCatchBoundary'
 import { NotFound } from '~/components/NotFound'
+import { getSession } from '~/lib/get-session'
 import appCss from '~/styles/app.css?url'
 import { seo } from '~/utils/seo'
 
 export const Route = createRootRoute({
+  beforeLoad: async ({ location }) => {
+    if (location.pathname === '/' || location.pathname.startsWith('/api/auth')) {
+      return {}
+    }
+    const session = await getSession()
+    if (!session) throw redirect({ to: '/' })
+    return { session }
+  },
   head: () => ({
     meta: [
       { charSet: 'utf-8' },

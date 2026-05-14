@@ -49,6 +49,10 @@ Chose over Neon Auth: Neon Auth is built on the same Better Auth library (1.4.18
 
 **Sign-in method: magic link only.** No passwords. Admin invites a new owner by triggering a magic link to their email. Closed group, low login frequency — passwords would just be a reset-flow tax.
 
+**Admin bootstrap:** controlled by the `ADMIN_EMAILS` env var (comma-separated list). A `databaseHooks.user.create.after` hook in `src/lib/auth.ts` checks the new user's email against the allowlist and sets `role='admin'` if it matches. Survives user delete/recreate without code changes — just keep the env var current.
+
+**Email delivery: deferred.** `sendMagicLink` currently `console.log`s the magic-link URL — fine for local testing and the first prod sign-ins. Wire Resend once we have a verified sender domain (see Resend section).
+
 ### Neon Postgres
 Free tier: 0.5 GB storage, 100 compute-hours/month, scale-to-zero after 5 min idle. Idle weeks cost zero compute. Postgres (not SQLite) keeps us flexible for the scheduling/file-metadata schemas. Added via Vercel Marketplace so `DATABASE_URL` auto-provisions across Preview/Production. Use the `-pooler` URL in serverless.
 
@@ -57,7 +61,11 @@ Over-limit behavior: compute suspends until next billing month — no surprise b
 **Local development uses Neon Local** — Neon's docker proxy (`neondatabase/neon_local`) creates an ephemeral branch off production on `pnpm db:up` and deletes it on `pnpm db:down`. Same Postgres version, same platform behavior in dev and prod. Per-PR preview deploys also get their own Neon branch via the Vercel integration.
 
 ### Drizzle
-Lightweight, TypeScript-first, small cold-start footprint on serverless. Schema lives in TypeScript (`src/lib/db/schema.ts`); migrations via `drizzle-kit`. Better Auth's most-used adapter in 2026 community.
+Lightweight, TypeScript-first, small cold-start footprint on serverless. Schema lives in `src/lib/db/schema/` split by feature with a barrel `index.ts`; migrations via `drizzle-kit`. Better Auth's most-used adapter in 2026 community.
+
+**Schema layout:** Better Auth owns `src/lib/db/schema/better-auth.ts` and regenerates it via `pnpm dlx @better-auth/cli generate --yes --output src/lib/db/schema/better-auth.ts`. **Never hand-edit `better-auth.ts`** — re-run the CLI instead. App-owned feature tables live in sibling files (`files.ts`, `contacts.ts`, `schedule.ts`) and are added per-feature. The barrel `index.ts` re-exports from each file with one line per export.
+
+**SSL note in `drizzle.config.ts`:** Neon Local uses self-signed certs; node-postgres (used by drizzle-kit) treats `sslmode=require` as `verify-full` and rejects them. The config sets `NODE_TLS_REJECT_UNAUTHORIZED=0` only when the host is `localhost`/`127.0.0.1` — never leaks to prod (Neon cloud has valid certs).
 
 Driver: `postgres-js` via `drizzle-orm/postgres-js`. Picked over `drizzle-orm/neon-http` because (a) Neon Local only supports the `@neondatabase/serverless` driver over HTTP, not the WebSocket Pool variant, and (b) `neon-http` lacks multi-statement transactions that Better Auth's adapter requires. `postgres-js` works identically against Neon Local and Neon cloud, with full transactions.
 
@@ -73,6 +81,8 @@ Copy-paste accessible components (Radix under the hood) — no runtime library t
 
 ### Resend
 Better Auth's `sendMagicLink` callback hits Resend's API. Free tier (100/day, 3K/month) is 10–100× more than we'll need. Verify a sending domain (e.g. `mail.<domain>`) for deliverability.
+
+**Currently deferred.** `sendMagicLink` logs to the server console. Wire Resend when we pick a sender domain.
 
 ### pnpm
 Default in the TanStack/Vercel ecosystem. Fast, disk-efficient, strict resolution catches bugs early.
@@ -91,6 +101,11 @@ Auto-provisioned (don't add manually):
 Local-only (in `.env`, gitignored):
 - `NEON_API_KEY` — personal Neon API key for the Neon Local docker container (create at https://console.neon.tech/app/settings/api-keys)
 - `PARENT_BRANCH_ID` — production branch ID, parent for our ephemeral local branches
+
+Set in Vercel (production/preview/development) and `.env` locally:
+- `BETTER_AUTH_SECRET` — random 32+ char secret (`openssl rand -base64 32`)
+- `BETTER_AUTH_URL` — site origin (local: `http://localhost:3000`; prod: `https://oceanview-psi.vercel.app`)
+- `ADMIN_EMAILS` — comma-separated emails promoted to admin role on first sign-in
 
 Manual (added when we wire each service):
 - `BETTER_AUTH_SECRET` — random 32+ char secret (`openssl rand -base64 32`)
