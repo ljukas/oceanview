@@ -1,129 +1,220 @@
 # Oceanview
 
-Internal web app for a sailboat co-ownership group. 10–20 users total (owners + a couple of admins). Not a commercial product — purpose is to coordinate one boat among its owners.
+Internal web app for a sailboat co-ownership group (10–20 users: owners + a couple of admins). Not a commercial product — it coordinates one boat among its owners.
 
-## Planned features
+**State**: scaffold complete (auth, DB, schema, services, tests are live). Only R2 (file storage) and Resend (email delivery) remain unwired — see [Deferred work](#deferred-work).
 
-1. **File library** — upload/download, organized by folders/categories. Stores docs, manuals, photos.
-2. **Contact page** — name, email, phone for each owner.
-3. **Boat-week scheduling** — assign owners to weeks of the year.
-
-None are implemented yet. This file captures the stack and the reasoning so future sessions don't re-litigate decisions.
+**Planned features**: file library, contact page, boat-week scheduling. None implemented yet.
 
 ---
 
-## Stack
+## Skill loading — when to load which
 
-| Layer | Choice |
+Load on demand, not eagerly. The `pnpm dlx @tanstack/intent` block at the bottom of this file is auto-managed; everything below is hand-curated.
+
+| Task | Skill |
 |---|---|
-| Framework | TanStack Start (RC, May 2026) |
-| Hosting | Vercel Hobby |
-| Auth | Better Auth (self-hosted) — magic-link sign-in only |
-| Database | Neon Postgres (added via Vercel Marketplace) |
-| ORM | Drizzle |
-| File storage | Cloudflare R2 |
-| UI | shadcn/ui + Tailwind v4 |
-| Email | Resend (for magic links) |
-| Package manager | pnpm |
+| Adding routes, `beforeLoad`, route guards | `@tanstack/router-core#auth-and-guards` |
+| Loaders, route data, query integration | `@tanstack/router-core#data-loading` |
+| Search params / path params | `@tanstack/router-core#search-params` / `#path-params` |
+| Navigation, links, redirects | `@tanstack/router-core#navigation` |
+| Not-found / error boundaries | `@tanstack/router-core#not-found-and-errors` |
+| Type-safety questions (router context, search schemas) | `@tanstack/router-core#type-safety` |
+| Server functions, SSR hydration | `@tanstack/react-start#react-start`, `#server-components` |
+| Porting a Next.js example to TanStack Start | `@tanstack/react-start#lifecycle/migrate-from-nextjs` |
+| Any DB schema, migration, or SQL work | project-local `neon-postgres` (at `.claude/skills/neon-postgres/`) |
+| `.env` / dotenv parsing | `dotenv#dotenv` |
+| Build/deploy config, Nitro server tuning | `nitro#nitro` |
+| Vercel deploy, CI, rollback | `vercel:deployments-cicd`, `vercel:vercel-cli` |
+| Vercel env management | `vercel:env`, `vercel:env-vars` |
+| Vercel function runtime/timeout/region tuning | `vercel:vercel-functions` |
+| Adding shadcn/ui components | `vercel:shadcn` |
+| Reviewing React components | `vercel:react-best-practices` |
+| End-to-end verification before claiming done | `vercel:verification` |
 
-Primary docs reference: https://tanstack.com/start/latest
+**Discovery**: `pnpm dlx @tanstack/intent@latest list` to see all intent skills; `pnpm dlx @tanstack/intent@latest load <pkg>#<skill>` to fetch one.
+
+**Do NOT load** (don't apply to this stack): `vercel:auth` (Clerk/Auth0; we use Better Auth), `vercel:nextjs`, `vercel:next-cache-components`, `vercel:turbopack` (all Next.js-only; we run TanStack Start on Vite).
 
 ---
 
-## Why each choice (so we don't re-debate)
+## Code map
 
-### TanStack Start
-Picked by the project owner up front. Single framework for frontend + server functions keeps the surface area small. Use the file-based router in `src/routes/`.
+```
+src/
+  router.tsx                       createRouter(routeTree) + devtools, error/notFound bindings
+  routes/
+    __root.tsx                     root layout; beforeLoad session guard (public: / and /api/auth/*)
+    index.tsx                      landing / sign-in entry
+    api/auth/$.ts                  Better Auth catch-all handler — delegates to auth.handler()
+  lib/
+    auth.ts                        betterAuth() instance: drizzleAdapter + magicLink + admin + tanstackStartCookies
+    auth-client.ts                 createAuthClient() for the browser: magicLinkClient + adminClient
+    get-session.ts                 server function wrapping auth.api.getSession()
+    admin-allowlist.ts             isAllowlistedAdmin() + normalizeEmail() — reads ADMIN_EMAILS
+    db/
+      index.ts                     drizzle(postgres(DATABASE_URL)) with snake_case casing
+      schema/
+        better-auth.ts             CLI-regenerated; DO NOT hand-edit
+        index.ts                   barrel — one re-export per feature schema
+    services/
+      <entity>.ts                  named exports; ALL db access lives here
+      <entity>.test.ts             colocated tests using truncateAll() from test/setup.ts
+  components/
+    DefaultCatchBoundary.tsx       router error boundary
+    NotFound.tsx                   router 404
+  utils/seo.ts                     meta-tag helper
+  styles/                          Tailwind v4 entry
+test/
+  setup.ts                         truncateAll() helper + localhost-DATABASE_URL guard
+drizzle/                           generated SQL migrations
+drizzle.config.ts                  schema path, output dir, Neon Local SSL workaround
+compose.yaml                       Neon Local docker service (port 5432)
+vite.config.ts                     TanStack Start + React + Tailwind + Nitro; vitest config
+```
 
-### Vercel Hobby
-Easiest TanStack Start deploys, generous free tier (1M function invocations, 100 GB-Hrs duration, 100 GB transfer). The Hobby plan is technically *non-commercial*; a private boat-owners app is borderline under Vercel's fair-use rules. **Accepted risk**: if Vercel flags it, upgrade to Pro at $20/mo. Don't add commercial features (ads, paid signups) without reassessing.
+**Path alias**: `~/*` → `./src/*` (in `tsconfig.json`).
 
-### Better Auth
-Free and self-hosted — no recurring auth bill. Has an official TanStack Start integration (`tanstackStartCookies` plugin, handler at `/api/auth/$`) and an **admin plugin** that ships built-in `user` / `admin` roles, ban, impersonate, session listing. Matches our two-role model with zero custom code.
+---
 
-Chose over Clerk: Clerk is easier but adds a vendor and a future paid tier ($25/mo above 10K MAU). At our scale we'd stay free, but the admin plugin in Better Auth is a tighter fit and there's no external dependency.
+## How we write code
 
-Chose over Supabase Auth: Supabase free tier *pauses projects after 7 days of inactivity*, which is exactly our usage pattern (rare logins). Cold-start on every visit after a quiet week would be visibly bad UX.
+**Services own the database.** All `db` access lives in `src/lib/services/<entity>.ts` as named exports. Auth hooks, route handlers, and server functions call services — never `db.select()` from a route or a server function directly.
 
-Chose over Neon Auth: Neon Auth is built on the same Better Auth library (1.4.18) and would have been a natural fit since we're already on Neon for the DB. But `@neondatabase/auth` ships a server SDK only for Next.js — TanStack Start is not on the roadmap, and porting the proxy from internal modules of a beta package (`0.4.1-beta`) is fragile. Branch-aware auth comes for free from our per-PR Drizzle branches (each Neon branch already gets its own Drizzle-managed `user`/`session` tables). Self-hosted Better Auth via the documented `tanstackStartCookies` plugin is the lower-risk path.
+```ts
+// caller
+import * as userService from '~/lib/services/user'
+const id = await userService.findIdByEmail(email)
+```
 
-**Sign-in method: magic link only.** No passwords. Admin invites a new owner by triggering a magic link to their email. Closed group, low login frequency — passwords would just be a reset-flow tax.
+**Adding a feature schema**: create `src/lib/db/schema/<feature>.ts`, add one re-export line to `schema/index.ts`, then `pnpm db:generate && pnpm db:migrate`. Also add the new table name to `truncateAll()` in `test/setup.ts` — there's no auto-introspection on purpose, so a forgotten table fails loudly.
 
-**Admin bootstrap:** controlled by the `ADMIN_EMAILS` env var (comma-separated list). A `databaseHooks.user.create.after` hook in `src/lib/auth.ts` checks the new user's email against the allowlist and sets `role='admin'` if it matches. Survives user delete/recreate without code changes — just keep the env var current.
+**Adding a service**: create `src/lib/services/<entity>.ts` (named exports) plus colocated `<entity>.test.ts`. Tests call `truncateAll()` in `beforeEach` and run serially against Neon Local.
 
-**Email delivery: deferred.** `sendMagicLink` currently `console.log`s the magic-link URL — fine for local testing and the first prod sign-ins. Wire Resend once we have a verified sender domain (see Resend section).
+**Regenerating Better Auth schema**: after upgrading `better-auth` or changing plugin config in `src/lib/auth.ts`, run:
+```
+pnpm dlx @better-auth/cli generate --yes --output src/lib/db/schema/better-auth.ts
+```
+Never hand-edit `better-auth.ts`.
 
-### Neon Postgres
-Free tier: 0.5 GB storage, 100 compute-hours/month, scale-to-zero after 5 min idle. Idle weeks cost zero compute. Postgres (not SQLite) keeps us flexible for the scheduling/file-metadata schemas. Added via Vercel Marketplace so `DATABASE_URL` auto-provisions across Preview/Production. Use the `-pooler` URL in serverless.
+**Adding a guarded route**: just create the file under `src/routes/`. The root `beforeLoad` in `__root.tsx` redirects unauthenticated requests for anything not matching `/` or `/api/auth/*`.
 
-Over-limit behavior: compute suspends until next billing month — no surprise bill.
+**Input validation**: Zod v4 (already a dep). Validate at the boundary (server function args, route loaders) — trust internal call sites.
 
-**Local development uses Neon Local** — Neon's docker proxy (`neondatabase/neon_local`) creates an ephemeral branch off production on `pnpm db:up` and deletes it on `pnpm db:down`. Same Postgres version, same platform behavior in dev and prod. Per-PR preview deploys also get their own Neon branch via the Vercel integration.
+---
 
-### Drizzle
-Lightweight, TypeScript-first, small cold-start footprint on serverless. Schema lives in `src/lib/db/schema/` split by feature with a barrel `index.ts`; migrations via `drizzle-kit`. Better Auth's most-used adapter in 2026 community.
+## Scripts
 
-**Schema layout:** Better Auth owns `src/lib/db/schema/better-auth.ts` and regenerates it via `pnpm dlx @better-auth/cli generate --yes --output src/lib/db/schema/better-auth.ts`. **Never hand-edit `better-auth.ts`** — re-run the CLI instead. App-owned feature tables live in sibling files (`files.ts`, `contacts.ts`, `schedule.ts`) and are added per-feature. The barrel `index.ts` re-exports from each file with one line per export.
-
-**SSL note in `drizzle.config.ts`:** Neon Local uses self-signed certs; node-postgres (used by drizzle-kit) treats `sslmode=require` as `verify-full` and rejects them. The config sets `NODE_TLS_REJECT_UNAUTHORIZED=0` only when the host is `localhost`/`127.0.0.1` — never leaks to prod (Neon cloud has valid certs).
-
-Driver: `postgres-js` via `drizzle-orm/postgres-js`. Picked over `drizzle-orm/neon-http` because (a) Neon Local only supports the `@neondatabase/serverless` driver over HTTP, not the WebSocket Pool variant, and (b) `neon-http` lacks multi-statement transactions that Better Auth's adapter requires. `postgres-js` works identically against Neon Local and Neon cloud, with full transactions.
-
-Chose over Prisma: Prisma is heavier in serverless (separate query engine) and uses its own `.prisma` DSL. At our scale either works; Drizzle is the lighter default.
-
-### Cloudflare R2
-10 GB free storage, 1M class-A ops/month, 10M class-B ops/month, **zero egress fees forever**. Egress is the value: owners downloading photo albums of the boat doesn't accrue bandwidth charges. S3-compatible API → browser does presigned-URL PUT directly to R2, bypassing our Vercel functions (saves function-invocation budget too).
-
-Chose over Vercel Blob: R2 has 2× the free storage and zero egress vs Blob's 100 GB transfer cap. For an app where photos are the heaviest content, the egress story matters most.
-
-### shadcn/ui + Tailwind v4
-Copy-paste accessible components (Radix under the hood) — no runtime library to update, full code ownership. Tailwind v4 for styling. Biggest example/community pool to lift patterns from when building the scheduling and file UIs.
-
-### Resend
-Better Auth's `sendMagicLink` callback hits Resend's API. Free tier (100/day, 3K/month) is 10–100× more than we'll need. Verify a sending domain (e.g. `mail.<domain>`) for deliverability.
-
-**Currently deferred.** `sendMagicLink` logs to the server console. Wire Resend when we pick a sender domain.
-
-### pnpm
-Default in the TanStack/Vercel ecosystem. Fast, disk-efficient, strict resolution catches bugs early.
+| Command | What it does |
+|---|---|
+| `pnpm dev` | Vite dev server on :3000 |
+| `pnpm build` | Vite build + `tsc --noEmit` typecheck |
+| `pnpm vercel-build` | Run pending migrations, then build + typecheck (CI/deploy only) |
+| `pnpm preview` | Preview built bundle |
+| `pnpm start` | Run production server (`.output/server/index.mjs`) |
+| `pnpm db:up` | Start Neon Local in docker (creates ephemeral branch off prod) |
+| `pnpm db:down` | Stop Neon Local (deletes the ephemeral branch) |
+| `pnpm db:generate` | Generate a new migration from schema changes |
+| `pnpm db:migrate` | Apply pending migrations to the active `DATABASE_URL` |
+| `pnpm db:studio` | Drizzle Studio UI |
+| `pnpm test` | Vitest once (serial, against Neon Local) |
+| `pnpm test:watch` | Vitest watch mode |
 
 ---
 
 ## Environment variables
 
-All Neon-related vars below are **auto-provisioned by the Vercel Marketplace integration** for Production / Preview / Development. R2 vars are manual additions when we wire up file storage.
+**Auto-provisioned by the Vercel ↔ Neon Marketplace integration** (do not add manually): `DATABASE_URL`, `DATABASE_URL_UNPOOLED`, `NEON_PROJECT_ID`, plus `POSTGRES_*` / `PG*` aliases.
 
-Auto-provisioned (don't add manually):
-- `DATABASE_URL` — Neon pooled connection
-- `DATABASE_URL_UNPOOLED` — direct connection, used for migrations
-- `NEON_PROJECT_ID`, plus various `POSTGRES_*` / `PG*` aliases — used by some tooling
+**Local-only** (`.env`, gitignored, used by `compose.yaml`): `NEON_API_KEY`, `PARENT_BRANCH_ID`.
 
-Local-only (in `.env`, gitignored):
-- `NEON_API_KEY` — personal Neon API key for the Neon Local docker container (create at https://console.neon.tech/app/settings/api-keys)
-- `PARENT_BRANCH_ID` — production branch ID, parent for our ephemeral local branches
+**Set in Vercel + `.env`**: `BETTER_AUTH_SECRET` (32+ chars; `openssl rand -base64 32`), `BETTER_AUTH_URL` (site origin), `ADMIN_EMAILS` (comma-separated allowlist).
 
-Set in Vercel (production/preview/development) and `.env` locally:
-- `BETTER_AUTH_SECRET` — random 32+ char secret (`openssl rand -base64 32`)
-- `BETTER_AUTH_URL` — site origin (local: `http://localhost:3000`; prod: `https://oceanview-psi.vercel.app`)
-- `ADMIN_EMAILS` — comma-separated emails promoted to admin role on first sign-in
+**Manual, added when wired**: `RESEND_API_KEY`, `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET`.
 
-Manual (added when we wire each service):
-- `BETTER_AUTH_SECRET` — random 32+ char secret (`openssl rand -base64 32`)
-- `BETTER_AUTH_URL` — site origin (e.g. `https://oceanview.example.com`)
-- `RESEND_API_KEY`
-- `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET`
+`.env.example` lists everything. The `vercel env pull` hazard is in [Non-negotiables](#non-negotiables).
 
 ---
 
-## Conventions
+## Documentation index
 
-- Two roles only: `user` (owner) and `admin`. Don't introduce more without a real reason.
-- File blobs live in R2; their metadata (name, folder, owner, size, mime, uploaded_at) lives in Postgres.
-- Uploads go browser → R2 directly via presigned URL. Don't proxy file bytes through Vercel functions.
-- Magic-link only — don't add password sign-in without revisiting the auth design.
-- **DB queries live in `src/lib/services/<entity>.ts`** (named exports, called as `import * as <entity>Service`). Framework callbacks (auth hooks, route handlers, server functions) call services — never `db` directly. Tests live next to the service as `<entity>.test.ts` and use the `truncateAll()` helper from `test/setup.ts` for isolation against Neon Local.
-- Always lock TanStack Start to a specific RC version in `package.json` until 1.0 ships.
-- Before adding any new third-party service: confirm there's a free tier sufficient for ~20 users.
-- **Don't run `vercel env pull` locally without thinking**: it pulls prod-tier `DATABASE_URL` and `DATABASE_URL_UNPOOLED` into `.env.local`, which Vite + Drizzle will prefer over the Neon Local pointer in `.env`. Running `pnpm db:migrate` after such a pull would migrate **production**, not the ephemeral branch. If you must pull, delete `.env.local` (or at least the `DATABASE_URL*` lines) before any DB command.
-- Migrations apply automatically on Vercel deploy via the `vercel-build` script. Local `pnpm build` does *not* run migrations — use `pnpm db:migrate` explicitly when you want to apply pending migrations to the local ephemeral branch.
-- **Agent commits follow [Conventional Commits](https://www.conventionalcommits.org)**: `<type>(<scope>): <subject>` with optional scope. Types: `feat`, `fix`, `chore`, `docs`, `refactor`, `test`, `build`, `ci`, `perf`, `style`, `revert`. Keep the subject ≤ 72 chars and in the imperative mood. Use the body to explain *why*; the diff shows *what*.
+WebFetch these before guessing APIs. They beat the model's memorized snapshots.
+
+- TanStack Start — https://tanstack.com/start/latest
+- TanStack Router — https://tanstack.com/router/latest
+- Better Auth (core) — https://www.better-auth.com/docs
+- Better Auth magic-link plugin — https://www.better-auth.com/docs/plugins/magic-link
+- Better Auth admin plugin — https://www.better-auth.com/docs/plugins/admin
+- Better Auth TanStack Start integration — https://www.better-auth.com/docs/integrations/tanstack
+- Better Auth Drizzle adapter — https://www.better-auth.com/docs/adapters/drizzle
+- Drizzle ORM — https://orm.drizzle.team/docs/overview
+- Drizzle Kit (migrate/generate/studio) — https://orm.drizzle.team/docs/kit-overview
+- postgres-js driver — https://github.com/porsager/postgres
+- Neon Postgres — https://neon.tech/docs
+- Neon Local (docker proxy) — https://neon.tech/docs/local/neon-local
+- Vitest — https://vitest.dev
+- Zod v4 — https://zod.dev
+- Tailwind v4 — https://tailwindcss.com/docs
+- shadcn/ui — https://ui.shadcn.com
+- Vite — https://vite.dev
+- Vercel + TanStack Start — https://vercel.com/docs/frameworks/tanstack-start
+- Cloudflare R2 (deferred) — https://developers.cloudflare.com/r2
+- Resend (deferred) — https://resend.com/docs
+
+---
+
+## Deferred work
+
+**Cloudflare R2** — not yet wired. Planned pattern: browser PUTs directly to R2 via a presigned URL minted server-side; Vercel functions never see file bytes. Postgres holds metadata only (name, folder, owner, size, mime, uploaded_at).
+
+**Resend** — not yet wired. `sendMagicLink` in `src/lib/auth.ts:17` currently `console.log`s the URL, which is fine for local testing and the first prod sign-ins. Wire Resend once a sender domain is verified (e.g. `mail.<domain>`).
+
+---
+
+## Non-negotiables
+
+- **Magic-link only.** No passwords. Don't add password sign-in without revisiting the auth design.
+- **Two roles only**: `user` and `admin`. Don't introduce more without a real reason.
+- **All `db` access through `src/lib/services/`.** No `db.select()` in routes, handlers, or auth hooks.
+- **Never hand-edit `src/lib/db/schema/better-auth.ts`** — re-run the CLI (see [How we write code](#how-we-write-code)).
+- **File blobs in R2, metadata in Postgres** (when R2 is wired). Uploads go browser → R2 directly; never proxy bytes through Vercel.
+- **`vercel env pull` is dangerous**: it writes prod `DATABASE_URL` into `.env.local`, which Vite + Drizzle prefer over `.env`. If you must run it, immediately delete the `DATABASE_URL*` lines from `.env.local` — otherwise `pnpm db:migrate` would migrate **production**.
+- **Migrations are explicit locally.** `pnpm build` does not migrate. `vercel-build` does, on deploy. Run `pnpm db:migrate` yourself against the local ephemeral branch.
+- **Tests run only against Neon Local.** `truncateAll()` enforces this — it refuses non-localhost `DATABASE_URL`.
+- **Conventional Commits** for agent commits: `<type>(<scope>): <subject>` ≤ 72 chars, imperative mood, *why* in the body. Types: `feat`, `fix`, `chore`, `docs`, `refactor`, `test`, `build`, `ci`, `perf`, `style`, `revert`.
+- **Lock TanStack Start to a specific RC version** in `package.json` until 1.0 ships.
+- **Free tier first.** Before adding any third-party service, confirm a free tier covers ~20 users.
+
+---
+
+## Decisions made — don't relitigate
+
+One line each. The reasoning lives in `git log CLAUDE.md` if anyone needs it.
+
+- **Framework**: TanStack Start (RC) — chosen by the owner up front.
+- **Hosting**: Vercel Hobby — accept ToS risk for non-commercial use; upgrade to Pro if flagged.
+- **Auth**: Better Auth (self-hosted) — not Clerk, not Supabase Auth, not Neon Auth.
+- **Sign-in method**: magic-link only.
+- **ORM**: Drizzle — not Prisma.
+- **DB**: Neon Postgres + Neon Local for dev/test.
+- **DB driver**: `postgres-js` — not `neon-http` (Better Auth needs multi-statement transactions; Neon Local needs the serverless driver over HTTP, which we don't use).
+- **File storage**: Cloudflare R2 — not Vercel Blob (zero egress fees).
+- **Email**: Resend.
+- **UI**: shadcn/ui + Tailwind v4.
+- **Package manager**: pnpm.
+
+---
+
+## Agent skill loading (@tanstack/intent)
+
+The block below is auto-managed by `pnpm dlx @tanstack/intent@latest install` — re-run when deps change. **Do not hand-edit between the markers.**
+
+<!-- intent-skills:start -->
+## Skill Loading
+
+Before substantial work:
+- Skill check: run `pnpm dlx @tanstack/intent@latest list`, or use skills already listed in context.
+- Skill guidance: if one local skill clearly matches the task, run `pnpm dlx @tanstack/intent@latest load <package>#<skill>` and follow the returned `SKILL.md`.
+- Monorepos: when working across packages, run the skill check from the workspace root and prefer the local skill for the package being changed.
+- Multiple matches: prefer the most specific local skill for the package or concern you are changing; load additional skills only when the task spans multiple packages or concerns.
+<!-- intent-skills:end -->
