@@ -1,0 +1,16 @@
+{
+  "skillOverrides": {
+    "react-native-best-practices:react-native-best-practices": "off",
+    "react-native-best-practices:upgrading-react-native": "off",
+    "react-native-best-practices:github": "off",
+    "expo-app-design:building-native-ui": "off",
+    "expo-app-design:expo-dev-client": "off",
+    "expo-app-design:use-dom": "off",
+    "expo-app-design:native-data-fetching": "off",
+    "expo-app-design:expo-api-routes": "off",
+    "expo-app-design:expo-tailwind-setup": "off",
+    "expo-deployment:expo-deployment": "off",
+    "expo-deployment:expo-cicd-workflows": "off",
+    "upgrading-expo:upgrading-expo": "off"
+  }
+}
