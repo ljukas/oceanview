@@ -121,6 +121,7 @@ Manual (added when we wire each service):
 - File blobs live in R2; their metadata (name, folder, owner, size, mime, uploaded_at) lives in Postgres.
 - Uploads go browser → R2 directly via presigned URL. Don't proxy file bytes through Vercel functions.
 - Magic-link only — don't add password sign-in without revisiting the auth design.
+- **DB queries live in `src/lib/services/<entity>.ts`** (named exports, called as `import * as <entity>Service`). Framework callbacks (auth hooks, route handlers, server functions) call services — never `db` directly. Tests live next to the service as `<entity>.test.ts` and use the `truncateAll()` helper from `test/setup.ts` for isolation against Neon Local.
 - Always lock TanStack Start to a specific RC version in `package.json` until 1.0 ships.
 - Before adding any new third-party service: confirm there's a free tier sufficient for ~20 users.
 - **Don't run `vercel env pull` locally without thinking**: it pulls prod-tier `DATABASE_URL` and `DATABASE_URL_UNPOOLED` into `.env.local`, which Vite + Drizzle will prefer over the Neon Local pointer in `.env`. Running `pnpm db:migrate` after such a pull would migrate **production**, not the ephemeral branch. If you must pull, delete `.env.local` (or at least the `DATABASE_URL*` lines) before any DB command.

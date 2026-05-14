@@ -1,15 +1,12 @@
 import { betterAuth } from 'better-auth'
+import { APIError } from 'better-auth/api'
 import { drizzleAdapter } from '@better-auth/drizzle-adapter'
 import { admin, magicLink } from 'better-auth/plugins'
 import { tanstackStartCookies } from 'better-auth/tanstack-start'
-import { eq } from 'drizzle-orm'
 import { db } from './db'
 import * as schema from './db/schema'
-
-const adminEmails = (process.env.ADMIN_EMAILS ?? '')
-  .split(',')
-  .map((e) => e.trim().toLowerCase())
-  .filter(Boolean)
+import * as userService from './services/user'
+import { isAllowlistedAdmin, normalizeEmail } from './admin-allowlist'
 
 export const auth = betterAuth({
   database: drizzleAdapter(db, { provider: 'pg', schema }),
@@ -18,6 +15,13 @@ export const auth = betterAuth({
   plugins: [
     magicLink({
       sendMagicLink: async ({ email, url }) => {
+        const normalized = normalizeEmail(email)
+        const existingId = await userService.findIdByEmail(normalized)
+        if (!existingId && !isAllowlistedAdmin(normalized)) {
+          throw new APIError('BAD_REQUEST', {
+            message: 'No account for this email. Contact an admin to be added.',
+          })
+        }
         console.log(`[magic-link] ${email}: ${url}`)
       },
     }),
@@ -28,11 +32,8 @@ export const auth = betterAuth({
     user: {
       create: {
         after: async (user) => {
-          if (adminEmails.includes(user.email.toLowerCase())) {
-            await db
-              .update(schema.user)
-              .set({ role: 'admin' })
-              .where(eq(schema.user.id, user.id))
+          if (isAllowlistedAdmin(user.email)) {
+            await userService.setAdmin(user.id)
           }
         },
       },
