@@ -196,6 +196,7 @@ WebFetch these before guessing APIs. They beat the model's memorized snapshots.
 - **Conventional Commits** for agent commits: `<type>(<scope>): <subject>` ≤ 72 chars, imperative mood, *why* in the body. Types: `feat`, `fix`, `chore`, `docs`, `refactor`, `test`, `build`, `ci`, `perf`, `style`, `revert`.
 - **Lock TanStack Start to a specific RC version** in `package.json` until 1.0 ships.
 - **Free tier first.** Before adding any third-party service, confirm a free tier covers ~20 users.
+- **Every screen must be responsive.** Design and implement all UI for desktop browsers, mobile browsers (iOS/Android phones), and tablets (iPad/Android tablets). Test layouts at small, medium, and large breakpoints — don't ship desktop-only views. Use Tailwind's responsive utilities (`sm:`, `md:`, `lg:`) and shadcn primitives that already adapt; avoid fixed pixel widths that break on narrow viewports.
 - **User-facing text is Swedish.** UI labels, validation errors, toasts, page titles, SEO meta, and screen-reader (`sr-only`) text are written in Swedish using informal "du". The brand name "Oceanview" stays untranslated. Code identifiers, comments, log messages, commit messages, and DB enum values (e.g. role `user`/`admin`) stay in English. `<html lang="sv">` is set in `__root.tsx`.
 
 ---
