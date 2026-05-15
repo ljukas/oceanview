@@ -33,6 +33,10 @@ Load on demand, not eagerly. The `pnpm dlx @tanstack/intent` block at the bottom
 | Building or editing forms (TanStack Form + shadcn) | project-local `shadcn#rules/forms.md` |
 | Reviewing React components | `vercel:react-best-practices` |
 | End-to-end verification before claiming done | `vercel:verification` |
+| Adding oRPC procedures, middleware, error handling | https://orpc.dev/docs |
+| Wiring oRPC into Better Auth | https://orpc.dev/docs/integrations/better-auth |
+| oRPC + TanStack Query (`queryOptions`, `mutationOptions`, invalidation) | https://orpc.dev/docs/integrations/tanstack-query |
+| SSR optimization for oRPC (`createRouterClient`, serializer) | https://orpc.dev/docs/best-practices/optimize-ssr |
 
 **Discovery**: `pnpm dlx @tanstack/intent@latest list` to see all intent skills; `pnpm dlx @tanstack/intent@latest load <pkg>#<skill>` to fetch one.
 
@@ -49,11 +53,17 @@ src/
     __root.tsx                     root layout; beforeLoad session guard (public: / and /api/auth/*)
     index.tsx                      landing / sign-in entry
     api/auth/$.ts                  Better Auth catch-all handler — delegates to auth.handler()
+    api/rpc/$.ts                   oRPC catch-all handler — mounts appRouter at /api/rpc
   lib/
     auth.ts                        betterAuth() instance: drizzleAdapter + magicLink + admin + tanstackStartCookies
     auth-client.ts                 createAuthClient() for the browser: magicLinkClient + adminClient
-    get-session.ts                 server function wrapping auth.api.getSession()
+    get-session.ts                 server function wrapping auth.api.getSession() (used by route beforeLoad)
     admin-allowlist.ts             isAllowlistedAdmin() + normalizeEmail() — reads ADMIN_EMAILS
+    orpc/
+      context.ts                   base / publicProcedure / protectedProcedure / adminProcedure + Better Auth middleware
+      router.ts                    appRouter — composes per-entity routers; SERVER-ONLY
+      client.ts                    isomorphic client (createRouterClient on server, RPCLink on browser) + `orpc` TanStack Query utils
+      procedures/<entity>.ts       per-entity procedures; call services
     db/
       index.ts                     drizzle(postgres(DATABASE_URL)) with snake_case casing
       schema/
@@ -101,7 +111,13 @@ Never hand-edit `better-auth.ts`.
 
 **Adding a guarded route**: place the file under `src/routes/_authenticated/`. The pathless `_authenticated.tsx` route's `beforeLoad` redirects unauthenticated visitors to `/login`. The login route itself stays at `src/routes/login.tsx` (public).
 
-**Input validation**: Zod v4 (already a dep). Validate at the boundary (server function args, route loaders) — trust internal call sites.
+**Adding an oRPC procedure**: create or edit `src/lib/orpc/procedures/<entity>.ts`. Pick the right builder — `publicProcedure` (no auth), `protectedProcedure` (signed in, `context.session`/`context.user` are non-null), or `adminProcedure` (admin role, also enforces non-null). Validate input with `.input(zodSchema)`. Delegate DB work to a service. Then export from the file and add to `appRouter` in `src/lib/orpc/router.ts`. Call from the client via `orpc.<entity>.<op>.queryOptions()` / `.mutationOptions()` from `~/lib/orpc/client`.
+
+**Route loader for oRPC data**: `loader: ({ context: { queryClient } }) => queryClient.ensureQueryData(orpc.x.y.queryOptions())`, then read with `useSuspenseQuery(orpc.x.y.queryOptions())` in the component. SSR runs the procedure in-process via `createRouterClient` — no HTTP roundtrip during loaders.
+
+**Mutations + invalidation**: `useMutation(orpc.x.create.mutationOptions({ onSuccess: () => queryClient.invalidateQueries({ queryKey: orpc.x.list.queryKey() }) }))`. Use `.key()` (partial prefix) for bulk invalidation across an entity. Narrow errors with `isDefinedError(err)` from `@orpc/client`.
+
+**Input validation**: Zod v4 (already a dep). Validate at the boundary (oRPC `.input(schema)`, server function args, route loaders) — trust internal call sites.
 
 **Forms**: use `useForm` from `@tanstack/react-form` with `validators: { onSubmit: schema }`, render fields via `form.Field` inside shadcn's `<FieldGroup>` / `<Field>` / `<FieldLabel>` / `<Input>` / `<FieldError>`. Drive the submit button with `form.Subscribe`. No raw `<form>` + `useState` for field state. See `src/routes/login.tsx` for the canonical example.
 
@@ -167,6 +183,12 @@ WebFetch these before guessing APIs. They beat the model's memorized snapshots.
 - shadcn theming — https://ui.shadcn.com/docs/theming
 - shadcn TanStack Form integration — https://ui.shadcn.com/docs/forms/tanstack-form
 - TanStack Form — https://tanstack.com/form/latest
+- TanStack Query — https://tanstack.com/query/latest/docs/framework/react/overview
+- oRPC (overview) — https://orpc.dev/docs
+- oRPC TanStack Start adapter — https://orpc.dev/docs/adapters/tanstack-start
+- oRPC + Better Auth — https://orpc.dev/docs/integrations/better-auth
+- oRPC + TanStack Query — https://orpc.dev/docs/integrations/tanstack-query
+- oRPC SSR optimisation — https://orpc.dev/docs/best-practices/optimize-ssr
 - next-themes (theme provider) — https://github.com/pacocoursey/next-themes
 - Vite — https://vite.dev
 - Vercel + TanStack Start — https://vercel.com/docs/frameworks/tanstack-start
@@ -188,6 +210,7 @@ WebFetch these before guessing APIs. They beat the model's memorized snapshots.
 - **Magic-link only.** No passwords. Don't add password sign-in without revisiting the auth design.
 - **Two roles only**: `user` and `admin`. Don't introduce more without a real reason.
 - **All `db` access through `src/lib/services/`.** No `db.select()` in routes, handlers, or auth hooks.
+- **All non-auth server calls go through oRPC procedures.** Procedures handle auth (pick `protectedProcedure` / `adminProcedure`, never inline checks) and Zod validation; services still own all `db` access. Better Auth's own routes (`/api/auth/*`) stay on the Better Auth handler.
 - **Never hand-edit `src/lib/db/schema/better-auth.ts`** — re-run the CLI (see [How we write code](#how-we-write-code)).
 - **File blobs in R2, metadata in Postgres** (when R2 is wired). Uploads go browser → R2 directly; never proxy bytes through Vercel.
 - **`vercel env pull` is dangerous**: it writes prod `DATABASE_URL` into `.env.local`, which Vite + Drizzle prefer over `.env`. If you must run it, immediately delete the `DATABASE_URL*` lines from `.env.local` — otherwise `pnpm db:migrate` would migrate **production**.
@@ -217,6 +240,7 @@ One line each. The reasoning lives in `git log CLAUDE.md` if anyone needs it.
 - **UI**: shadcn/ui (style `radix-nova`, base color `slate`) + Tailwind v4. CSS vars live in `src/styles/app.css`; `components.json` is the source of truth.
 - **Dark mode**: `next-themes` with `attribute="class"` + system preference + manual toggle (`ModeToggle` mounted in `__root.tsx`). No flash on hard reload — next-themes injects its own preload script.
 - **Forms**: `@tanstack/react-form` composed with shadcn `<Field>` primitives. Zod v4 schemas via `validators: { onSubmit: schema }`. See `src/routes/login.tsx`.
+- **Data layer**: oRPC + TanStack Query (decided 2026-05-15). First-class TanStack Start adapter, native `Date`/`File`/`BigInt`, builder-based auth (`protectedProcedure` / `adminProcedure`) over `requireSession`-style helpers. Server-side procedures called in-process via `createRouterClient` during SSR (zero HTTP). See `src/lib/orpc/`.
 - **Package manager**: pnpm.
 
 ---
