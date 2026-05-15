@@ -28,7 +28,9 @@ Load on demand, not eagerly. The `pnpm dlx @tanstack/intent` block at the bottom
 | Vercel deploy, CI, rollback | `vercel:deployments-cicd`, `vercel:vercel-cli` |
 | Vercel env management | `vercel:env`, `vercel:env-vars` |
 | Vercel function runtime/timeout/region tuning | `vercel:vercel-functions` |
-| Adding shadcn/ui components | `vercel:shadcn` |
+| Adding shadcn/ui components | `vercel:shadcn` + project-local `shadcn` (at `.claude/skills/shadcn/`) |
+| Theming / CSS vars / dark mode tweaks | project-local `shadcn#customization.md` |
+| Building or editing forms (TanStack Form + shadcn) | project-local `shadcn#rules/forms.md` |
 | Reviewing React components | `vercel:react-best-practices` |
 | End-to-end verification before claiming done | `vercel:verification` |
 
@@ -97,9 +99,15 @@ pnpm dlx @better-auth/cli generate --yes --output src/lib/db/schema/better-auth.
 ```
 Never hand-edit `better-auth.ts`.
 
-**Adding a guarded route**: just create the file under `src/routes/`. The root `beforeLoad` in `__root.tsx` redirects unauthenticated requests for anything not matching `/` or `/api/auth/*`.
+**Adding a guarded route**: place the file under `src/routes/_authenticated/`. The pathless `_authenticated.tsx` route's `beforeLoad` redirects unauthenticated visitors to `/login`. The login route itself stays at `src/routes/login.tsx` (public).
 
 **Input validation**: Zod v4 (already a dep). Validate at the boundary (server function args, route loaders) — trust internal call sites.
+
+**Forms**: use `useForm` from `@tanstack/react-form` with `validators: { onSubmit: schema }`, render fields via `form.Field` inside shadcn's `<FieldGroup>` / `<Field>` / `<FieldLabel>` / `<Input>` / `<FieldError>`. Drive the submit button with `form.Subscribe`. No raw `<form>` + `useState` for field state. See `src/routes/login.tsx` for the canonical example.
+
+**Zod errors**: `src/lib/zod-locale.ts` calls `z.config(z.locales.sv())` at module load, imported once from `src/router.tsx`. Every Zod schema gets Swedish default error messages without per-field overrides — only pass an explicit message when you need wording more specific than the locale default.
+
+**Adding a UI component**: `pnpm dlx shadcn@latest add <name>`. The CLI writes into `src/components/ui/`. Follow the rules in `.claude/skills/shadcn/SKILL.md` — semantic colors only (`bg-primary`, `text-muted-foreground`, never `bg-blue-500` or `dark:` overrides), `gap-*` not `space-y-*`, `size-*` for equal dimensions.
 
 ---
 
@@ -156,6 +164,10 @@ WebFetch these before guessing APIs. They beat the model's memorized snapshots.
 - Zod v4 — https://zod.dev
 - Tailwind v4 — https://tailwindcss.com/docs
 - shadcn/ui — https://ui.shadcn.com
+- shadcn theming — https://ui.shadcn.com/docs/theming
+- shadcn TanStack Form integration — https://ui.shadcn.com/docs/forms/tanstack-form
+- TanStack Form — https://tanstack.com/form/latest
+- next-themes (theme provider) — https://github.com/pacocoursey/next-themes
 - Vite — https://vite.dev
 - Vercel + TanStack Start — https://vercel.com/docs/frameworks/tanstack-start
 - Cloudflare R2 (deferred) — https://developers.cloudflare.com/r2
@@ -184,6 +196,7 @@ WebFetch these before guessing APIs. They beat the model's memorized snapshots.
 - **Conventional Commits** for agent commits: `<type>(<scope>): <subject>` ≤ 72 chars, imperative mood, *why* in the body. Types: `feat`, `fix`, `chore`, `docs`, `refactor`, `test`, `build`, `ci`, `perf`, `style`, `revert`.
 - **Lock TanStack Start to a specific RC version** in `package.json` until 1.0 ships.
 - **Free tier first.** Before adding any third-party service, confirm a free tier covers ~20 users.
+- **User-facing text is Swedish.** UI labels, validation errors, toasts, page titles, SEO meta, and screen-reader (`sr-only`) text are written in Swedish using informal "du". The brand name "Oceanview" stays untranslated. Code identifiers, comments, log messages, commit messages, and DB enum values (e.g. role `user`/`admin`) stay in English. `<html lang="sv">` is set in `__root.tsx`.
 
 ---
 
@@ -200,7 +213,9 @@ One line each. The reasoning lives in `git log CLAUDE.md` if anyone needs it.
 - **DB driver**: `postgres-js` — not `neon-http` (Better Auth needs multi-statement transactions; Neon Local needs the serverless driver over HTTP, which we don't use).
 - **File storage**: Cloudflare R2 — not Vercel Blob (zero egress fees).
 - **Email**: Resend.
-- **UI**: shadcn/ui + Tailwind v4.
+- **UI**: shadcn/ui (style `radix-nova`, base color `slate`) + Tailwind v4. CSS vars live in `src/styles/app.css`; `components.json` is the source of truth.
+- **Dark mode**: `next-themes` with `attribute="class"` + system preference + manual toggle (`ModeToggle` mounted in `__root.tsx`). No flash on hard reload — next-themes injects its own preload script.
+- **Forms**: `@tanstack/react-form` composed with shadcn `<Field>` primitives. Zod v4 schemas via `validators: { onSubmit: schema }`. See `src/routes/login.tsx`.
 - **Package manager**: pnpm.
 
 ---

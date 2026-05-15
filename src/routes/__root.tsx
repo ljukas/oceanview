@@ -1,29 +1,23 @@
 /// <reference types="vite/client" />
-import { HeadContent, Scripts, createRootRoute, redirect } from '@tanstack/react-router'
+import { HeadContent, Scripts, createRootRoute } from '@tanstack/react-router'
 import { TanStackRouterDevtools } from '@tanstack/react-router-devtools'
 import * as React from 'react'
 import { DefaultCatchBoundary } from '~/components/DefaultCatchBoundary'
+import { ModeToggle } from '~/components/mode-toggle'
 import { NotFound } from '~/components/NotFound'
-import { getSession } from '~/lib/get-session'
+import { ThemeProvider } from '~/components/theme-provider'
+import { Toaster } from '~/components/ui/sonner'
 import appCss from '~/styles/app.css?url'
 import { seo } from '~/utils/seo'
 
 export const Route = createRootRoute({
-  beforeLoad: async ({ location }) => {
-    if (location.pathname === '/' || location.pathname.startsWith('/api/auth')) {
-      return {}
-    }
-    const session = await getSession()
-    if (!session) throw redirect({ to: '/' })
-    return { session }
-  },
   head: () => ({
     meta: [
       { charSet: 'utf-8' },
       { name: 'viewport', content: 'width=device-width, initial-scale=1' },
       ...seo({
         title: 'Oceanview',
-        description: 'Internal app for the Oceanview sailboat owners.',
+        description: 'Internt verktyg för Oceanviews båtägare.',
       }),
     ],
     links: [
@@ -56,12 +50,18 @@ export const Route = createRootRoute({
 
 function RootDocument({ children }: { children: React.ReactNode }) {
   return (
-    <html>
+    <html lang="sv" suppressHydrationWarning>
       <head>
         <HeadContent />
       </head>
       <body>
-        {children}
+        <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
+          <div className="fixed right-4 top-4 z-50">
+            <ModeToggle />
+          </div>
+          {children}
+          <Toaster />
+        </ThemeProvider>
         <TanStackRouterDevtools position="bottom-right" />
         <Scripts />
       </body>

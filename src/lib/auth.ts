@@ -19,7 +19,7 @@ export const auth = betterAuth({
         const existingId = await userService.findIdByEmail(normalized)
         if (!existingId && !isAllowlistedAdmin(normalized)) {
           throw new APIError('BAD_REQUEST', {
-            message: 'No account for this email. Contact an admin to be added.',
+            message: 'Inget konto finns för denna e-postadress. Kontakta en administratör för att läggas till.',
           })
         }
         console.log(`[magic-link] ${email}: ${url}`)
