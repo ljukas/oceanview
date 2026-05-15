@@ -1,6 +1,9 @@
 /// <reference types="vite/client" />
-import { HeadContent, Scripts, createRootRoute } from '@tanstack/react-router'
-import { TanStackRouterDevtools } from '@tanstack/react-router-devtools'
+import { HeadContent, Scripts, createRootRouteWithContext } from '@tanstack/react-router'
+import { TanStackDevtools } from '@tanstack/react-devtools'
+import { TanStackRouterDevtoolsPanel } from '@tanstack/react-router-devtools'
+import { ReactQueryDevtoolsPanel } from '@tanstack/react-query-devtools'
+import type { QueryClient } from '@tanstack/react-query'
 import * as React from 'react'
 import { DefaultCatchBoundary } from '~/components/DefaultCatchBoundary'
 import { NotFound } from '~/components/NotFound'
@@ -9,7 +12,7 @@ import { Toaster } from '~/components/ui/sonner'
 import appCss from '~/styles/app.css?url'
 import { seo } from '~/utils/seo'
 
-export const Route = createRootRoute({
+export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
   head: () => ({
     meta: [
       { charSet: 'utf-8' },
@@ -58,7 +61,13 @@ function RootDocument({ children }: { children: React.ReactNode }) {
           {children}
           <Toaster />
         </ThemeProvider>
-        <TanStackRouterDevtools position="bottom-right" />
+        <TanStackDevtools
+          config={{ position: 'bottom-right' }}
+          plugins={[
+            { name: 'TanStack Router', render: <TanStackRouterDevtoolsPanel /> },
+            { name: 'TanStack Query', render: <ReactQueryDevtoolsPanel /> },
+          ]}
+        />
         <Scripts />
       </body>
     </html>
