@@ -8,6 +8,8 @@ export function getRouter() {
   const router = createRouter({
     routeTree,
     defaultPreload: 'intent',
+    defaultPreloadStaleTime: 30_000,
+    defaultStaleTime: 30_000,
     defaultErrorComponent: DefaultCatchBoundary,
     defaultNotFoundComponent: () => <NotFound />,
     scrollRestoration: true,

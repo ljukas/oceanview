@@ -3,7 +3,6 @@ import { HeadContent, Scripts, createRootRoute } from '@tanstack/react-router'
 import { TanStackRouterDevtools } from '@tanstack/react-router-devtools'
 import * as React from 'react'
 import { DefaultCatchBoundary } from '~/components/DefaultCatchBoundary'
-import { ModeToggle } from '~/components/mode-toggle'
 import { NotFound } from '~/components/NotFound'
 import { ThemeProvider } from '~/components/theme-provider'
 import { Toaster } from '~/components/ui/sonner'
@@ -56,9 +55,6 @@ function RootDocument({ children }: { children: React.ReactNode }) {
       </head>
       <body>
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
-          <div className="fixed right-4 top-4 z-50">
-            <ModeToggle />
-          </div>
           {children}
           <Toaster />
         </ThemeProvider>
