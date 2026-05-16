@@ -16,11 +16,7 @@ export const seo = ({
     { name: 'og:type', content: 'website' },
     { name: 'og:title', content: title },
     { name: 'og:description', content: description },
-    ...(image
-      ? [
-          { name: 'og:image', content: image },
-        ]
-      : []),
+    ...(image ? [{ name: 'og:image', content: image }] : []),
   ]
 
   return tags

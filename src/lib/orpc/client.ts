@@ -10,10 +10,11 @@ const getORPCClient = createIsomorphicFn()
   .server(() =>
     createRouterClient(appRouter, {
       context: async () => ({ headers: getRequest().headers }),
-    })
+    }),
   )
-  .client((): RouterClient<typeof appRouter> =>
-    createORPCClient(new RPCLink({ url: `${window.location.origin}/api/rpc` }))
+  .client(
+    (): RouterClient<typeof appRouter> =>
+      createORPCClient(new RPCLink({ url: `${window.location.origin}/api/rpc` })),
   )
 
 export const client: RouterClient<typeof appRouter> = getORPCClient()

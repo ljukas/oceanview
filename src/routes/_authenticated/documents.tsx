@@ -7,7 +7,7 @@ export const Route = createFileRoute('/_authenticated/documents')({
 function Documents() {
   return (
     <div className="p-4">
-      <h1 className="text-2xl font-semibold">Dokument</h1>
+      <h1 className="font-semibold text-2xl">Dokument</h1>
     </div>
   )
 }
