@@ -1,10 +1,11 @@
 /// <reference types="vite/client" />
-import { HeadContent, Scripts, createRootRouteWithContext } from '@tanstack/react-router'
+
 import { TanStackDevtools } from '@tanstack/react-devtools'
-import { TanStackRouterDevtoolsPanel } from '@tanstack/react-router-devtools'
-import { ReactQueryDevtoolsPanel } from '@tanstack/react-query-devtools'
 import type { QueryClient } from '@tanstack/react-query'
-import * as React from 'react'
+import { ReactQueryDevtoolsPanel } from '@tanstack/react-query-devtools'
+import { createRootRouteWithContext, HeadContent, Scripts } from '@tanstack/react-router'
+import { TanStackRouterDevtoolsPanel } from '@tanstack/react-router-devtools'
+import type * as React from 'react'
 import { DefaultCatchBoundary } from '~/components/DefaultCatchBoundary'
 import { NotFound } from '~/components/NotFound'
 import { ThemeProvider } from '~/components/theme-provider'

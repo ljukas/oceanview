@@ -37,6 +37,7 @@ Load on demand, not eagerly. The `pnpm dlx @tanstack/intent` block at the bottom
 | Wiring oRPC into Better Auth | https://orpc.dev/docs/integrations/better-auth |
 | oRPC + TanStack Query (`queryOptions`, `mutationOptions`, invalidation) | https://orpc.dev/docs/integrations/tanstack-query |
 | SSR optimization for oRPC (`createRouterClient`, serializer) | https://orpc.dev/docs/best-practices/optimize-ssr |
+| Biome config, lint rules, formatter | `biome.json` + https://biomejs.dev/reference/configuration/ |
 
 **Discovery**: `pnpm dlx @tanstack/intent@latest list` to see all intent skills; `pnpm dlx @tanstack/intent@latest load <pkg>#<skill>` to fetch one.
 
@@ -143,6 +144,12 @@ Never hand-edit `better-auth.ts`.
 | `pnpm db:studio` | Drizzle Studio UI |
 | `pnpm test` | Vitest once (serial, against Neon Local) |
 | `pnpm test:watch` | Vitest watch mode |
+| `pnpm format` | Biome formatter only (writes) |
+| `pnpm lint` | Biome linter only (no writes) |
+| `pnpm lint:fix` | Biome linter with safe fixes (writes) |
+| `pnpm check` | Biome format + lint + organize imports, safe writes — daily driver |
+| `pnpm check:unsafe` | `check` plus unsafe fixes (Tailwind class sort etc.) — run occasionally |
+| `pnpm check:ci` | `check` dry-run, no writes — exits non-zero on issues |
 
 ---
 
@@ -242,6 +249,7 @@ One line each. The reasoning lives in `git log CLAUDE.md` if anyone needs it.
 - **Forms**: `@tanstack/react-form` composed with shadcn `<Field>` primitives. Zod v4 schemas via `validators: { onSubmit: schema }`. See `src/routes/login.tsx`.
 - **Data layer**: oRPC + TanStack Query (decided 2026-05-15). First-class TanStack Start adapter, native `Date`/`File`/`BigInt`, builder-based auth (`protectedProcedure` / `adminProcedure`) over `requireSession`-style helpers. Server-side procedures called in-process via `createRouterClient` during SSR (zero HTTP). See `src/lib/orpc/`.
 - **Package manager**: pnpm.
+- **Linter/formatter**: Biome — single tool over Prettier+ESLint or oxlint+Prettier. Editor-only enforcement (no CI gate, no git hook). Tailwind class sorting on; CSS skipped (Biome can't parse Tailwind v4 directives yet).
 
 ---
 

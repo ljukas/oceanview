@@ -1,5 +1,5 @@
-import { createFileRoute, redirect } from '@tanstack/react-router'
 import { useForm } from '@tanstack/react-form'
+import { createFileRoute, redirect } from '@tanstack/react-router'
 import { useState } from 'react'
 import { toast } from 'sonner'
 import { z } from 'zod'
@@ -12,13 +12,7 @@ import {
   CardHeader,
   CardTitle,
 } from '~/components/ui/card'
-import {
-  Field,
-  FieldDescription,
-  FieldError,
-  FieldGroup,
-  FieldLabel,
-} from '~/components/ui/field'
+import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from '~/components/ui/field'
 import { Input } from '~/components/ui/input'
 import { Spinner } from '~/components/ui/spinner'
 import { authClient } from '~/lib/auth-client'
@@ -68,10 +62,10 @@ function Login() {
         </CardHeader>
 
         {sentTo ? (
-          <CardContent className="text-sm text-muted-foreground">
+          <CardContent className="text-muted-foreground text-sm">
             Vi har skickat en inloggningslänk till{' '}
-            <strong className="text-foreground">{sentTo}</strong>. Kolla din inkorg
-            (eller serverloggen tills vidare) och följ länken för att fortsätta.
+            <strong className="text-foreground">{sentTo}</strong>. Kolla din inkorg (eller
+            serverloggen tills vidare) och följ länken för att fortsätta.
           </CardContent>
         ) : (
           <form
@@ -85,8 +79,7 @@ function Login() {
                 <form.Field
                   name="email"
                   children={(field) => {
-                    const isInvalid =
-                      field.state.meta.isTouched && !field.state.meta.isValid
+                    const isInvalid = field.state.meta.isTouched && !field.state.meta.isValid
                     return (
                       <Field data-invalid={isInvalid}>
                         <FieldLabel htmlFor={field.name}>E-post</FieldLabel>
@@ -105,24 +98,18 @@ function Login() {
                         <FieldDescription className="pb-4">
                           Vi mejlar dig en engångslänk för inloggning.
                         </FieldDescription>
-                        {isInvalid && (
-                          <FieldError errors={field.state.meta.errors} />
-                        )}
+                        {isInvalid && <FieldError errors={field.state.meta.errors} />}
                       </Field>
                     )
                   }}
                 />
               </FieldGroup>
             </CardContent>
-            <CardFooter >
+            <CardFooter>
               <form.Subscribe
                 selector={(state) => [state.canSubmit, state.isSubmitting]}
                 children={([canSubmit, isSubmitting]) => (
-                  <Button
-                    type="submit"
-                    className="w-full"
-                    disabled={!canSubmit || isSubmitting}
-                  >
+                  <Button type="submit" className="w-full" disabled={!canSubmit || isSubmitting}>
                     {isSubmitting && <Spinner data-icon="inline-start" />}
                     {isSubmitting ? 'Skickar…' : 'Skicka inloggningslänk'}
                   </Button>

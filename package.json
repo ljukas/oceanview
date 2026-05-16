@@ -15,7 +15,13 @@
     "db:migrate": "drizzle-kit migrate",
     "db:studio": "drizzle-kit studio",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "format": "biome format --write .",
+    "lint": "biome lint .",
+    "lint:fix": "biome lint --write .",
+    "check": "biome check --write .",
+    "check:unsafe": "biome check --write --unsafe .",
+    "check:ci": "biome check ."
   },
   "dependencies": {
     "@better-auth/drizzle-adapter": "^1.6.11",
@@ -49,6 +55,7 @@
   },
   "devDependencies": {
     "@better-auth/cli": "^1.4.21",
+    "@biomejs/biome": "2.4.15",
     "@tailwindcss/vite": "^4.2.2",
     "@tanstack/devtools-vite": "^0.7.0",
     "@types/node": "^22.5.4",

@@ -1,4 +1,4 @@
-import { os, ORPCError } from '@orpc/server'
+import { ORPCError, os } from '@orpc/server'
 import { auth } from '~/lib/auth'
 
 type Session = Awaited<ReturnType<typeof auth.api.getSession>>
@@ -13,7 +13,7 @@ const sessionMiddleware = base.middleware(async ({ context, next }) => {
     context: {
       session: data?.session ?? null,
       user: data?.user ?? null,
-    }
+    },
   })
 })
 

@@ -1,21 +1,23 @@
 import { Link } from '@tanstack/react-router'
+import type { ReactNode } from 'react'
 
-export function NotFound({ children }: { children?: any }) {
+export function NotFound({ children }: { children?: ReactNode }) {
   return (
     <div className="space-y-2 p-2">
       <div className="text-gray-600 dark:text-gray-400">
         {children || <p>Sidan du letar efter finns inte.</p>}
       </div>
-      <p className="flex items-center gap-2 flex-wrap">
+      <p className="flex flex-wrap items-center gap-2">
         <button
+          type="button"
           onClick={() => window.history.back()}
-          className="bg-emerald-500 text-white px-2 py-1 rounded-sm uppercase font-black text-sm"
+          className="rounded-sm bg-emerald-500 px-2 py-1 font-black text-sm text-white uppercase"
         >
           Tillbaka
         </button>
         <Link
           to="/"
-          className="bg-cyan-600 text-white px-2 py-1 rounded-sm uppercase font-black text-sm"
+          className="rounded-sm bg-cyan-600 px-2 py-1 font-black text-sm text-white uppercase"
         >
           Till startsidan
         </Link>
