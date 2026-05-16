@@ -24,7 +24,11 @@ export const userRouter = {
     .input(z.object({ id: z.string() }))
     .handler(({ input }) => userService.setAdmin(input.id)),
 
-  list: adminProcedure.handler(() => userService.listAll()),
+  list: adminProcedure
+    .input(z.object({ filter: z.enum(['active', 'deleted']).default('active') }))
+    .handler(({ input }) =>
+      input.filter === 'deleted' ? userService.listDeleted() : userService.listAll(),
+    ),
 
   getById: adminProcedure.input(z.object({ id: z.string().min(1) })).handler(async ({ input }) => {
     const target = await userService.findById(input.id)
@@ -110,4 +114,13 @@ export const userRouter = {
         headers: context.headers,
       })
     }),
+
+  restore: adminProcedure.input(z.object({ id: z.string().min(1) })).handler(async ({ input }) => {
+    const target = await userService.findById(input.id)
+    if (!target) {
+      throw new ORPCError('NOT_FOUND', { message: 'Användaren hittades inte' })
+    }
+    if (!target.deletedAt) return
+    await userService.restoreUser(input.id)
+  }),
 }

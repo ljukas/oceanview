@@ -87,6 +87,10 @@ export async function softDeleteUser(id: string): Promise<void> {
   await db.update(user).set({ deletedAt: new Date() }).where(eq(user.id, id))
 }
 
+export async function restoreUser(id: string): Promise<void> {
+  await db.update(user).set({ deletedAt: null }).where(eq(user.id, id))
+}
+
 export async function countAdmins(): Promise<number> {
   const [row] = await db
     .select({ value: count() })
