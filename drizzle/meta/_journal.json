@@ -8,6 +8,13 @@
       "when": 1778773869665,
       "tag": "0000_wild_random",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1778869043369,
+      "tag": "0001_wide_veda",
+      "breakpoints": true
     }
   ]
 }

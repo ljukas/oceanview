@@ -7,7 +7,7 @@ export const Route = createFileRoute('/_authenticated/contacts')({
 function Contacts() {
   return (
     <div className="p-4">
-      <h1 className="text-2xl font-semibold">Kontakter</h1>
+      <h1 className="font-semibold text-2xl">Kontakter</h1>
     </div>
   )
 }
