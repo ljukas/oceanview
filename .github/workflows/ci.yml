@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Check (Biome)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm check:ci
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    env:
+      NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+      NEON_PROJECT_ID: ${{ secrets.NEON_PROJECT_ID }}
+      PARENT_BRANCH_ID: ${{ secrets.PARENT_BRANCH_ID }}
+      DATABASE_URL: postgres://neon:npg@localhost:5432/neondb?sslmode=require
+      BETTER_AUTH_SECRET: ${{ secrets.BETTER_AUTH_SECRET }}
+      BETTER_AUTH_URL: http://localhost:3000
+      ADMIN_EMAILS: ''
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Start Neon Local (ephemeral branch off PARENT_BRANCH_ID)
+        run: pnpm db:up
+      - name: Apply migrations
+        run: pnpm db:migrate
+      - name: Run tests
+        run: pnpm test
+      - name: Stop Neon Local (also deletes ephemeral branch)
+        if: always()
+        run: pnpm db:down
