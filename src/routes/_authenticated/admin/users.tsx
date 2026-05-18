@@ -212,44 +212,34 @@ function AdminUsers() {
                             </Tooltip>
                           ) : (
                             <>
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <Button
-                                    variant="outline"
-                                    size="icon-sm"
-                                    aria-label="Redigera"
-                                    onClick={() =>
-                                      navigate({
-                                        to: '.',
-                                        search: { dialog: 'edit', userId: u.id },
-                                      })
-                                    }
-                                  >
-                                    <PencilIcon />
-                                  </Button>
-                                </TooltipTrigger>
-                                <TooltipContent>Redigera</TooltipContent>
-                              </Tooltip>
+                              <Button
+                                variant="outline"
+                                size="icon-sm"
+                                aria-label="Redigera"
+                                onClick={() =>
+                                  navigate({
+                                    to: '.',
+                                    search: { dialog: 'edit', userId: u.id },
+                                  })
+                                }
+                              >
+                                <PencilIcon />
+                              </Button>
                               {isSelf ? null : (
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <Button
-                                      variant="outline"
-                                      size="icon-sm"
-                                      aria-label="Ta bort"
-                                      className="text-destructive hover:text-destructive"
-                                      onClick={() =>
-                                        navigate({
-                                          to: '.',
-                                          search: { dialog: 'delete', userId: u.id },
-                                        })
-                                      }
-                                    >
-                                      <Trash2Icon />
-                                    </Button>
-                                  </TooltipTrigger>
-                                  <TooltipContent>Ta bort</TooltipContent>
-                                </Tooltip>
+                                <Button
+                                  variant="outline"
+                                  size="icon-sm"
+                                  aria-label="Ta bort"
+                                  className="text-destructive hover:text-destructive"
+                                  onClick={() =>
+                                    navigate({
+                                      to: '.',
+                                      search: { dialog: 'delete', userId: u.id },
+                                    })
+                                  }
+                                >
+                                  <Trash2Icon />
+                                </Button>
                               )}
                             </>
                           )}
