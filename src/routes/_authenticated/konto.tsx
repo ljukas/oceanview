@@ -1,13 +1,13 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { KeyRoundIcon, PlusIcon } from 'lucide-react'
 import { useState } from 'react'
+import { DeletePasskeyDialog } from '~/components/passkey/DeletePasskeyDialog'
+import { PasskeyRow } from '~/components/passkey/PasskeyRow'
 import { Button } from '~/components/ui/button'
 import { Spinner } from '~/components/ui/spinner'
 import { TooltipProvider } from '~/components/ui/tooltip'
 import { useAddPasskey, useListPasskeys } from '~/hooks/usePasskeys'
 import { seo } from '~/utils/seo'
-import { DeletePasskeyDialog } from './konto/-components/DeletePasskeyDialog'
-import { PasskeyRow } from './konto/-components/PasskeyRow'
 
 export const Route = createFileRoute('/_authenticated/konto')({
   head: () => ({

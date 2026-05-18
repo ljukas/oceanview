@@ -50,13 +50,20 @@ Load on demand, not eagerly. The `pnpm dlx @tanstack/intent` block at the bottom
 ```
 src/
   router.tsx                       createRouter(routeTree) + devtools, error/notFound bindings
+  routeTree.gen.ts                 TanStack Router codegen — DO NOT hand-edit
   routes/
     __root.tsx                     root layout; beforeLoad session guard (public: / and /api/auth/*)
-    login.tsx                      magic-link + passkey sign-in page
-    api/auth/$.ts                  Better Auth catch-all handler — delegates to auth.handler()
-    api/rpc/$.ts                   oRPC catch-all handler — mounts appRouter at /api/rpc
+    login.tsx                      magic-link + passkey sign-in
+    api/auth/$.ts                  Better Auth catch-all — delegates to auth.handler()
+    api/rpc/$.ts                   oRPC catch-all — mounts appRouter at /api/rpc
     _authenticated.tsx             pathless guard: redirects unauthed → /login
-    _authenticated/<feature>.tsx   protected pages; route-local components live in `<feature>/-components/` (PascalCase)
+    _authenticated/
+      index.tsx                    dashboard / home
+      contacts.tsx                 contacts page (placeholder)
+      documents.tsx                file library page (placeholder, R2 not wired)
+      konto.tsx                    user's own account + passkey management
+      admin.tsx                    admin landing
+      admin/users.tsx              admin user CRUD
   lib/
     auth.ts                        betterAuth() instance: drizzleAdapter + passkey + magicLink + admin + tanstackStartCookies
     authClient.ts                  createAuthClient() for the browser: passkeyClient + magicLinkClient + adminClient
@@ -69,15 +76,17 @@ src/
       context.ts                   base / publicProcedure / protectedProcedure / adminProcedure + Better Auth middleware
       router.ts                    appRouter — composes per-entity routers; SERVER-ONLY
       client.ts                    isomorphic client (createRouterClient on server, RPCLink on browser) + `orpc` TanStack Query utils
-      procedures/<entity>.ts       per-entity procedures; call services
+      procedures/
+        health.ts                  liveness probe
+        user.ts                    list / getById / create / update / delete / restore
     db/
       index.ts                     drizzle(postgres(DATABASE_URL)) with snake_case casing
       schema/
         betterAuth.ts              CLI-regenerated; DO NOT hand-edit
         index.ts                   barrel — one re-export per feature schema
     services/
-      <entity>.ts                  named exports; ALL db access lives here
-      <entity>.test.ts             colocated tests using truncateAll() from test/setup.ts
+      user.ts                      user CRUD; ALL user db access lives here
+      user.test.ts                 colocated test using truncateAll() from test/setup.ts
   hooks/
     useMobile.ts                   media-query hook
     usePasskeys.ts                 TanStack Query wrappers around authClient.passkey.*
@@ -88,6 +97,8 @@ src/
     AppSidebar.tsx                 main app shell sidebar
     ModeToggle.tsx                 light/dark/system theme toggle
     ThemeProvider.tsx              next-themes wrapper
+    user/                          UserFormDialog.tsx, DeleteUserDialog.tsx, RestoreUserDialog.tsx
+    passkey/                       PasskeyRow.tsx, DeletePasskeyDialog.tsx
     ui/                            shadcn primitives (kebab-case, CLI-managed)
   data/
     passkeyAaguids.json            static AAGUID → provider metadata registry
@@ -128,6 +139,8 @@ Never hand-edit `betterAuth.ts`.
 
 **Adding a guarded route**: place the file under `src/routes/_authenticated/`. The pathless `_authenticated.tsx` route's `beforeLoad` redirects unauthenticated visitors to `/login`. The login route itself stays at `src/routes/login.tsx` (public).
 
+**Component placement**: feature components live in `src/components/<entity>/<Component>.tsx` (entity-singular: `user/`, `passkey/`, etc. — same naming as `src/lib/services/<entity>.ts` and `src/lib/orpc/procedures/<entity>.ts`). Top-level `src/components/*.tsx` is reserved for app-wide chrome (sidebar, theme toggle, error/404). Don't use TanStack's `-components/` route-local convention — we promote every component to `src/components/<entity>/` so they're discoverable from one place and trivially shareable.
+
 **Adding an oRPC procedure**: create or edit `src/lib/orpc/procedures/<entity>.ts`. Pick the right builder — `publicProcedure` (no auth), `protectedProcedure` (signed in, `context.session`/`context.user` are non-null), or `adminProcedure` (admin role, also enforces non-null). Validate input with `.input(zodSchema)`. Delegate DB work to a service. Then export from the file and add to `appRouter` in `src/lib/orpc/router.ts`. Call from the client via `orpc.<entity>.<op>.queryOptions()` / `.mutationOptions()` from `~/lib/orpc/client`.
 
 **Route loader for oRPC data**: `loader: ({ context: { queryClient } }) => queryClient.ensureQueryData(orpc.x.y.queryOptions())`, then read with `useSuspenseQuery(orpc.x.y.queryOptions())` in the component. SSR runs the procedure in-process via `createRouterClient` — no HTTP roundtrip during loaders.
@@ -136,7 +149,18 @@ Never hand-edit `betterAuth.ts`.
 
 **Input validation**: Zod v4 (already a dep). Validate at the boundary (oRPC `.input(schema)`, server function args, route loaders) — trust internal call sites.
 
-**Forms**: use `useForm` from `@tanstack/react-form` with `validators: { onSubmit: schema }`, render fields via `form.Field` inside shadcn's `<FieldGroup>` / `<Field>` / `<FieldLabel>` / `<Input>` / `<FieldError>`. Drive the submit button with `form.Subscribe`. No raw `<form>` + `useState` for field state. See `src/routes/login.tsx` for the canonical example.
+**Forms own all user input.** Any text input, select, checkbox, or confirmation that captures or mutates data goes through `@tanstack/react-form`. **Never store field values in `useState`** — `useForm` is the only field-state primitive in this codebase. This applies to dialogs and inline edits too (see `RenamePasskeyForm` in `src/components/passkey/PasskeyRow.tsx` for an inline example, and `src/components/user/UserFormDialog.tsx` for a dialog with create+edit shapes).
+
+Canonical pattern (see `src/routes/login.tsx`):
+
+- `useForm({ defaultValues, validators: { onSubmit: zodSchema }, onSubmit })` — validate on submit, not onChange.
+- `<form onSubmit={(e) => { e.preventDefault(); form.handleSubmit() }}>` — never a raw `<form action>` or an `onSubmit` that bypasses the form instance.
+- Each field rendered via `<form.Field name="..." children={(field) => …}>`, wrapped in shadcn `<FieldGroup>` / `<Field>` / `<FieldLabel>` / `<Input>` (or `<Select>`) / `<FieldError>`.
+- Compute `const isInvalid = field.state.meta.isTouched && !field.state.meta.isValid` once per field; pass to `<Field data-invalid>` and `<Input aria-invalid>`; render `<FieldError errors={field.state.meta.errors} />` only when invalid.
+- Disable inputs during submit via `disabled={form.state.isSubmitting}`.
+- Drive the submit button with `<form.Subscribe selector={(s) => [s.canSubmit, s.isSubmitting]} children={…}>` — `disabled={!canSubmit || isSubmitting}`, render `<Spinner />` while submitting.
+- **Field-level errors** → `<FieldError>`. **Async / API / mutation errors** → `toast.error(...)` from `sonner`. Don't mix the two channels.
+- **Mutations** integrate via oRPC's `mutationOptions({ onSuccess, onError })` — invalidate with `queryClient.invalidateQueries({ queryKey: orpc.<entity>.<op>.key() })`, then `toast.success(...)` and close the dialog.
 
 **Zod errors**: `src/lib/zodLocale.ts` calls `z.config(z.locales.sv())` at module load, imported once from `src/router.tsx`. Every Zod schema gets Swedish default error messages without per-field overrides — only pass an explicit message when you need wording more specific than the locale default.
 
@@ -236,7 +260,13 @@ WebFetch these before guessing APIs. They beat the model's memorized snapshots.
 - **All `db` access through `src/lib/services/`.** No `db.select()` in routes, handlers, or auth hooks.
 - **All non-auth server calls go through oRPC procedures.** Procedures handle auth (pick `protectedProcedure` / `adminProcedure`, never inline checks) and Zod validation; services still own all `db` access. Better Auth's own routes (`/api/auth/*`) stay on the Better Auth handler.
 - **Never hand-edit `src/lib/db/schema/betterAuth.ts`** — re-run the CLI (see [How we write code](#how-we-write-code)).
-- **File naming.** Routes follow [TanStack file-naming conventions](https://tanstack.com/router/latest/docs/routing/file-naming-conventions) (lowercase + special tokens like `__root`, `_authenticated`, `$id`, `index`). React component files are **PascalCase** matching the export (`UserCard.tsx` → `export function UserCard`); applies to `src/components/*.tsx` and to route-local `**/-components/*.tsx`. Hook files are **camelCase with `use` prefix** matching the export (`useMobile.ts` → `export function useMobile`). All other TypeScript / JSON files (lib modules, utils, data, config) are **camelCase** (`authClient.ts`, `passkeyProviders.ts`, `passkeyAaguids.json`). `src/components/ui/` stays kebab-case — it is managed by the shadcn CLI, don't normalize it. Directory roles: `src/lib/` = wired/stateful modules (auth, db, orpc, services); `src/hooks/` = React hooks; `src/utils/` = pure helper functions; `src/data/` = static data.
+- **File naming.**
+  - **Routes** (`src/routes/`) follow [TanStack file-naming conventions](https://tanstack.com/router/latest/docs/routing/file-naming-conventions): lowercase + special tokens (`__root`, `_authenticated`, `$id`, `index`).
+  - **React components** are **PascalCase** matching the export — `UserCard.tsx` → `export function UserCard`. Feature components live in `src/components/<entity>/` (entity-singular, e.g. `user/`, `passkey/`) — same naming as `src/lib/services/<entity>.ts` and `src/lib/orpc/procedures/<entity>.ts`. Top-level `src/components/*.tsx` is reserved for app-wide chrome (sidebar, theme toggle, error/404 boundaries).
+  - **Hooks** are **camelCase with `use` prefix** matching the export — `useMobile.ts` → `export function useMobile`.
+  - **Everything else** (lib modules, utils, data, config — `.ts` / `.json`) is **camelCase** — `authClient.ts`, `passkeyProviders.ts`, `passkeyAaguids.json`.
+  - **`src/components/ui/` is kebab-case** and CLI-managed by shadcn — don't normalize it.
+  - **Directory roles**: `src/lib/` = wired/stateful modules (auth, db, orpc, services); `src/hooks/` = React hooks; `src/utils/` = pure helper functions; `src/data/` = static data.
 - **File blobs in R2, metadata in Postgres** (when R2 is wired). Uploads go browser → R2 directly; never proxy bytes through Vercel.
 - **`vercel env pull` is dangerous**: it writes prod `DATABASE_URL` into `.env.local`, which Vite + Drizzle prefer over `.env`. If you must run it, immediately delete the `DATABASE_URL*` lines from `.env.local` — otherwise `pnpm db:migrate` would migrate **production**.
 - **Migrations are explicit locally.** `pnpm build` does not migrate. `vercel-build` does, on deploy. Run `pnpm db:migrate` yourself against the local ephemeral branch.
