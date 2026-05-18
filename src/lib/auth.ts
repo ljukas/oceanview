@@ -1,9 +1,10 @@
 import { drizzleAdapter } from '@better-auth/drizzle-adapter'
+import { passkey } from '@better-auth/passkey'
 import { betterAuth } from 'better-auth'
 import { APIError } from 'better-auth/api'
 import { admin, magicLink } from 'better-auth/plugins'
 import { tanstackStartCookies } from 'better-auth/tanstack-start'
-import { isAllowlistedAdmin, normalizeEmail } from './admin-allowlist'
+import { isAllowlistedAdmin, normalizeEmail } from './adminAllowlist'
 import { db } from './db'
 import * as schema from './db/schema'
 import * as userService from './services/user'
@@ -47,6 +48,11 @@ export const auth = betterAuth({
       },
     }),
     admin(),
+    passkey({
+      rpID: new URL(process.env.BETTER_AUTH_URL ?? 'http://localhost:3000').hostname,
+      rpName: 'Oceanview',
+      origin: process.env.BETTER_AUTH_URL ?? 'http://localhost:3000',
+    }),
     tanstackStartCookies(),
   ],
   databaseHooks: {

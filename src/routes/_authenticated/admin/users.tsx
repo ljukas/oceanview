@@ -22,9 +22,9 @@ import { ToggleGroup, ToggleGroupItem } from '~/components/ui/toggle-group'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '~/components/ui/tooltip'
 import { orpc } from '~/lib/orpc/client'
 import { seo } from '~/utils/seo'
-import { DeleteUserDialog } from './users/-components/delete-user-dialog'
-import { RestoreUserDialog } from './users/-components/restore-user-dialog'
-import { UserFormDialog } from './users/-components/user-form-dialog'
+import { DeleteUserDialog } from './users/-components/DeleteUserDialog'
+import { RestoreUserDialog } from './users/-components/RestoreUserDialog'
+import { UserFormDialog } from './users/-components/UserFormDialog'
 
 const usersSearchSchema = z.object({
   filter: z.enum(['active', 'deleted']).optional(),

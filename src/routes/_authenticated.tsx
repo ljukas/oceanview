@@ -1,7 +1,9 @@
 import { createFileRoute, Outlet, redirect } from '@tanstack/react-router'
-import { AppSidebar } from '~/components/app-sidebar'
+import { useEffect } from 'react'
+import { AppSidebar } from '~/components/AppSidebar'
 import { SidebarInset, SidebarProvider, SidebarTrigger } from '~/components/ui/sidebar'
-import { getSession } from '~/lib/get-session'
+import { saveEmail } from '~/hooks/useSavedLogin'
+import { getSession } from '~/lib/getSession'
 
 export const Route = createFileRoute('/_authenticated')({
   beforeLoad: async () => {
@@ -15,6 +17,11 @@ export const Route = createFileRoute('/_authenticated')({
 
 function AuthenticatedLayout() {
   const { user } = Route.useRouteContext()
+
+  useEffect(() => {
+    saveEmail(user.email)
+  }, [user.email])
+
   return (
     <SidebarProvider>
       <AppSidebar user={user} />

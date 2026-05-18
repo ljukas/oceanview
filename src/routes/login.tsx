@@ -1,5 +1,5 @@
 import { useForm } from '@tanstack/react-form'
-import { createFileRoute, redirect } from '@tanstack/react-router'
+import { createFileRoute, redirect, useNavigate } from '@tanstack/react-router'
 import { useState } from 'react'
 import { toast } from 'sonner'
 import { z } from 'zod'
@@ -15,8 +15,10 @@ import {
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from '~/components/ui/field'
 import { Input } from '~/components/ui/input'
 import { Spinner } from '~/components/ui/spinner'
-import { authClient } from '~/lib/auth-client'
-import { getSession } from '~/lib/get-session'
+import { useSignInPasskeyAutofill } from '~/hooks/usePasskeys'
+import { clearSavedEmail, useSavedEmail } from '~/hooks/useSavedLogin'
+import { authClient } from '~/lib/authClient'
+import { getSession } from '~/lib/getSession'
 
 const loginSchema = z.object({
   email: z.email(),
@@ -31,7 +33,17 @@ export const Route = createFileRoute('/login')({
 })
 
 function Login() {
+  const navigate = useNavigate()
   const [sentTo, setSentTo] = useState<string | null>(null)
+  const [isSendingSaved, setIsSendingSaved] = useState(false)
+
+  const savedEmail = useSavedEmail()
+
+  useSignInPasskeyAutofill({
+    onSignedIn: () => {
+      navigate({ to: '/' })
+    },
+  })
 
   const form = useForm({
     defaultValues: { email: '' },
@@ -39,7 +51,7 @@ function Login() {
     onSubmit: async ({ value }) => {
       const { error } = await authClient.signIn.magicLink({
         email: value.email,
-        callbackURL: '/',
+        callbackURL: '/?passkey=setup',
       })
       if (error) {
         toast.error(error.message ?? 'Kunde inte skicka inloggningslänken')
@@ -49,15 +61,37 @@ function Login() {
     },
   })
 
+  async function sendToSavedEmail(email: string) {
+    setIsSendingSaved(true)
+    const { error } = await authClient.signIn.magicLink({
+      email,
+      callbackURL: '/?passkey=setup',
+    })
+    setIsSendingSaved(false)
+    if (error) {
+      toast.error(error.message ?? 'Kunde inte skicka inloggningslänken')
+      return
+    }
+    setSentTo(email)
+  }
+
+  function useDifferentEmail() {
+    clearSavedEmail()
+  }
+
+  const showAvatarCard = savedEmail && !sentTo
+
   return (
     <div className="grid min-h-svh place-items-center p-4">
       <Card className="w-full max-w-sm">
         <CardHeader>
-          <CardTitle>Oceanview</CardTitle>
+          <CardTitle>{showAvatarCard ? 'Välkommen tillbaka' : 'Oceanview'}</CardTitle>
           <CardDescription>
             {sentTo
               ? 'Inloggningslänken är på väg.'
-              : 'Logga in med en länk som vi skickar till din e-post.'}
+              : showAvatarCard
+                ? 'Fortsätt med ditt senaste konto.'
+                : 'Logga in med en länk som vi skickar till din e-post.'}
           </CardDescription>
         </CardHeader>
 
@@ -67,6 +101,40 @@ function Login() {
             <strong className="text-foreground">{sentTo}</strong>. Kolla din inkorg (eller
             serverloggen tills vidare) och följ länken för att fortsätta.
           </CardContent>
+        ) : showAvatarCard && savedEmail ? (
+          <>
+            <CardContent className="flex flex-col items-center gap-3">
+              <div
+                aria-hidden="true"
+                className="grid size-16 place-items-center rounded-full bg-muted font-semibold text-2xl text-muted-foreground"
+              >
+                {savedEmail[0]?.toUpperCase() ?? '?'}
+              </div>
+              <div className="break-all text-center font-medium text-sm">{savedEmail}</div>
+            </CardContent>
+            <CardFooter className="flex-col gap-3">
+              <Button
+                type="button"
+                className="w-full"
+                disabled={isSendingSaved}
+                onClick={() => {
+                  void sendToSavedEmail(savedEmail)
+                }}
+              >
+                {isSendingSaved && <Spinner data-icon="inline-start" />}
+                {isSendingSaved ? 'Skickar…' : 'Skicka inloggningslänk'}
+              </Button>
+
+              <Button
+                type="button"
+                variant="link"
+                className="h-auto p-0 text-muted-foreground text-sm"
+                onClick={useDifferentEmail}
+              >
+                Logga in som annan användare
+              </Button>
+            </CardFooter>
+          </>
         ) : (
           <form
             onSubmit={(e) => {
@@ -87,7 +155,7 @@ function Login() {
                           id={field.name}
                           name={field.name}
                           type="email"
-                          autoComplete="email"
+                          autoComplete="username webauthn"
                           placeholder="du@exempel.se"
                           value={field.state.value}
                           onBlur={field.handleBlur}
@@ -105,7 +173,8 @@ function Login() {
                 />
               </FieldGroup>
             </CardContent>
-            <CardFooter>
+
+            <CardFooter className="flex-col gap-3">
               <form.Subscribe
                 selector={(state) => [state.canSubmit, state.isSubmitting]}
                 children={([canSubmit, isSubmitting]) => (
@@ -118,6 +187,16 @@ function Login() {
             </CardFooter>
           </form>
         )}
+        <input
+          type="text"
+          name="webauthn-anchor"
+          autoComplete="username webauthn"
+          aria-hidden="true"
+          tabIndex={-1}
+          readOnly
+          defaultValue={savedEmail ?? ''}
+          className="sr-only"
+        />
       </Card>
     </div>
   )

@@ -52,14 +52,19 @@ src/
   router.tsx                       createRouter(routeTree) + devtools, error/notFound bindings
   routes/
     __root.tsx                     root layout; beforeLoad session guard (public: / and /api/auth/*)
-    index.tsx                      landing / sign-in entry
+    login.tsx                      magic-link + passkey sign-in page
     api/auth/$.ts                  Better Auth catch-all handler — delegates to auth.handler()
     api/rpc/$.ts                   oRPC catch-all handler — mounts appRouter at /api/rpc
+    _authenticated.tsx             pathless guard: redirects unauthed → /login
+    _authenticated/<feature>.tsx   protected pages; route-local components live in `<feature>/-components/` (PascalCase)
   lib/
-    auth.ts                        betterAuth() instance: drizzleAdapter + magicLink + admin + tanstackStartCookies
-    auth-client.ts                 createAuthClient() for the browser: magicLinkClient + adminClient
-    get-session.ts                 server function wrapping auth.api.getSession() (used by route beforeLoad)
-    admin-allowlist.ts             isAllowlistedAdmin() + normalizeEmail() — reads ADMIN_EMAILS
+    auth.ts                        betterAuth() instance: drizzleAdapter + passkey + magicLink + admin + tanstackStartCookies
+    authClient.ts                  createAuthClient() for the browser: passkeyClient + magicLinkClient + adminClient
+    getSession.ts                  server function wrapping auth.api.getSession() (used by route beforeLoad)
+    adminAllowlist.ts              isAllowlistedAdmin() + normalizeEmail() — reads ADMIN_EMAILS
+    zodLocale.ts                   z.config(z.locales.sv()) — imported once from src/router.tsx
+    passkeyProviders.ts            getPasskeyProvider() lookup against `~/data/passkeyAaguids.json`
+    utils.ts                       cn() and other tiny helpers
     orpc/
       context.ts                   base / publicProcedure / protectedProcedure / adminProcedure + Better Auth middleware
       router.ts                    appRouter — composes per-entity routers; SERVER-ONLY
@@ -68,15 +73,26 @@ src/
     db/
       index.ts                     drizzle(postgres(DATABASE_URL)) with snake_case casing
       schema/
-        better-auth.ts             CLI-regenerated; DO NOT hand-edit
+        betterAuth.ts              CLI-regenerated; DO NOT hand-edit
         index.ts                   barrel — one re-export per feature schema
     services/
       <entity>.ts                  named exports; ALL db access lives here
       <entity>.test.ts             colocated tests using truncateAll() from test/setup.ts
+  hooks/
+    useMobile.ts                   media-query hook
+    usePasskeys.ts                 TanStack Query wrappers around authClient.passkey.*
+    useSavedLogin.ts               localStorage-backed last-email collection + hook
   components/
     DefaultCatchBoundary.tsx       router error boundary
     NotFound.tsx                   router 404
-  utils/seo.ts                     meta-tag helper
+    AppSidebar.tsx                 main app shell sidebar
+    ModeToggle.tsx                 light/dark/system theme toggle
+    ThemeProvider.tsx              next-themes wrapper
+    ui/                            shadcn primitives (kebab-case, CLI-managed)
+  data/
+    passkeyAaguids.json            static AAGUID → provider metadata registry
+  utils/
+    seo.ts                         meta-tag helper (pure function)
   styles/                          Tailwind v4 entry
 test/
   setup.ts                         truncateAll() helper + localhost-DATABASE_URL guard
@@ -106,9 +122,9 @@ const id = await userService.findIdByEmail(email)
 
 **Regenerating Better Auth schema**: after upgrading `better-auth` or changing plugin config in `src/lib/auth.ts`, run:
 ```
-pnpm dlx @better-auth/cli generate --yes --output src/lib/db/schema/better-auth.ts
+pnpm dlx @better-auth/cli generate --yes --output src/lib/db/schema/betterAuth.ts
 ```
-Never hand-edit `better-auth.ts`.
+Never hand-edit `betterAuth.ts`.
 
 **Adding a guarded route**: place the file under `src/routes/_authenticated/`. The pathless `_authenticated.tsx` route's `beforeLoad` redirects unauthenticated visitors to `/login`. The login route itself stays at `src/routes/login.tsx` (public).
 
@@ -122,7 +138,7 @@ Never hand-edit `better-auth.ts`.
 
 **Forms**: use `useForm` from `@tanstack/react-form` with `validators: { onSubmit: schema }`, render fields via `form.Field` inside shadcn's `<FieldGroup>` / `<Field>` / `<FieldLabel>` / `<Input>` / `<FieldError>`. Drive the submit button with `form.Subscribe`. No raw `<form>` + `useState` for field state. See `src/routes/login.tsx` for the canonical example.
 
-**Zod errors**: `src/lib/zod-locale.ts` calls `z.config(z.locales.sv())` at module load, imported once from `src/router.tsx`. Every Zod schema gets Swedish default error messages without per-field overrides — only pass an explicit message when you need wording more specific than the locale default.
+**Zod errors**: `src/lib/zodLocale.ts` calls `z.config(z.locales.sv())` at module load, imported once from `src/router.tsx`. Every Zod schema gets Swedish default error messages without per-field overrides — only pass an explicit message when you need wording more specific than the locale default.
 
 **Adding a UI component**: `pnpm dlx shadcn@latest add <name>`. The CLI writes into `src/components/ui/`. Follow the rules in `.claude/skills/shadcn/SKILL.md` — semantic colors only (`bg-primary`, `text-muted-foreground`, never `bg-blue-500` or `dark:` overrides), `gap-*` not `space-y-*`, `size-*` for equal dimensions.
 
@@ -133,6 +149,7 @@ Never hand-edit `better-auth.ts`.
 | Command | What it does |
 |---|---|
 | `pnpm dev` | Vite dev server on :3000 |
+| `pnpm dev:log` | Same as `dev`, but truncates `/tmp/oceanview-dev.log` on start and tees stdout+stderr there so Claude can read it |
 | `pnpm build` | Vite build + `tsc --noEmit` typecheck |
 | `pnpm vercel-build` | Run pending migrations, then build + typecheck (CI/deploy only) |
 | `pnpm preview` | Preview built bundle |
@@ -218,7 +235,8 @@ WebFetch these before guessing APIs. They beat the model's memorized snapshots.
 - **Two roles only**: `user` and `admin`. Don't introduce more without a real reason.
 - **All `db` access through `src/lib/services/`.** No `db.select()` in routes, handlers, or auth hooks.
 - **All non-auth server calls go through oRPC procedures.** Procedures handle auth (pick `protectedProcedure` / `adminProcedure`, never inline checks) and Zod validation; services still own all `db` access. Better Auth's own routes (`/api/auth/*`) stay on the Better Auth handler.
-- **Never hand-edit `src/lib/db/schema/better-auth.ts`** — re-run the CLI (see [How we write code](#how-we-write-code)).
+- **Never hand-edit `src/lib/db/schema/betterAuth.ts`** — re-run the CLI (see [How we write code](#how-we-write-code)).
+- **File naming.** Routes follow [TanStack file-naming conventions](https://tanstack.com/router/latest/docs/routing/file-naming-conventions) (lowercase + special tokens like `__root`, `_authenticated`, `$id`, `index`). React component files are **PascalCase** matching the export (`UserCard.tsx` → `export function UserCard`); applies to `src/components/*.tsx` and to route-local `**/-components/*.tsx`. Hook files are **camelCase with `use` prefix** matching the export (`useMobile.ts` → `export function useMobile`). All other TypeScript / JSON files (lib modules, utils, data, config) are **camelCase** (`authClient.ts`, `passkeyProviders.ts`, `passkeyAaguids.json`). `src/components/ui/` stays kebab-case — it is managed by the shadcn CLI, don't normalize it. Directory roles: `src/lib/` = wired/stateful modules (auth, db, orpc, services); `src/hooks/` = React hooks; `src/utils/` = pure helper functions; `src/data/` = static data.
 - **File blobs in R2, metadata in Postgres** (when R2 is wired). Uploads go browser → R2 directly; never proxy bytes through Vercel.
 - **`vercel env pull` is dangerous**: it writes prod `DATABASE_URL` into `.env.local`, which Vite + Drizzle prefer over `.env`. If you must run it, immediately delete the `DATABASE_URL*` lines from `.env.local` — otherwise `pnpm db:migrate` would migrate **production**.
 - **Migrations are explicit locally.** `pnpm build` does not migrate. `vercel-build` does, on deploy. Run `pnpm db:migrate` yourself against the local ephemeral branch.

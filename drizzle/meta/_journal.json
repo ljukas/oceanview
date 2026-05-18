@@ -15,6 +15,13 @@
       "when": 1778869043369,
       "tag": "0001_wide_veda",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1779100849322,
+      "tag": "0002_fluffy_inertia",
+      "breakpoints": true
     }
   ]
 }

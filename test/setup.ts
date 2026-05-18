@@ -20,6 +20,6 @@ if (!isLocal) {
 // schema-introspection here on purpose, so a forgotten table fails loudly.
 export async function truncateAll(): Promise<void> {
   await db.execute(
-    sql`TRUNCATE TABLE "user", "session", "account", "verification" RESTART IDENTITY CASCADE`,
+    sql`TRUNCATE TABLE "user", "session", "account", "verification", "passkey" RESTART IDENTITY CASCADE`,
   )
 }
