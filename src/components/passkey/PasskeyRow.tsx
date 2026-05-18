@@ -36,7 +36,7 @@ export function PasskeyRow({ passkey, onDelete }: { passkey: Passkey; onDelete: 
         : null
 
   return (
-    <li className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+    <li className="flex items-center justify-between gap-3 p-4">
       <div className="flex min-w-0 flex-1 items-center gap-3">
         {provider?.iconLight ? (
           <img src={provider.iconLight} alt="" className="size-6 shrink-0 rounded-sm dark:hidden" />
@@ -63,7 +63,7 @@ export function PasskeyRow({ passkey, onDelete }: { passkey: Passkey; onDelete: 
         </div>
       </div>
       {isEditing ? null : (
-        <div className="flex gap-2 self-end sm:self-auto">
+        <div className="flex gap-2">
           {customName ? (
             <Tooltip>
               <TooltipTrigger asChild>
