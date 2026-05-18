@@ -52,9 +52,9 @@ export const auth = betterAuth({
   databaseHooks: {
     user: {
       create: {
-        after: async (user) => {
+        before: async (user) => {
           if (isAllowlistedAdmin(user.email)) {
-            await userService.setAdmin(user.id)
+            return { data: { ...user, role: 'admin' } }
           }
         },
       },
