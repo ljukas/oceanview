@@ -1,7 +1,14 @@
 import { Link, useMatchRoute } from '@tanstack/react-router'
-import { CalendarIcon, ContactIcon, FolderIcon, LogOutIcon, UsersIcon } from 'lucide-react'
+import {
+  CalendarIcon,
+  ContactIcon,
+  FolderIcon,
+  LogOutIcon,
+  UserIcon,
+  UsersIcon,
+} from 'lucide-react'
 import type { ComponentType } from 'react'
-import { ModeToggle } from '~/components/mode-toggle'
+import { ModeToggle } from '~/components/ModeToggle'
 import { Button } from '~/components/ui/button'
 import {
   Sidebar,
@@ -16,14 +23,14 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from '~/components/ui/sidebar'
-import { useSignOut } from '~/lib/auth-client'
+import { useSignOut } from '~/lib/authClient'
 
 type SidebarUser = {
   role?: string | null
 }
 
 type NavItem = {
-  to: '/' | '/contacts' | '/documents' | '/admin/users'
+  to: '/' | '/contacts' | '/documents' | '/admin/users' | '/konto'
   label: string
   icon: ComponentType<{ className?: string }>
 }
@@ -79,6 +86,11 @@ export function AppSidebar({ user }: { user: SidebarUser }) {
       </SidebarContent>
       <SidebarFooter className="flex flex-row items-center gap-2 p-4">
         <ModeToggle />
+        <Button variant="outline" size="icon" asChild aria-label="Konto">
+          <Link to="/konto" onClick={() => setOpenMobile(false)}>
+            <UserIcon />
+          </Link>
+        </Button>
         <Button
           variant="outline"
           className="flex-1"

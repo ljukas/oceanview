@@ -55,7 +55,11 @@
         "useNodejsImportProtocol": "error"
       },
       "correctness": {
-        "noUnusedImports": "error",
+        "noUnusedImports": {
+          "fix": "safe",
+          "level": "warn",
+          "options": {}
+        },
         "noUnusedVariables": "warn",
         "noChildrenProp": "off"
       },

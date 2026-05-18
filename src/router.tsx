@@ -1,4 +1,4 @@
-import '~/lib/zod-locale'
+import '~/lib/zodLocale'
 import { StandardRPCJsonSerializer } from '@orpc/client/standard'
 import { defaultShouldDehydrateQuery, QueryClient } from '@tanstack/react-query'
 import { createRouter } from '@tanstack/react-router'
