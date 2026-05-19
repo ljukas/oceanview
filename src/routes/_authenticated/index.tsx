@@ -3,6 +3,7 @@ import { createFileRoute } from '@tanstack/react-router'
 import { useEffect, useRef } from 'react'
 import { toast } from 'sonner'
 import { z } from 'zod'
+import { DisponeringslistaTable } from '~/components/season/DisponeringslistaTable'
 import { useAddPasskey, useListPasskeys } from '~/hooks/usePasskeys'
 import { orpc } from '~/lib/orpc/client'
 
@@ -13,12 +14,12 @@ const indexSearchSchema = z.object({
 export const Route = createFileRoute('/_authenticated/')({
   validateSearch: indexSearchSchema,
   loader: ({ context: { queryClient } }) =>
-    queryClient.ensureQueryData(orpc.health.ping.queryOptions()),
+    queryClient.ensureQueryData(orpc.season.listSchedules.queryOptions()),
   component: Calendar,
 })
 
 function Calendar() {
-  const { data } = useSuspenseQuery(orpc.health.ping.queryOptions({ staleTime: 0 }))
+  const { data: schedules } = useSuspenseQuery(orpc.season.listSchedules.queryOptions())
   const passkeyParam = Route.useSearch({ select: (s) => s.passkey })
   const navigate = Route.useNavigate()
   const handled = useRef(false)
@@ -40,11 +41,9 @@ function Calendar() {
   }, [passkeyParam, passkeysQuery.isLoading, passkeysQuery.data, navigate, addPasskey])
 
   return (
-    <div className="p-4">
-      <h1 className="font-semibold text-2xl">Kalender</h1>
-      <p className="mt-2 text-muted-foreground text-sm">
-        Serverklocka: {data.at.toLocaleString('sv-SE')}
-      </p>
+    <div className="flex flex-col gap-6 p-4 md:p-8">
+      <h1 className="font-semibold text-2xl tracking-tight md:text-3xl">Kalender</h1>
+      <DisponeringslistaTable schedules={schedules} />
     </div>
   )
 }

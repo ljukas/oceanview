@@ -54,7 +54,7 @@ export function AppSidebar({ user }: { user: SidebarUser }) {
     const isActive = !!matchRoute({ to: item.to, fuzzy: true })
     return (
       <SidebarMenuItem key={item.to}>
-        <SidebarMenuButton asChild isActive={isActive}>
+        <SidebarMenuButton asChild isActive={isActive} tooltip={item.label}>
           <Link to={item.to} onClick={() => setOpenMobile(false)}>
             <item.icon />
             <span>{item.label}</span>
@@ -65,7 +65,7 @@ export function AppSidebar({ user }: { user: SidebarUser }) {
   }
 
   return (
-    <Sidebar collapsible="offcanvas">
+    <Sidebar collapsible="icon">
       <SidebarHeader className="px-4 py-4">
         <span className="font-semibold text-lg">Oceanview</span>
       </SidebarHeader>

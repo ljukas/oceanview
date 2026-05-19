@@ -129,6 +129,8 @@ const id = await userService.findIdByEmail(email)
 
 **Adding a feature schema**: create `src/lib/db/schema/<feature>.ts`, add one re-export line to `schema/index.ts`, then `pnpm db:generate && pnpm db:migrate`. Also add the new table name to `truncateAll()` in `test/setup.ts` — there's no auto-introspection on purpose, so a forgotten table fails loudly.
 
+**Name migrations descriptively, never ship the auto-generated tag.** drizzle-kit emits files like `0003_small_jetstream.sql` — that name is meaningless six months later. Immediately after `pnpm db:generate` (or `pnpm drizzle-kit generate --custom --name=<descriptive_name>` for data-only migrations), rename the file and update the corresponding `tag` in `drizzle/meta/_journal.json` to something that describes the change: `0003_add_ownership_tables.sql`, `0004_seed_initial_seasons.sql`, `0007_add_passkey_aaguid_index.sql`. Only rename migrations that haven't shipped to production yet — once a migration is in any prod `__drizzle_migrations` table, the tag is part of its identity and must stay stable.
+
 **Adding a service**: create `src/lib/services/<entity>.ts` (named exports) plus colocated `<entity>.test.ts`. Tests call `truncateAll()` in `beforeEach` and run serially against Neon Local.
 
 **Regenerating Better Auth schema**: after upgrading `better-auth` or changing plugin config in `src/lib/auth.ts`, run:
@@ -298,6 +300,7 @@ One line each. The reasoning lives in `git log CLAUDE.md` if anyone needs it.
 - **Data layer**: oRPC + TanStack Query (decided 2026-05-15). First-class TanStack Start adapter, native `Date`/`File`/`BigInt`, builder-based auth (`protectedProcedure` / `adminProcedure`) over `requireSession`-style helpers. Server-side procedures called in-process via `createRouterClient` during SSR (zero HTTP). See `src/lib/orpc/`.
 - **Package manager**: pnpm.
 - **Linter/formatter**: Biome — single tool over Prettier+ESLint or oxlint+Prettier. Editor-only enforcement (no CI gate, no git hook). Tailwind class sorting on; CSS skipped (Biome can't parse Tailwind v4 directives yet).
+- **Sidebar breakpoint**: drawer (Sheet + scrim) below 1024px, icon rail at 1024–1279px, full sidebar ≥1280px. `MOBILE_BREAKPOINT` lives in `src/hooks/useMobile.ts` and only the shadcn sidebar primitive consumes it. shadcn `<Sidebar collapsible="icon">` with `tooltip={label}` on each `SidebarMenuButton` (icon-rail is the canonical exception to the "skip tooltips for self-evident icons" rule — the icon *is* the label). Sidebar-coupled responsive utilities use `lg:`; page padding and heading sizes still step at `md:`.
 
 ---
 
