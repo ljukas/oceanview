@@ -1,0 +1,250 @@
+import { StarIcon } from 'lucide-react'
+import type { ShareCode } from '~/lib/shares/codes'
+import { shareBackgroundClass } from '~/lib/shares/colors'
+import { cn } from '~/lib/utils'
+
+export type MonthBand = {
+  month: number
+  firstWeek: number
+  lastWeek: number
+  span: number
+}
+
+export type YearSchedule = {
+  year: number
+  startWeek: number
+  cells: Array<{ week: number; shareCode: ShareCode; month: number }>
+  monthBands: Array<MonthBand>
+}
+
+type Props = {
+  schedules: Array<YearSchedule>
+}
+
+// Short Swedish month labels indexed 0..11 (Jan..Dec). The season only
+// touches positions 4..9 (Maj..Okt) in practice, but the array keeps the
+// lookup branchless.
+const MONTH_LABELS = [
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'Maj',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Okt',
+  'Nov',
+  'Dec',
+] as const
+
+export function DisponeringslistaTable({ schedules }: Props) {
+  if (schedules.length === 0) {
+    return <p className="text-muted-foreground text-sm">Inga säsonger är inlagda än.</p>
+  }
+
+  const currentYear = new Date().getFullYear()
+
+  return (
+    <section className="flex flex-col gap-3">
+      <h2 className="text-center font-heading font-semibold text-lg tracking-tight">
+        Disponeringslista
+      </h2>
+      <WideLayout schedules={schedules} currentYear={currentYear} />
+      <MobileLayout schedules={schedules} currentYear={currentYear} />
+    </section>
+  )
+}
+
+type LayoutProps = Props & { currentYear: number }
+
+function WideLayout({ schedules, currentYear }: LayoutProps) {
+  return (
+    <div className="hidden overflow-x-auto rounded-lg border bg-card lg:block">
+      <table className="w-full text-sm">
+        <tbody>
+          {schedules.map((s, yearIdx) => {
+            const isCurrent = s.year === currentYear
+            // Weeks where a band ends (right border on the data + headers).
+            const monthEndWeeks = new Set(s.monthBands.slice(0, -1).map((b) => b.lastWeek))
+            const isFirstYear = yearIdx === 0
+
+            return (
+              <YearBlock
+                key={s.year}
+                schedule={s}
+                isCurrent={isCurrent}
+                isFirstYear={isFirstYear}
+                monthEndWeeks={monthEndWeeks}
+              />
+            )
+          })}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+type YearBlockProps = {
+  schedule: YearSchedule
+  isCurrent: boolean
+  isFirstYear: boolean
+  monthEndWeeks: Set<number>
+}
+
+function YearBlock({ schedule: s, isCurrent, isFirstYear, monthEndWeeks }: YearBlockProps) {
+  const lastBandIdx = s.monthBands.length - 1
+  // First row of every year (except the very first) gets the heavy top border
+  // that separates one year-block from the next.
+  const yearTop = isFirstYear ? '' : 'border-t-2 border-border'
+
+  return (
+    <>
+      <tr className={cn('text-muted-foreground text-xs uppercase tracking-wider', yearTop)}>
+        <th
+          rowSpan={3}
+          className={cn(
+            'border-r bg-muted px-3 text-left font-semibold text-foreground text-sm tabular-nums',
+          )}
+        >
+          {s.year}
+        </th>
+        {s.monthBands.map((band, i) => (
+          <th
+            key={band.firstWeek}
+            colSpan={band.span}
+            className={cn('bg-muted py-1 text-center font-semibold', i < lastBandIdx && 'border-r')}
+          >
+            {MONTH_LABELS[band.month]}
+          </th>
+        ))}
+      </tr>
+      <tr className="text-muted-foreground text-xs">
+        {s.cells.map((cell) => (
+          <td
+            key={cell.week}
+            className={cn(
+              'border-b bg-muted px-1 py-0.5 text-center font-normal tabular-nums',
+              monthEndWeeks.has(cell.week) && 'border-r',
+            )}
+          >
+            {cell.week}
+          </td>
+        ))}
+      </tr>
+      <tr>
+        {s.cells.map((cell) => (
+          <td
+            key={cell.week}
+            className={cn(
+              'px-1 py-2 text-center font-medium',
+              monthEndWeeks.has(cell.week) && 'border-r',
+              isCurrent
+                ? cn(shareBackgroundClass[cell.shareCode], 'font-bold text-foreground')
+                : 'text-muted-foreground',
+            )}
+          >
+            {cell.shareCode}
+          </td>
+        ))}
+      </tr>
+    </>
+  )
+}
+
+function MobileLayout({ schedules, currentYear }: LayoutProps) {
+  return (
+    <div className="flex flex-col gap-4 lg:hidden">
+      {schedules.map((s) => (
+        <YearCard key={s.year} schedule={s} isCurrent={s.year === currentYear} />
+      ))}
+    </div>
+  )
+}
+
+type YearCardProps = {
+  schedule: YearSchedule
+  isCurrent: boolean
+}
+
+function YearCard({ schedule, isCurrent }: YearCardProps) {
+  return (
+    <article
+      className={cn(
+        'overflow-hidden rounded-lg border bg-card',
+        isCurrent && 'ring-1 ring-primary/30',
+      )}
+    >
+      <header className="flex items-center gap-2 border-b bg-muted px-4 py-2">
+        {isCurrent && <StarIcon className="size-4 text-primary" aria-hidden />}
+        <span className="font-semibold tabular-nums">{schedule.year}</span>
+      </header>
+      <div className="flex flex-col">
+        {schedule.monthBands.map((band) => {
+          const cells = schedule.cells.filter(
+            (c) => c.week >= band.firstWeek && c.week <= band.lastWeek,
+          )
+          return (
+            <MonthSection key={band.firstWeek} band={band} cells={cells} isCurrent={isCurrent} />
+          )
+        })}
+      </div>
+    </article>
+  )
+}
+
+type MonthSectionProps = {
+  band: { month: number; firstWeek: number; lastWeek: number; span: number }
+  cells: Array<{ week: number; shareCode: ShareCode; month: number }>
+  isCurrent: boolean
+}
+
+function MonthSection({ band, cells, isCurrent }: MonthSectionProps) {
+  // Months with an odd number of weeks (e.g. 1-week Okt, 5-week Jul/Sep)
+  // would leave the last grid row half-empty, breaking the continuous
+  // vertical and horizontal dividers. Render an aria-hidden placeholder in
+  // that empty slot so the inner border lines run unbroken across the grid.
+  const needsPlaceholder = cells.length % 2 === 1
+  return (
+    <section className="border-b last:border-b-0">
+      <h3 className="bg-muted/50 px-4 py-1 font-semibold text-muted-foreground text-xs uppercase tracking-wider">
+        {MONTH_LABELS[band.month]}
+      </h3>
+      <div className="grid grid-cols-2">
+        {cells.map((cell, i) => (
+          <div
+            key={cell.week}
+            className={cn(
+              'flex items-center justify-between px-4 py-2',
+              // Inner cell separators — every left-column cell carries the
+              // vertical divider to the right; rows past the first carry the
+              // horizontal divider on top.
+              i % 2 === 0 && 'border-r',
+              i >= 2 && 'border-t',
+              isCurrent && shareBackgroundClass[cell.shareCode],
+            )}
+          >
+            <span
+              className={cn(
+                'tabular-nums',
+                isCurrent ? 'text-foreground/80' : 'text-muted-foreground',
+              )}
+            >
+              {cell.week}
+            </span>
+            <span
+              className={cn(
+                'font-semibold',
+                isCurrent ? 'font-bold text-foreground' : 'text-muted-foreground',
+              )}
+            >
+              {cell.shareCode}
+            </span>
+          </div>
+        ))}
+        {needsPlaceholder && <div className={cn(cells.length >= 3 && 'border-t')} aria-hidden />}
+      </div>
+    </section>
+  )
+}

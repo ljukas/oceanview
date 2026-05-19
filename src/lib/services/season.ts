@@ -1,3 +1,4 @@
+import { addDays, getISOWeek, getMonth, lastDayOfMonth, parseISO, subDays } from 'date-fns'
 import { and, asc, eq, isNull } from 'drizzle-orm'
 import { db } from '~/lib/db'
 import { ownershipAssignment, season, sharePart } from '~/lib/db/schema'
@@ -36,21 +37,22 @@ export async function findSeason(year: number): Promise<SeasonRow | null> {
 
 export type CreateSeasonInput = {
   year: number
-  startWeek: number
+  startWeek?: number
   startShare?: ShareCode
 }
 
-// If `startShare` isn't supplied we derive it from the previous year by
-// rotating DEFAULT_YEAR_ROTATION steps (matches the historical pattern in the
-// Disponeringslista). Falls back to ANCHOR_START_SHARE when no prior season
-// exists.
+// `startShare` defaults to the previous year rotated by DEFAULT_YEAR_ROTATION
+// (or ANCHOR_START_SHARE when no prior season exists). `startWeek` defaults
+// to the second-to-last week of May for the target year — the canonical
+// Disponeringslista anchor.
 export async function createSeason(input: CreateSeasonInput): Promise<SeasonRow> {
   const startShare = input.startShare ?? (await defaultStartShareFor(input.year))
+  const startWeek = input.startWeek ?? defaultStartWeekFor(input.year)
   const [row] = await db
     .insert(season)
     .values({
       year: input.year,
-      startWeek: input.startWeek,
+      startWeek,
       startShare,
     })
     .returning(seasonSelection)
@@ -61,6 +63,56 @@ export async function defaultStartShareFor(year: number): Promise<ShareCode> {
   const prev = await findSeason(year - 1)
   if (!prev) return ANCHOR_START_SHARE
   return rotateShare(prev.startShare, DEFAULT_YEAR_ROTATION)
+}
+
+// Pure: returns the ISO week number of the season's anchor week — the
+// second-to-last ISO week of May for the given calendar year. ISO weeks
+// belong to whichever month contains their Thursday, so we walk back from
+// May 31 to the last Thursday in May, then back another week. The rule
+// gives W21 for most years and W20 for years where May 31 falls Mon/Tue/Wed
+// (so the last May Thursday is still W21, making the second-to-last W20).
+// Stored explicitly per season so admins can override on the rare case.
+export function defaultStartWeekFor(year: number): number {
+  let d = lastDayOfMonth(new Date(year, 4, 1))
+  while (d.getDay() !== 4 /* Thursday */) {
+    d = subDays(d, 1)
+  }
+  d = subDays(d, 7)
+  return getISOWeek(d)
+}
+
+// Pure: 0-indexed calendar month of the given ISO week, per the ISO 8601
+// rule (the month containing the Thursday of that week). 4 = Maj, 9 = Okt.
+export function monthForISOWeek(isoYear: number, isoWeek: number): number {
+  const monday = parseISO(`${isoYear}-W${String(isoWeek).padStart(2, '0')}-1`)
+  const thursday = addDays(monday, 3)
+  return getMonth(thursday)
+}
+
+export type MonthBand = {
+  month: number
+  firstWeek: number
+  lastWeek: number
+  span: number
+}
+
+// Pure: collapses the 20 season weeks into contiguous same-month bands.
+// Each band carries its calendar month (0-indexed), the inclusive week
+// range, and the span (so callers can drive `<td colSpan>` directly).
+export function monthBandsForSeason(input: { year: number; startWeek: number }): Array<MonthBand> {
+  const bands: Array<MonthBand> = []
+  for (let i = 0; i < WEEKS_PER_SEASON; i++) {
+    const week = input.startWeek + i
+    const month = monthForISOWeek(input.year, week)
+    const last = bands[bands.length - 1]
+    if (last && last.month === month) {
+      last.lastWeek = week
+      last.span += 1
+    } else {
+      bands.push({ month, firstWeek: week, lastWeek: week, span: 1 })
+    }
+  }
+  return bands
 }
 
 export type UpdateSeasonInput = Partial<{

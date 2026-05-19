@@ -24,8 +24,9 @@ export const INITIAL_SEASONS: ReadonlyArray<{
   startShare: ShareCode
 }> = [
   { year: 2026, startWeek: 21, startShare: 'D' },
-  { year: 2027, startWeek: 21, startShare: 'A' },
-  { year: 2028, startWeek: 21, startShare: 'H' },
+  // 2027 + 2028 anchor on W20 (second-to-last ISO May week per Thursday rule)
+  { year: 2027, startWeek: 20, startShare: 'A' },
+  { year: 2028, startWeek: 20, startShare: 'H' },
   { year: 2029, startWeek: 21, startShare: 'E' },
 ]
 
