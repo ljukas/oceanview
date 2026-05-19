@@ -22,6 +22,20 @@
       "when": 1779100849322,
       "tag": "0002_fluffy_inertia",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1779171260685,
+      "tag": "0003_small_jetstream",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1779171959047,
+      "tag": "0004_seed_initial_seasons",
+      "breakpoints": true
     }
   ]
 }
