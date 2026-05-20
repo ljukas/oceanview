@@ -57,12 +57,8 @@ jobs:
         with:
           project_id: ${{ secrets.NEON_PROJECT_ID }}
           api_key: ${{ secrets.NEON_API_KEY }}
-          parent: ${{ secrets.PARENT_BRANCH_ID }}
+          parent_branch: ${{ secrets.PARENT_BRANCH_ID }}
           branch_name: ci/pr-${{ github.event.pull_request.number || 'push' }}-run-${{ github.run_id }}
-      - name: Apply migrations
-        env:
-          DATABASE_URL: ${{ steps.neon.outputs.db_url }}
-        run: pnpm db:migrate
       - name: Run tests
         env:
           DATABASE_URL: ${{ steps.neon.outputs.db_url }}
