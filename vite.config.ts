@@ -38,7 +38,6 @@ export default defineConfig({
       ],
   test: {
     environment: 'node',
-    setupFiles: ['./test/setup.ts'],
     pool: 'forks',
     // Each test creates its own Postgres schema (see test/setup.ts). Cap
     // workers so the CREATE/DROP SCHEMA churn against Neon Local stays

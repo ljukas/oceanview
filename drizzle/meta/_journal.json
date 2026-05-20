@@ -19,15 +19,8 @@
     {
       "idx": 2,
       "version": "7",
-      "when": 1779264955563,
-      "tag": "0002_seed_initial_seasons",
-      "breakpoints": true
-    },
-    {
-      "idx": 3,
-      "version": "7",
       "when": 1779270375026,
-      "tag": "0003_seed_share_parts",
+      "tag": "0002_seed_share_parts",
       "breakpoints": true
     }
   ]

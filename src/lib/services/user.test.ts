@@ -3,6 +3,7 @@ import { eq } from 'drizzle-orm'
 import { expect, test } from 'vitest'
 import { db } from '~/lib/db'
 import { user } from '~/lib/db/schema'
+import { setupDatabase } from '~test/setup'
 import {
   countAdmins,
   createUser,
@@ -14,6 +15,8 @@ import {
   softDeleteUser,
   updateUser,
 } from './user'
+
+setupDatabase()
 
 test('findIdByEmail returns null when no user has that email', async () => {
   expect(await findIdByEmail('ghost@test.oceanview.local')).toBeNull()
