@@ -14,11 +14,12 @@ const MIGRATIONS_SQL = readMigrationFiles({ migrationsFolder: './drizzle' })
 
 export function setupDatabase() {
   const url = process.env.DATABASE_URL ?? ''
-  if (!url.includes('localhost') && !url.includes('127.0.0.1')) {
+  const isLocal = url.includes('localhost') || url.includes('127.0.0.1')
+  if (!isLocal && process.env.CI !== 'true') {
     throw new Error(
-      `Refusing to run tests against non-local DATABASE_URL. Got: ${url || '<unset>'}. ` +
-        `Tests CREATE/DROP schemas — they must only run against Neon Local. ` +
-        `Run \`pnpm db:up\` (local) or rely on the CI workflow's Neon Local setup.`,
+      `Refusing to run tests against non-local DATABASE_URL outside CI. Got: ${url || '<unset>'}. ` +
+        `Tests CREATE/DROP schemas — locally they must only run against Neon Local. ` +
+        `Run \`pnpm db:up\` for local testing.`,
     )
   }
   if (!__testClient) {
