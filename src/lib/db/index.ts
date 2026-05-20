@@ -13,16 +13,15 @@ if (!process.env.DATABASE_URL) {
 // txn and the SET is lost.
 const client = postgres(process.env.DATABASE_URL, {
   prepare: false,
-  ...(process.env.TEST_SCHEMA ? { max: 1 } : {}),
+  // In tests: silence Postgres NOTICEs (e.g. the "drop cascades to N other
+  // objects" emitted by `afterEach`'s DROP SCHEMA CASCADE). Production keeps
+  // postgres-js's default notice handling.
+  ...(process.env.TEST_SCHEMA ? { max: 1, onnotice: () => {} } : {}),
 })
 
 export const db = drizzle({ client, schema, casing: 'snake_case' })
 
-// Test-only handles. Undefined in production. `test/setup.ts` uses these to
-// create per-test schemas on the same single connection the app's `db` uses.
+// Test-only handle. Undefined in production. `test/setup.ts` uses this to
+// create per-test schemas on the same single connection the app's `db` uses,
+// and calls `.end()` on teardown.
 export const __testClient: Sql | undefined = process.env.TEST_SCHEMA ? client : undefined
-
-export async function __closeTestPool(): Promise<void> {
-  if (!process.env.TEST_SCHEMA) return
-  await client.end({ timeout: 5 })
-}

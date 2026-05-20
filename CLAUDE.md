@@ -181,14 +181,12 @@ Canonical pattern (see `src/routes/login.tsx`):
 | `pnpm vercel-build` | Run pending migrations, then build + typecheck (CI/deploy only) |
 | `pnpm preview` | Preview built bundle |
 | `pnpm start` | Run production server (`.output/server/index.mjs`) |
-| `pnpm db:up` | Start the dev Neon Local on :5432 (creates ephemeral branch off prod) |
-| `pnpm db:down` | Stop all docker services (deletes their ephemeral branches) |
+| `pnpm db:up` | Start the Neon Local on :5432 (creates ephemeral branch off prod). Used by both the dev app and tests — tests carve out their own `test_w*` schemas so the dev `public` schema is untouched |
+| `pnpm db:down` | Stop docker services (deletes their ephemeral branches) |
 | `pnpm db:generate` | Generate a new migration from schema changes |
 | `pnpm db:migrate` | Apply pending migrations to the active `DATABASE_URL` |
 | `pnpm db:studio` | Drizzle Studio UI |
-| `pnpm db:test:up` | Start the test Neon Local on :5433 (separate ephemeral branch — tests use this so they can't clobber the dev DB) |
-| `pnpm db:test:down` | Stop the test Neon Local (deletes its ephemeral branch); leaves the dev DB running |
-| `pnpm test` | Vitest once. Every test gets its own `test_w<pool>_<n>` schema: CREATE SCHEMA + run all migrations + SET search_path in `beforeEach`, DROP SCHEMA in `afterEach`. Locally connects to :5433 against Neon Local's session-pool URL (`neondb_session`) so the per-test SET survives; CI overrides `DATABASE_URL` via workflow env to its own ephemeral branch on :5432 (also `neondb_session`) |
+| `pnpm test` | Vitest once. Every test gets its own `test_w<pool>_<n>` schema: CREATE SCHEMA + run all migrations + SET search_path in `beforeEach`, DROP SCHEMA in `afterEach`. Connects to :5432 via Neon Local's session-pool URL (`neondb_session`) so the per-test SET persists across queries and transactions; the dev app uses the same :5432 service via the default `neondb` URL |
 | `pnpm test:watch` | Vitest watch mode (same DB rules as `pnpm test`) |
 | `pnpm format` | Biome formatter only (writes) |
 | `pnpm lint` | Biome linter only (no writes) |

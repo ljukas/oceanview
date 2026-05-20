@@ -7,18 +7,12 @@ import { defineConfig } from 'vitest/config'
 
 const isTest = process.env.VITEST === 'true'
 
-// Local `pnpm test` is force-pointed at the `db-test` Neon Local proxy on
-// :5433 so it can't clobber the dev DB on :5432 — even if `.env` or the
-// user's shell exports DATABASE_URL=:5432. In CI (`CI=true`, set by GitHub
-// Actions et al.) we instead inherit DATABASE_URL from the job env, which
-// the workflow points at its own ephemeral branch on :5432.
-//
-// `neondb_session` (not `neondb`) selects PgBouncer's session-pooling mode in
-// Neon Local. We need this because test setup issues `SET search_path` to a
-// per-test schema and the app's drizzle queries must see it on subsequent
-// queries — under the default transaction pooling, the backend connection
-// is recycled after every txn and the SET is lost.
-const TEST_DATABASE_URL = 'postgres://neon:npg@localhost:5433/neondb_session?sslmode=require'
+// Local `pnpm test` is force-pointed at the Neon Local `db` service via the
+// session-pool URL (`neondb_session`) — see the `SET search_path` comment in
+// `src/lib/db/index.ts` for why session pooling is required. Tests create
+// per-test schemas (`test_w*`); the dev app's `public` schema is untouched.
+// In CI (`CI=true`) we inherit DATABASE_URL from the job env instead.
+const TEST_DATABASE_URL = 'postgres://neon:npg@localhost:5432/neondb_session?sslmode=require'
 
 export default defineConfig({
   server: {
@@ -51,6 +45,13 @@ export default defineConfig({
     // bounded; bump cautiously after observing CI stability.
     maxWorkers: 4,
     hookTimeout: 20_000,
-    env: process.env.CI ? {} : { DATABASE_URL: TEST_DATABASE_URL },
+    // TEST_SCHEMA flips src/lib/db/index.ts into test mode (pinned single
+    // connection + exposed __testClient). Setting it here means the runner
+    // injects it into the worker before any module evaluates, so setup.ts
+    // can use a normal static import.
+    env: {
+      TEST_SCHEMA: '1',
+      ...(process.env.CI ? {} : { DATABASE_URL: TEST_DATABASE_URL }),
+    },
   },
 })
