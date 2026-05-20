@@ -8,6 +8,7 @@ import {
   text,
   timestamp,
   uniqueIndex,
+  uuid,
 } from 'drizzle-orm/pg-core'
 import { user } from './betterAuth'
 
@@ -53,11 +54,11 @@ export const season = pgTable('season', {
 export const ownershipAssignment = pgTable(
   'ownership_assignment',
   {
-    id: text('id').primaryKey(),
+    id: uuid('id').primaryKey().defaultRandom(),
     partId: text('part_id')
       .notNull()
       .references(() => sharePart.id, { onDelete: 'cascade' }),
-    userId: text('user_id')
+    userId: uuid('user_id')
       .notNull()
       .references(() => user.id, { onDelete: 'cascade' }),
     // Half-open: owner from `assignedFrom` (inclusive) until `assignedTo`

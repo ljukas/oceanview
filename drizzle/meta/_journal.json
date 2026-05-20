@@ -5,36 +5,29 @@
     {
       "idx": 0,
       "version": "7",
-      "when": 1778773869665,
+      "when": 1779264934876,
       "tag": "0000_add_better_auth_tables",
       "breakpoints": true
     },
     {
       "idx": 1,
       "version": "7",
-      "when": 1778869043369,
-      "tag": "0001_add_user_phone_and_soft_delete",
+      "when": 1779264949571,
+      "tag": "0001_add_ownership_tables",
       "breakpoints": true
     },
     {
       "idx": 2,
       "version": "7",
-      "when": 1779100849322,
-      "tag": "0002_add_passkey_table",
+      "when": 1779264955563,
+      "tag": "0002_seed_initial_seasons",
       "breakpoints": true
     },
     {
       "idx": 3,
       "version": "7",
-      "when": 1779171260685,
-      "tag": "0003_add_ownership_tables",
-      "breakpoints": true
-    },
-    {
-      "idx": 4,
-      "version": "7",
-      "when": 1779171959047,
-      "tag": "0004_seed_initial_seasons",
+      "when": 1779270375026,
+      "tag": "0003_seed_share_parts",
       "breakpoints": true
     }
   ]

@@ -42,7 +42,7 @@ export const userRouter = {
 
   create: adminProcedure
     .input(userInputSchema)
-    .handler(({ input }) => userService.createUser({ id: crypto.randomUUID(), ...input })),
+    .handler(({ input }) => userService.createUser(input)),
 
   update: adminProcedure
     .input(userInputSchema.extend({ id: z.string().min(1) }))

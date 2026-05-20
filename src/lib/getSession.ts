@@ -4,5 +4,10 @@ import { auth } from './auth'
 
 export const getSession = createServerFn().handler(async () => {
   const request = getRequest()
-  return auth.api.getSession({ headers: request.headers })
+  try {
+    return await auth.api.getSession({ headers: request.headers })
+  } catch (error) {
+    console.error('[getSession] failed to resolve session', error)
+    return null
+  }
 })

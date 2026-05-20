@@ -86,7 +86,7 @@ src/
         index.ts                   barrel — one re-export per feature schema
     services/
       user.ts                      user CRUD; ALL user db access lives here
-      user.test.ts                 colocated test using truncateAll() from test/setup.ts
+      user.test.ts                 colocated test using newScope(); fresh schema-per-test from test/setup.ts
   hooks/
     useMobile.ts                   media-query hook
     usePasskeys.ts                 TanStack Query wrappers around authClient.passkey.*
@@ -106,7 +106,8 @@ src/
     seo.ts                         meta-tag helper (pure function)
   styles/                          Tailwind v4 entry
 test/
-  setup.ts                         truncateAll() helper + localhost-DATABASE_URL guard
+  setup.ts                         schema-per-test: CREATE SCHEMA + run migrations + SET search_path before each test, DROP SCHEMA after; localhost-DATABASE_URL guard
+  scope.ts                         newScope() — per-test prefixed IDs/emails for scoped assertions
 drizzle/                           generated SQL migrations
 drizzle.config.ts                  schema path, output dir, Neon Local SSL workaround
 compose.yaml                       Neon Local docker service (port 5432)
@@ -127,11 +128,11 @@ import * as userService from '~/lib/services/user'
 const id = await userService.findIdByEmail(email)
 ```
 
-**Adding a feature schema**: create `src/lib/db/schema/<feature>.ts`, add one re-export line to `schema/index.ts`, then `pnpm db:generate && pnpm db:migrate`. Also add the new table name to `truncateAll()` in `test/setup.ts` — there's no auto-introspection on purpose, so a forgotten table fails loudly.
+**Adding a feature schema**: create `src/lib/db/schema/<feature>.ts`, add one re-export line to `schema/index.ts`, then `pnpm db:generate && pnpm db:migrate`. The test setup runs every migration into a fresh schema before each test, so any new table or seed migration is automatically applied — nothing in `test/setup.ts` needs touching when adding a feature schema.
 
 **Name migrations descriptively, never ship the auto-generated tag.** drizzle-kit emits files like `0003_small_jetstream.sql` — that name is meaningless six months later. Immediately after `pnpm db:generate` (or `pnpm drizzle-kit generate --custom --name=<descriptive_name>` for data-only migrations), rename the file and update the corresponding `tag` in `drizzle/meta/_journal.json` to something that describes the change: `0003_add_ownership_tables.sql`, `0004_seed_initial_seasons.sql`, `0007_add_passkey_aaguid_index.sql`. Only rename migrations that haven't shipped to production yet — once a migration is in any prod `__drizzle_migrations` table, the tag is part of its identity and must stay stable.
 
-**Adding a service**: create `src/lib/services/<entity>.ts` (named exports) plus colocated `<entity>.test.ts`. Tests call `truncateAll()` in `beforeEach` and run serially against Neon Local.
+**Adding a service**: create `src/lib/services/<entity>.ts` (named exports) plus colocated `<entity>.test.ts`.
 
 **Regenerating Better Auth schema**: after upgrading `better-auth` or changing plugin config in `src/lib/auth.ts`, run:
 ```
@@ -180,13 +181,13 @@ Canonical pattern (see `src/routes/login.tsx`):
 | `pnpm vercel-build` | Run pending migrations, then build + typecheck (CI/deploy only) |
 | `pnpm preview` | Preview built bundle |
 | `pnpm start` | Run production server (`.output/server/index.mjs`) |
-| `pnpm db:up` | Start Neon Local in docker (creates ephemeral branch off prod) |
-| `pnpm db:down` | Stop Neon Local (deletes the ephemeral branch) |
+| `pnpm db:up` | Start the Neon Local on :5432 (creates ephemeral branch off prod). Used by both the dev app and tests — tests carve out their own `test_w*` schemas so the dev `public` schema is untouched |
+| `pnpm db:down` | Stop docker services (deletes their ephemeral branches) |
 | `pnpm db:generate` | Generate a new migration from schema changes |
 | `pnpm db:migrate` | Apply pending migrations to the active `DATABASE_URL` |
 | `pnpm db:studio` | Drizzle Studio UI |
-| `pnpm test` | Vitest once (serial, against Neon Local) |
-| `pnpm test:watch` | Vitest watch mode |
+| `pnpm test` | Vitest once. Every test gets its own `test_w<pool>_<n>` schema: CREATE SCHEMA + run all migrations + SET search_path in `beforeEach`, DROP SCHEMA in `afterEach`. Connects to :5432 via Neon Local's session-pool URL (`neondb_session`) so the per-test SET persists across queries and transactions; the dev app uses the same :5432 service via the default `neondb` URL |
+| `pnpm test:watch` | Vitest watch mode (same DB rules as `pnpm test`) |
 | `pnpm format` | Biome formatter only (writes) |
 | `pnpm lint` | Biome linter only (no writes) |
 | `pnpm lint:fix` | Biome linter with safe fixes (writes) |
@@ -272,7 +273,6 @@ WebFetch these before guessing APIs. They beat the model's memorized snapshots.
 - **File blobs in R2, metadata in Postgres** (when R2 is wired). Uploads go browser → R2 directly; never proxy bytes through Vercel.
 - **`vercel env pull` is dangerous**: it writes prod `DATABASE_URL` into `.env.local`, which Vite + Drizzle prefer over `.env`. If you must run it, immediately delete the `DATABASE_URL*` lines from `.env.local` — otherwise `pnpm db:migrate` would migrate **production**.
 - **Migrations are explicit locally.** `pnpm build` does not migrate. `vercel-build` does, on deploy. Run `pnpm db:migrate` yourself against the local ephemeral branch.
-- **Tests run only against Neon Local.** `truncateAll()` enforces this — it refuses non-localhost `DATABASE_URL`.
 - **Conventional Commits** for agent commits: `<type>(<scope>): <subject>` ≤ 72 chars, imperative mood, *why* in the body. Types: `feat`, `fix`, `chore`, `docs`, `refactor`, `test`, `build`, `ci`, `perf`, `style`, `revert`.
 - **Lock TanStack Start to a specific RC version** in `package.json` until 1.0 ships.
 - **Free tier first.** Before adding any third-party service, confirm a free tier covers ~20 users.

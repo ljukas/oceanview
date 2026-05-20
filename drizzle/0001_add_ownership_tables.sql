@@ -1,8 +1,8 @@
 CREATE TYPE "public"."share_code" AS ENUM('A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J');--> statement-breakpoint
 CREATE TABLE "ownership_assignment" (
-	"id" text PRIMARY KEY NOT NULL,
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"part_id" text NOT NULL,
-	"user_id" text NOT NULL,
+	"user_id" uuid NOT NULL,
 	"assigned_from" date NOT NULL,
 	"assigned_to" date,
 	"created_at" timestamp DEFAULT now() NOT NULL
@@ -28,15 +28,4 @@ ALTER TABLE "ownership_assignment" ADD CONSTRAINT "ownership_assignment_user_id_
 CREATE INDEX "ownership_assignment_part_id_idx" ON "ownership_assignment" USING btree ("part_id");--> statement-breakpoint
 CREATE INDEX "ownership_assignment_user_id_idx" ON "ownership_assignment" USING btree ("user_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "ownership_assignment_one_current_per_part_idx" ON "ownership_assignment" USING btree ("part_id") WHERE "ownership_assignment"."assigned_to" IS NULL;--> statement-breakpoint
-CREATE UNIQUE INDEX "share_part_share_code_part_number_idx" ON "share_part" USING btree ("share_code","part_number");--> statement-breakpoint
-INSERT INTO "share_part" ("id", "share_code", "part_number") VALUES
-  ('A1', 'A', 1), ('A2', 'A', 2),
-  ('B1', 'B', 1), ('B2', 'B', 2),
-  ('C1', 'C', 1), ('C2', 'C', 2),
-  ('D1', 'D', 1), ('D2', 'D', 2),
-  ('E1', 'E', 1), ('E2', 'E', 2),
-  ('F1', 'F', 1), ('F2', 'F', 2),
-  ('G1', 'G', 1), ('G2', 'G', 2),
-  ('H1', 'H', 1), ('H2', 'H', 2),
-  ('I1', 'I', 1), ('I2', 'I', 2),
-  ('J1', 'J', 1), ('J2', 'J', 2);
+CREATE UNIQUE INDEX "share_part_share_code_part_number_idx" ON "share_part" USING btree ("share_code","part_number");

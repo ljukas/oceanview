@@ -7,6 +7,13 @@ import { defineConfig } from 'vitest/config'
 
 const isTest = process.env.VITEST === 'true'
 
+// Local `pnpm test` is force-pointed at the Neon Local `db` service via the
+// session-pool URL (`neondb_session`) — see the `SET search_path` comment in
+// `src/lib/db/index.ts` for why session pooling is required. Tests create
+// per-test schemas (`test_w*`); the dev app's `public` schema is untouched.
+// In CI (`CI=true`) we inherit DATABASE_URL from the job env instead.
+const TEST_DATABASE_URL = 'postgres://neon:npg@localhost:5432/neondb_session?sslmode=require'
+
 export default defineConfig({
   server: {
     port: 3000,
@@ -33,7 +40,18 @@ export default defineConfig({
     environment: 'node',
     setupFiles: ['./test/setup.ts'],
     pool: 'forks',
-    fileParallelism: false,
+    // Each test creates its own Postgres schema (see test/setup.ts). Cap
+    // workers so the CREATE/DROP SCHEMA churn against Neon Local stays
+    // bounded; bump cautiously after observing CI stability.
+    maxWorkers: 4,
     hookTimeout: 20_000,
+    // TEST_SCHEMA flips src/lib/db/index.ts into test mode (pinned single
+    // connection + exposed __testClient). Setting it here means the runner
+    // injects it into the worker before any module evaluates, so setup.ts
+    // can use a normal static import.
+    env: {
+      TEST_SCHEMA: '1',
+      ...(process.env.CI ? {} : { DATABASE_URL: TEST_DATABASE_URL }),
+    },
   },
 })

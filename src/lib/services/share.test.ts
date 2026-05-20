@@ -1,7 +1,6 @@
-import { beforeEach, expect, test } from 'vitest'
+import { expect, test } from 'vitest'
 import { db } from '~/lib/db'
 import { ownershipAssignment, user } from '~/lib/db/schema'
-import { truncateAll } from '../../../test/setup'
 import {
   assignPart,
   findPartById,
@@ -13,10 +12,6 @@ import {
   listPartsWithCurrentOwner,
   unassignPart,
 } from './share'
-
-beforeEach(async () => {
-  await truncateAll()
-})
 
 test('listParts returns all 20 share parts in A1..J2 order', async () => {
   const parts = await listParts()
@@ -36,59 +31,71 @@ test('getCurrentOwner returns null when the part has never been assigned', async
 })
 
 test('assignPart creates an open assignment that becomes the current owner', async () => {
-  await db.insert(user).values({ id: 'u-alice', name: 'Alice', email: 'alice@example.com' })
+  const [{ id: aliceId }] = await db
+    .insert(user)
+    .values({ name: 'Alice', email: 'alice@test.oceanview.local' })
+    .returning({ id: user.id })
 
-  const row = await assignPart({ partId: 'A1', userId: 'u-alice', from: new Date('2024-01-01') })
+  const row = await assignPart({ partId: 'A1', userId: aliceId, from: new Date('2024-01-01') })
 
-  expect(row.userId).toBe('u-alice')
+  expect(row.userId).toBe(aliceId)
   expect(row.assignedTo).toBeNull()
-  expect(await getCurrentOwner('A1')).toBe('u-alice')
+  expect(await getCurrentOwner('A1')).toBe(aliceId)
 })
 
 test('assignPart closes the prior open assignment on the new from date', async () => {
-  await db.insert(user).values([
-    { id: 'u-alice', name: 'Alice', email: 'alice@example.com' },
-    { id: 'u-bob', name: 'Bob', email: 'bob@example.com' },
-  ])
+  const [{ id: aliceId }, { id: bobId }] = await db
+    .insert(user)
+    .values([
+      { name: 'Alice', email: 'alice@test.oceanview.local' },
+      { name: 'Bob', email: 'bob@test.oceanview.local' },
+    ])
+    .returning({ id: user.id })
 
-  await assignPart({ partId: 'A1', userId: 'u-alice', from: new Date('2024-01-01') })
-  await assignPart({ partId: 'A1', userId: 'u-bob', from: new Date('2025-01-01') })
+  await assignPart({ partId: 'A1', userId: aliceId, from: new Date('2024-01-01') })
+  await assignPart({ partId: 'A1', userId: bobId, from: new Date('2025-01-01') })
 
-  expect(await getCurrentOwner('A1')).toBe('u-bob')
+  expect(await getCurrentOwner('A1')).toBe(bobId)
 
   const history = await listAssignmentHistory('A1')
   expect(history).toHaveLength(2)
   // Newest first
-  expect(history[0]).toMatchObject({ userId: 'u-bob', assignedTo: null })
+  expect(history[0]).toMatchObject({ userId: bobId, assignedTo: null })
   // Prior assignment closed at the new from date (half-open)
-  expect(history[1].userId).toBe('u-alice')
+  expect(history[1].userId).toBe(aliceId)
   expect(history[1].assignedTo?.toISOString().slice(0, 10)).toBe('2025-01-01')
 })
 
 test('getOwnerAt treats assignedFrom as inclusive and assignedTo as exclusive', async () => {
-  await db.insert(user).values([
-    { id: 'u-alice', name: 'Alice', email: 'alice@example.com' },
-    { id: 'u-bob', name: 'Bob', email: 'bob@example.com' },
-  ])
+  const [{ id: aliceId }, { id: bobId }] = await db
+    .insert(user)
+    .values([
+      { name: 'Alice', email: 'alice@test.oceanview.local' },
+      { name: 'Bob', email: 'bob@test.oceanview.local' },
+    ])
+    .returning({ id: user.id })
 
-  await assignPart({ partId: 'B1', userId: 'u-alice', from: new Date('2024-01-01') })
-  await assignPart({ partId: 'B1', userId: 'u-bob', from: new Date('2025-01-01') })
+  await assignPart({ partId: 'B1', userId: aliceId, from: new Date('2024-01-01') })
+  await assignPart({ partId: 'B1', userId: bobId, from: new Date('2025-01-01') })
 
   // Before either assignment: nobody.
   expect(await getOwnerAt('B1', new Date('2023-12-31'))).toBeNull()
   // Inside Alice's window.
-  expect(await getOwnerAt('B1', new Date('2024-06-15'))).toBe('u-alice')
+  expect(await getOwnerAt('B1', new Date('2024-06-15'))).toBe(aliceId)
   // Day before handover: still Alice.
-  expect(await getOwnerAt('B1', new Date('2024-12-31'))).toBe('u-alice')
+  expect(await getOwnerAt('B1', new Date('2024-12-31'))).toBe(aliceId)
   // Handover day itself: Bob (new owner from this date).
-  expect(await getOwnerAt('B1', new Date('2025-01-01'))).toBe('u-bob')
+  expect(await getOwnerAt('B1', new Date('2025-01-01'))).toBe(bobId)
   // Far future: still Bob (assignment open).
-  expect(await getOwnerAt('B1', new Date('2099-01-01'))).toBe('u-bob')
+  expect(await getOwnerAt('B1', new Date('2099-01-01'))).toBe(bobId)
 })
 
 test('unassignPart closes the open assignment and is a no-op when none is open', async () => {
-  await db.insert(user).values({ id: 'u-alice', name: 'Alice', email: 'alice@example.com' })
-  await assignPart({ partId: 'C1', userId: 'u-alice', from: new Date('2024-01-01') })
+  const [{ id: aliceId }] = await db
+    .insert(user)
+    .values({ name: 'Alice', email: 'alice@test.oceanview.local' })
+    .returning({ id: user.id })
+  await assignPart({ partId: 'C1', userId: aliceId, from: new Date('2024-01-01') })
 
   await unassignPart('C1', new Date('2024-06-30'))
 
@@ -103,24 +110,30 @@ test('unassignPart closes the open assignment and is a no-op when none is open',
 })
 
 test('listPartsWithCurrentOwner returns 20 rows with currentUserId left-joined', async () => {
-  await db.insert(user).values({ id: 'u-alice', name: 'Alice', email: 'alice@example.com' })
-  await assignPart({ partId: 'D1', userId: 'u-alice', from: new Date('2024-01-01') })
+  const [{ id: aliceId }] = await db
+    .insert(user)
+    .values({ name: 'Alice', email: 'alice@test.oceanview.local' })
+    .returning({ id: user.id })
+  await assignPart({ partId: 'D1', userId: aliceId, from: new Date('2024-01-01') })
 
   const rows = await listPartsWithCurrentOwner()
   expect(rows).toHaveLength(20)
   const d1 = rows.find((r) => r.id === 'D1')
   const d2 = rows.find((r) => r.id === 'D2')
-  expect(d1?.currentUserId).toBe('u-alice')
+  expect(d1?.currentUserId).toBe(aliceId)
   expect(d2?.currentUserId).toBeNull()
 })
 
 test('listAssignmentsForUser returns every assignment for that user, newest first', async () => {
-  await db.insert(user).values({ id: 'u-alice', name: 'Alice', email: 'alice@example.com' })
-  await assignPart({ partId: 'E1', userId: 'u-alice', from: new Date('2023-01-01') })
-  await assignPart({ partId: 'E1', userId: 'u-alice', from: new Date('2024-01-01') })
-  await assignPart({ partId: 'F1', userId: 'u-alice', from: new Date('2025-01-01') })
+  const [{ id: aliceId }] = await db
+    .insert(user)
+    .values({ name: 'Alice', email: 'alice@test.oceanview.local' })
+    .returning({ id: user.id })
+  await assignPart({ partId: 'E1', userId: aliceId, from: new Date('2023-01-01') })
+  await assignPart({ partId: 'E1', userId: aliceId, from: new Date('2024-01-01') })
+  await assignPart({ partId: 'F1', userId: aliceId, from: new Date('2025-01-01') })
 
-  const rows = await listAssignmentsForUser('u-alice')
+  const rows = await listAssignmentsForUser(aliceId)
   expect(rows.map((r) => r.assignedFrom.toISOString().slice(0, 10))).toEqual([
     '2025-01-01',
     '2024-01-01',
@@ -129,24 +142,25 @@ test('listAssignmentsForUser returns every assignment for that user, newest firs
 })
 
 test('partial unique index forbids two simultaneously-open assignments for one part', async () => {
-  await db.insert(user).values([
-    { id: 'u-alice', name: 'Alice', email: 'alice@example.com' },
-    { id: 'u-bob', name: 'Bob', email: 'bob@example.com' },
-  ])
+  const [{ id: aliceId }, { id: bobId }] = await db
+    .insert(user)
+    .values([
+      { name: 'Alice', email: 'alice@test.oceanview.local' },
+      { name: 'Bob', email: 'bob@test.oceanview.local' },
+    ])
+    .returning({ id: user.id })
 
   await db.insert(ownershipAssignment).values({
-    id: 'oa-1',
     partId: 'G1',
-    userId: 'u-alice',
+    userId: aliceId,
     assignedFrom: new Date('2024-01-01'),
     assignedTo: null,
   })
 
   await expect(
     db.insert(ownershipAssignment).values({
-      id: 'oa-2',
       partId: 'G1',
-      userId: 'u-bob',
+      userId: bobId,
       assignedFrom: new Date('2024-06-01'),
       assignedTo: null,
     }),

@@ -1,6 +1,6 @@
 import { StarIcon } from 'lucide-react'
 import type { ShareCode } from '~/lib/shares/codes'
-import { shareBackgroundClass } from '~/lib/shares/colors'
+import { shareBackgroundClass, shareRingClass } from '~/lib/shares/colors'
 import { cn } from '~/lib/utils'
 
 export type MonthBand = {
@@ -10,15 +10,23 @@ export type MonthBand = {
   span: number
 }
 
+export type Cell = {
+  week: number
+  shareCode: ShareCode
+  partId: string
+  month: number
+}
+
 export type YearSchedule = {
   year: number
   startWeek: number
-  cells: Array<{ week: number; shareCode: ShareCode; month: number }>
+  cells: Array<Cell>
   monthBands: Array<MonthBand>
 }
 
 type Props = {
   schedules: Array<YearSchedule>
+  ownedPartIds: ReadonlySet<string>
 }
 
 // Short Swedish month labels indexed 0..11 (Jan..Dec). The season only
@@ -39,7 +47,7 @@ const MONTH_LABELS = [
   'Dec',
 ] as const
 
-export function DisponeringslistaTable({ schedules }: Props) {
+export function DisponeringslistaTable({ schedules, ownedPartIds }: Props) {
   if (schedules.length === 0) {
     return <p className="text-muted-foreground text-sm">Inga säsonger är inlagda än.</p>
   }
@@ -51,15 +59,15 @@ export function DisponeringslistaTable({ schedules }: Props) {
       <h2 className="text-center font-heading font-semibold text-lg tracking-tight">
         Disponeringslista
       </h2>
-      <WideLayout schedules={schedules} currentYear={currentYear} />
-      <MobileLayout schedules={schedules} currentYear={currentYear} />
+      <WideLayout schedules={schedules} ownedPartIds={ownedPartIds} currentYear={currentYear} />
+      <MobileLayout schedules={schedules} ownedPartIds={ownedPartIds} currentYear={currentYear} />
     </section>
   )
 }
 
 type LayoutProps = Props & { currentYear: number }
 
-function WideLayout({ schedules, currentYear }: LayoutProps) {
+function WideLayout({ schedules, ownedPartIds, currentYear }: LayoutProps) {
   return (
     <div className="hidden overflow-x-auto rounded-lg border bg-card lg:block">
       <table className="w-full text-sm">
@@ -77,6 +85,7 @@ function WideLayout({ schedules, currentYear }: LayoutProps) {
                 isCurrent={isCurrent}
                 isFirstYear={isFirstYear}
                 monthEndWeeks={monthEndWeeks}
+                ownedPartIds={ownedPartIds}
               />
             )
           })}
@@ -91,9 +100,16 @@ type YearBlockProps = {
   isCurrent: boolean
   isFirstYear: boolean
   monthEndWeeks: Set<number>
+  ownedPartIds: ReadonlySet<string>
 }
 
-function YearBlock({ schedule: s, isCurrent, isFirstYear, monthEndWeeks }: YearBlockProps) {
+function YearBlock({
+  schedule: s,
+  isCurrent,
+  isFirstYear,
+  monthEndWeeks,
+  ownedPartIds,
+}: YearBlockProps) {
   const lastBandIdx = s.monthBands.length - 1
   // First row of every year (except the very first) gets the heavy top border
   // that separates one year-block from the next.
@@ -134,30 +150,39 @@ function YearBlock({ schedule: s, isCurrent, isFirstYear, monthEndWeeks }: YearB
         ))}
       </tr>
       <tr>
-        {s.cells.map((cell) => (
-          <td
-            key={cell.week}
-            className={cn(
-              'px-1 py-2 text-center font-medium',
-              monthEndWeeks.has(cell.week) && 'border-r',
-              isCurrent
-                ? cn(shareBackgroundClass[cell.shareCode], 'font-bold text-foreground')
-                : 'text-muted-foreground',
-            )}
-          >
-            {cell.shareCode}
-          </td>
-        ))}
+        {s.cells.map((cell) => {
+          const isMine = ownedPartIds.has(cell.partId)
+          return (
+            <td
+              key={cell.week}
+              className={cn(
+                'px-1 py-2 text-center font-medium',
+                monthEndWeeks.has(cell.week) && 'border-r',
+                isCurrent
+                  ? cn(shareBackgroundClass[cell.shareCode], 'font-bold text-foreground')
+                  : 'text-muted-foreground',
+                isMine && cn('ring-2 ring-inset', shareRingClass[cell.shareCode]),
+              )}
+            >
+              {cell.shareCode}
+            </td>
+          )
+        })}
       </tr>
     </>
   )
 }
 
-function MobileLayout({ schedules, currentYear }: LayoutProps) {
+function MobileLayout({ schedules, ownedPartIds, currentYear }: LayoutProps) {
   return (
     <div className="flex flex-col gap-4 lg:hidden">
       {schedules.map((s) => (
-        <YearCard key={s.year} schedule={s} isCurrent={s.year === currentYear} />
+        <YearCard
+          key={s.year}
+          schedule={s}
+          isCurrent={s.year === currentYear}
+          ownedPartIds={ownedPartIds}
+        />
       ))}
     </div>
   )
@@ -166,9 +191,10 @@ function MobileLayout({ schedules, currentYear }: LayoutProps) {
 type YearCardProps = {
   schedule: YearSchedule
   isCurrent: boolean
+  ownedPartIds: ReadonlySet<string>
 }
 
-function YearCard({ schedule, isCurrent }: YearCardProps) {
+function YearCard({ schedule, isCurrent, ownedPartIds }: YearCardProps) {
   return (
     <article
       className={cn(
@@ -186,7 +212,13 @@ function YearCard({ schedule, isCurrent }: YearCardProps) {
             (c) => c.week >= band.firstWeek && c.week <= band.lastWeek,
           )
           return (
-            <MonthSection key={band.firstWeek} band={band} cells={cells} isCurrent={isCurrent} />
+            <MonthSection
+              key={band.firstWeek}
+              band={band}
+              cells={cells}
+              isCurrent={isCurrent}
+              ownedPartIds={ownedPartIds}
+            />
           )
         })}
       </div>
@@ -196,11 +228,12 @@ function YearCard({ schedule, isCurrent }: YearCardProps) {
 
 type MonthSectionProps = {
   band: { month: number; firstWeek: number; lastWeek: number; span: number }
-  cells: Array<{ week: number; shareCode: ShareCode; month: number }>
+  cells: Array<Cell>
   isCurrent: boolean
+  ownedPartIds: ReadonlySet<string>
 }
 
-function MonthSection({ band, cells, isCurrent }: MonthSectionProps) {
+function MonthSection({ band, cells, isCurrent, ownedPartIds }: MonthSectionProps) {
   // Months with an odd number of weeks (e.g. 1-week Okt, 5-week Jul/Sep)
   // would leave the last grid row half-empty, breaking the continuous
   // vertical and horizontal dividers. Render an aria-hidden placeholder in
@@ -223,6 +256,8 @@ function MonthSection({ band, cells, isCurrent }: MonthSectionProps) {
               i % 2 === 0 && 'border-r',
               i >= 2 && 'border-t',
               isCurrent && shareBackgroundClass[cell.shareCode],
+              ownedPartIds.has(cell.partId) &&
+                cn('ring-2 ring-inset', shareRingClass[cell.shareCode]),
             )}
           >
             <span

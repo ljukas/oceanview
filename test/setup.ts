@@ -1,47 +1,65 @@
 import 'dotenv/config'
-import { sql } from 'drizzle-orm'
-import { db } from '~/lib/db'
-import { season } from '~/lib/db/schema'
-import type { ShareCode } from '~/lib/shares/codes'
+import { readMigrationFiles } from 'drizzle-orm/migrator'
+import { afterAll, afterEach, beforeAll, beforeEach } from 'vitest'
+import { __testClient } from '~/lib/db'
 
 const url = process.env.DATABASE_URL ?? ''
-const isLocal = url.includes('localhost') || url.includes('127.0.0.1')
-
-if (!isLocal) {
+if (!url.includes('localhost') && !url.includes('127.0.0.1')) {
   throw new Error(
     `Refusing to run tests against non-local DATABASE_URL. Got: ${url || '<unset>'}. ` +
-      `Tests truncate tables — they must only run against Neon Local. ` +
-      `Run \`pnpm db:up\` and ensure .env points at the local proxy.`,
+      `Tests CREATE/DROP schemas — they must only run against Neon Local. ` +
+      `Run \`pnpm db:up\` (local) or rely on the CI workflow's Neon Local setup.`,
   )
 }
 
-// Mirrors drizzle/0004_seed_initial_seasons.sql. Kept here so `truncateAll`
-// can restore the production-like starting state after each test; if the
-// migration's seed values change, update this list too.
-export const INITIAL_SEASONS: ReadonlyArray<{
-  year: number
-  startWeek: number
-  startShare: ShareCode
-}> = [
-  { year: 2026, startWeek: 21, startShare: 'D' },
-  // 2027 + 2028 anchor on W20 (second-to-last ISO May week per Thursday rule)
-  { year: 2027, startWeek: 20, startShare: 'A' },
-  { year: 2028, startWeek: 20, startShare: 'H' },
-  { year: 2029, startWeek: 21, startShare: 'E' },
-]
-
-// Wipes mutable per-test tables between tests. CASCADE so child rows go with
-// their parents; RESTART IDENTITY because some columns rely on Postgres
-// sequences. Add new feature tables here as we introduce them — there's no
-// automatic schema-introspection here on purpose, so a forgotten table fails
-// loudly. Note: `share_part` is intentionally NOT truncated — it's catalog
-// data seeded by the migration (A1..J2) that tests treat as a fixture.
-// `season` IS truncated but immediately re-seeded with INITIAL_SEASONS so
-// every test starts in the production-like state where the current four
-// years (2026..2029) are already configured.
-export async function truncateAll(): Promise<void> {
-  await db.execute(
-    sql`TRUNCATE TABLE "user", "session", "account", "verification", "passkey", "ownership_assignment", "season" RESTART IDENTITY CASCADE`,
-  )
-  await db.insert(season).values(INITIAL_SEASONS as Array<(typeof INITIAL_SEASONS)[number]>)
+if (!__testClient) {
+  throw new Error('TEST_SCHEMA env var must be set before db/index.ts loads — check vite.config.ts')
 }
+const sql = __testClient
+
+const POOL_ID = process.env.VITEST_POOL_ID ?? String(process.pid)
+const SCHEMA_PREFIX = `test_w${POOL_ID}_`
+
+// Concatenate every migration's statements into one SQL string with `"public".`
+// stripped, so `search_path` resolves all references to the per-test schema.
+// drizzle-kit emits no BEGIN/COMMIT in migrations, so a single `unsafe()` call
+// runs cleanly inside postgres-js's implicit simple-query transaction.
+const MIGRATIONS_SQL = readMigrationFiles({ migrationsFolder: './drizzle' })
+  .flatMap((m) => m.sql)
+  .map((stmt) => stmt.replace(/"public"\./g, ''))
+  .join(';\n')
+
+let counter = 0
+let currentSchema: string | null = null
+
+beforeAll(async () => {
+  // Drop any straggler schemas from a crashed prior run in this worker.
+  const stragglers = await sql<{ nspname: string }[]>`
+    SELECT nspname FROM pg_namespace WHERE nspname LIKE ${`${SCHEMA_PREFIX}%`}
+  `
+  for (const { nspname } of stragglers) {
+    await sql.unsafe(`DROP SCHEMA IF EXISTS "${nspname}" CASCADE`)
+  }
+})
+
+beforeEach(async () => {
+  counter += 1
+  const schema = `${SCHEMA_PREFIX}${counter}`
+  currentSchema = schema
+  await sql.unsafe(`CREATE SCHEMA "${schema}";\nSET search_path TO "${schema}";\n${MIGRATIONS_SQL}`)
+})
+
+afterEach(async () => {
+  if (!currentSchema) return
+  const schema = currentSchema
+  currentSchema = null
+  try {
+    await sql.unsafe(`DROP SCHEMA "${schema}" CASCADE`)
+  } catch {
+    // Best-effort; beforeAll sweep on next run catches anything missed.
+  }
+})
+
+afterAll(async () => {
+  await sql.end({ timeout: 5 })
+})
