@@ -17,8 +17,6 @@ import {
 } from './season'
 import { assignPart } from './share'
 
-// Seeded by drizzle/0002_seed_initial_seasons.sql; each test starts with
-// exactly these four rows in the `season` table.
 const INITIAL_SEASONS: ReadonlyArray<{
   year: number
   startWeek: number
@@ -30,25 +28,22 @@ const INITIAL_SEASONS: ReadonlyArray<{
   { year: 2029, startWeek: 21, startShare: 'E' },
 ]
 
-test('the migration-seeded seasons (2026..2029) are present in the season table', async () => {
-  expect(await listSeasons()).toEqual(
-    INITIAL_SEASONS.map((s) => ({
-      year: s.year,
-      startWeek: s.startWeek,
-      startShare: s.startShare,
-    })),
-  )
-})
+async function seedInitialSeasons() {
+  for (const s of INITIAL_SEASONS) {
+    await createSeason(s)
+  }
+}
 
 test('createSeason without startShare uses the anchor when no prior year exists', async () => {
-  // 2024 is not seeded, so it has no prior year to derive from.
   const s = await createSeason({ year: 2024, startWeek: 21 })
   expect(s).toMatchObject({ year: 2024, startWeek: 21, startShare: 'J' })
 })
 
 test('createSeason derives startShare from the prior year using the −3 rule', async () => {
-  // Chain forward from the last seeded year (2029 = E). Each subsequent year
-  // rotates by −3: E (4) → B (1) → I (8) → F (5).
+  // Chain forward from 2029 = E. Each subsequent year rotates by −3:
+  // E (4) → B (1) → I (8) → F (5).
+  await createSeason({ year: 2029, startWeek: 21, startShare: 'E' })
+
   const y2030 = await createSeason({ year: 2030, startWeek: 21 })
   expect(y2030.startShare).toBe('B')
 
@@ -68,12 +63,14 @@ test('defaultStartShareFor returns anchor for the very first year', async () => 
   expect(await defaultStartShareFor(2024)).toBe('J')
 })
 
-test('defaultStartShareFor rotates −3 from the seeded prior year', async () => {
-  // 2029 is seeded as E; 2030 should derive to B.
+test('defaultStartShareFor rotates −3 from the prior year', async () => {
+  await createSeason({ year: 2029, startWeek: 21, startShare: 'E' })
   expect(await defaultStartShareFor(2030)).toBe('B')
 })
 
 test('updateSeason patches the provided fields and leaves others alone', async () => {
+  await createSeason({ year: 2026, startWeek: 21, startShare: 'D' })
+
   const updated = await updateSeason(2026, { startWeek: 22 })
   expect(updated).toMatchObject({ year: 2026, startWeek: 22, startShare: 'D' })
 
@@ -82,11 +79,13 @@ test('updateSeason patches the provided fields and leaves others alone', async (
 })
 
 test('deleteSeason removes the row', async () => {
+  await createSeason({ year: 2027, startWeek: 20, startShare: 'A' })
   await deleteSeason(2027)
   expect(await findSeason(2027)).toBeNull()
 })
 
 test('listSeasons returns rows ordered by year ascending', async () => {
+  await seedInitialSeasons()
   await createSeason({ year: 2024, startWeek: 21, startShare: 'J' })
   await createSeason({ year: 2030, startWeek: 21, startShare: 'B' })
 
@@ -132,6 +131,7 @@ test('partForWeek returns null for weeks outside the 20-week window', () => {
 })
 
 test('scheduleForYear joins each weekly slot with the current owner', async () => {
+  await createSeason({ year: 2026, startWeek: 21, startShare: 'D' })
   const [{ id: aliceId }, { id: bobId }] = await db
     .insert(user)
     .values([
@@ -157,7 +157,8 @@ test('scheduleForYear returns null when no season is configured for that year', 
   expect(await scheduleForYear(2099)).toBeNull()
 })
 
-test('each seeded year produces a schedule that starts at the expected share', async () => {
+test('each initial year produces a schedule that starts at the expected share', async () => {
+  await seedInitialSeasons()
   for (const seed of INITIAL_SEASONS) {
     const schedule = await scheduleForYear(seed.year)
     if (!schedule) throw new Error(`expected schedule for year ${seed.year}`)
