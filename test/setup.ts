@@ -22,7 +22,9 @@ export function setupDatabase() {
     )
   }
   if (!__testClient) {
-    throw new Error('TEST_SCHEMA env var must be set before db/index.ts loads — check vite.config.ts')
+    throw new Error(
+      'TEST_SCHEMA env var must be set before db/index.ts loads — check vite.config.ts',
+    )
   }
   const sql = __testClient
 
@@ -46,7 +48,9 @@ export function setupDatabase() {
     counter += 1
     const schema = `${SCHEMA_PREFIX}${counter}`
     currentSchema = schema
-    await sql.unsafe(`CREATE SCHEMA "${schema}";\nSET search_path TO "${schema}";\n${MIGRATIONS_SQL}`)
+    await sql.unsafe(
+      `CREATE SCHEMA "${schema}";\nSET search_path TO "${schema}";\n${MIGRATIONS_SQL}`,
+    )
   })
 
   afterEach(async () => {
