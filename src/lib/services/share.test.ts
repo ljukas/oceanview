@@ -1,6 +1,7 @@
 import { expect, test } from 'vitest'
 import { db } from '~/lib/db'
 import { ownershipAssignment, user } from '~/lib/db/schema'
+import { setupDatabase } from '~test/setup'
 import {
   assignPart,
   findPartById,
@@ -12,6 +13,8 @@ import {
   listPartsWithCurrentOwner,
   unassignPart,
 } from './share'
+
+setupDatabase()
 
 test('listParts returns all 20 share parts in A1..J2 order', async () => {
   const parts = await listParts()
