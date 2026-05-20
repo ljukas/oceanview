@@ -43,7 +43,7 @@ jobs:
       NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
       NEON_PROJECT_ID: ${{ secrets.NEON_PROJECT_ID }}
       PARENT_BRANCH_ID: ${{ secrets.PARENT_BRANCH_ID }}
-      DATABASE_URL: postgres://neon:npg@localhost:5432/neondb?sslmode=require
+      DATABASE_URL: postgres://neon:npg@localhost:5432/neondb_session?sslmode=require
       BETTER_AUTH_SECRET: ${{ secrets.BETTER_AUTH_SECRET }}
       BETTER_AUTH_URL: http://localhost:3000
       ADMIN_EMAILS: ''

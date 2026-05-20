@@ -1,5 +1,3 @@
-import { randomUUID } from 'node:crypto'
-import { eq } from 'drizzle-orm'
 import { expect, test } from 'vitest'
 import { db } from '~/lib/db'
 import { ownershipAssignment, user } from '~/lib/db/schema'
@@ -15,14 +13,6 @@ import {
   unassignPart,
 } from './share'
 
-// Within the outer test transaction (see test/setup.ts), purge any
-// pre-existing assignments for one share_part so the test has exclusive
-// ownership of that part's history for its assertions. The delete is
-// rolled back when the test ends, so global state is unchanged.
-async function takeExclusivePart(partId: string): Promise<void> {
-  await db.delete(ownershipAssignment).where(eq(ownershipAssignment.partId, partId))
-}
-
 test('listParts returns all 20 share parts in A1..J2 order', async () => {
   const parts = await listParts()
   expect(parts).toHaveLength(20)
@@ -37,14 +27,14 @@ test('findPartById returns the row when it exists and null otherwise', async () 
 })
 
 test('getCurrentOwner returns null when the part has never been assigned', async () => {
-  await takeExclusivePart('A1')
   expect(await getCurrentOwner('A1')).toBeNull()
 })
 
 test('assignPart creates an open assignment that becomes the current owner', async () => {
-  await takeExclusivePart('A1')
-  const aliceId = scope.user('alice')
-  await db.insert(user).values({ id: aliceId, name: 'Alice', email: scope.email('alice') })
+  const [{ id: aliceId }] = await db
+    .insert(user)
+    .values({ name: 'Alice', email: 'alice@test.oceanview.local' })
+    .returning({ id: user.id })
 
   const row = await assignPart({ partId: 'A1', userId: aliceId, from: new Date('2024-01-01') })
 
@@ -54,13 +44,13 @@ test('assignPart creates an open assignment that becomes the current owner', asy
 })
 
 test('assignPart closes the prior open assignment on the new from date', async () => {
-  await takeExclusivePart('A1')
-  const aliceId = scope.user('alice')
-  const bobId = scope.user('bob')
-  await db.insert(user).values([
-    { id: aliceId, name: 'Alice', email: scope.email('alice') },
-    { id: bobId, name: 'Bob', email: scope.email('bob') },
-  ])
+  const [{ id: aliceId }, { id: bobId }] = await db
+    .insert(user)
+    .values([
+      { name: 'Alice', email: 'alice@test.oceanview.local' },
+      { name: 'Bob', email: 'bob@test.oceanview.local' },
+    ])
+    .returning({ id: user.id })
 
   await assignPart({ partId: 'A1', userId: aliceId, from: new Date('2024-01-01') })
   await assignPart({ partId: 'A1', userId: bobId, from: new Date('2025-01-01') })
@@ -77,13 +67,13 @@ test('assignPart closes the prior open assignment on the new from date', async (
 })
 
 test('getOwnerAt treats assignedFrom as inclusive and assignedTo as exclusive', async () => {
-  await takeExclusivePart('B1')
-  const aliceId = scope.user('alice')
-  const bobId = scope.user('bob')
-  await db.insert(user).values([
-    { id: aliceId, name: 'Alice', email: scope.email('alice') },
-    { id: bobId, name: 'Bob', email: scope.email('bob') },
-  ])
+  const [{ id: aliceId }, { id: bobId }] = await db
+    .insert(user)
+    .values([
+      { name: 'Alice', email: 'alice@test.oceanview.local' },
+      { name: 'Bob', email: 'bob@test.oceanview.local' },
+    ])
+    .returning({ id: user.id })
 
   await assignPart({ partId: 'B1', userId: aliceId, from: new Date('2024-01-01') })
   await assignPart({ partId: 'B1', userId: bobId, from: new Date('2025-01-01') })
@@ -101,9 +91,10 @@ test('getOwnerAt treats assignedFrom as inclusive and assignedTo as exclusive', 
 })
 
 test('unassignPart closes the open assignment and is a no-op when none is open', async () => {
-  await takeExclusivePart('C1')
-  const aliceId = scope.user('alice')
-  await db.insert(user).values({ id: aliceId, name: 'Alice', email: scope.email('alice') })
+  const [{ id: aliceId }] = await db
+    .insert(user)
+    .values({ name: 'Alice', email: 'alice@test.oceanview.local' })
+    .returning({ id: user.id })
   await assignPart({ partId: 'C1', userId: aliceId, from: new Date('2024-01-01') })
 
   await unassignPart('C1', new Date('2024-06-30'))
@@ -119,10 +110,10 @@ test('unassignPart closes the open assignment and is a no-op when none is open',
 })
 
 test('listPartsWithCurrentOwner returns 20 rows with currentUserId left-joined', async () => {
-  await takeExclusivePart('D1')
-  await takeExclusivePart('D2')
-  const aliceId = scope.user('alice')
-  await db.insert(user).values({ id: aliceId, name: 'Alice', email: scope.email('alice') })
+  const [{ id: aliceId }] = await db
+    .insert(user)
+    .values({ name: 'Alice', email: 'alice@test.oceanview.local' })
+    .returning({ id: user.id })
   await assignPart({ partId: 'D1', userId: aliceId, from: new Date('2024-01-01') })
 
   const rows = await listPartsWithCurrentOwner()
@@ -134,11 +125,10 @@ test('listPartsWithCurrentOwner returns 20 rows with currentUserId left-joined',
 })
 
 test('listAssignmentsForUser returns every assignment for that user, newest first', async () => {
-  // Scoped user has no pre-existing assignments by construction (unique ID).
-  await takeExclusivePart('E1')
-  await takeExclusivePart('F1')
-  const aliceId = scope.user('alice')
-  await db.insert(user).values({ id: aliceId, name: 'Alice', email: scope.email('alice') })
+  const [{ id: aliceId }] = await db
+    .insert(user)
+    .values({ name: 'Alice', email: 'alice@test.oceanview.local' })
+    .returning({ id: user.id })
   await assignPart({ partId: 'E1', userId: aliceId, from: new Date('2023-01-01') })
   await assignPart({ partId: 'E1', userId: aliceId, from: new Date('2024-01-01') })
   await assignPart({ partId: 'F1', userId: aliceId, from: new Date('2025-01-01') })
@@ -152,16 +142,15 @@ test('listAssignmentsForUser returns every assignment for that user, newest firs
 })
 
 test('partial unique index forbids two simultaneously-open assignments for one part', async () => {
-  await takeExclusivePart('G1')
-  const aliceId = scope.user('alice')
-  const bobId = scope.user('bob')
-  await db.insert(user).values([
-    { id: aliceId, name: 'Alice', email: scope.email('alice') },
-    { id: bobId, name: 'Bob', email: scope.email('bob') },
-  ])
+  const [{ id: aliceId }, { id: bobId }] = await db
+    .insert(user)
+    .values([
+      { name: 'Alice', email: 'alice@test.oceanview.local' },
+      { name: 'Bob', email: 'bob@test.oceanview.local' },
+    ])
+    .returning({ id: user.id })
 
   await db.insert(ownershipAssignment).values({
-    id: randomUUID(),
     partId: 'G1',
     userId: aliceId,
     assignedFrom: new Date('2024-01-01'),
@@ -170,7 +159,6 @@ test('partial unique index forbids two simultaneously-open assignments for one p
 
   await expect(
     db.insert(ownershipAssignment).values({
-      id: randomUUID(),
       partId: 'G1',
       userId: bobId,
       assignedFrom: new Date('2024-06-01'),

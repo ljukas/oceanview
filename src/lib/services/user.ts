@@ -49,7 +49,6 @@ export async function findById(id: string): Promise<UserRow | null> {
 }
 
 export type CreateUserInput = {
-  id: string
   name: string
   email: string
   phone: string
@@ -60,7 +59,6 @@ export async function createUser(input: CreateUserInput): Promise<UserRow> {
   const [row] = await db
     .insert(user)
     .values({
-      id: input.id,
       name: input.name,
       email: input.email,
       phone: input.phone,
