@@ -86,7 +86,7 @@ src/
         index.ts                   barrel — one re-export per feature schema
     services/
       user.ts                      user CRUD; ALL user db access lives here
-      user.test.ts                 colocated test using truncateAll() from test/setup.ts
+      user.test.ts                 colocated test using newScope() + tx rollback from test/setup.ts
   hooks/
     useMobile.ts                   media-query hook
     usePasskeys.ts                 TanStack Query wrappers around authClient.passkey.*
@@ -106,7 +106,8 @@ src/
     seo.ts                         meta-tag helper (pure function)
   styles/                          Tailwind v4 entry
 test/
-  setup.ts                         truncateAll() helper + localhost-DATABASE_URL guard
+  setup.ts                         per-test BEGIN/ROLLBACK hooks + localhost-DATABASE_URL guard
+  scope.ts                         newScope() — per-test prefixed IDs/emails for scoped assertions
 drizzle/                           generated SQL migrations
 drizzle.config.ts                  schema path, output dir, Neon Local SSL workaround
 compose.yaml                       Neon Local docker service (port 5432)
@@ -127,11 +128,11 @@ import * as userService from '~/lib/services/user'
 const id = await userService.findIdByEmail(email)
 ```
 
-**Adding a feature schema**: create `src/lib/db/schema/<feature>.ts`, add one re-export line to `schema/index.ts`, then `pnpm db:generate && pnpm db:migrate`. Also add the new table name to `truncateAll()` in `test/setup.ts` — there's no auto-introspection on purpose, so a forgotten table fails loudly.
+**Adding a feature schema**: create `src/lib/db/schema/<feature>.ts`, add one re-export line to `schema/index.ts`, then `pnpm db:generate && pnpm db:migrate`. Tests roll back their own writes (see [Tests](#how-we-write-code) below), so there's nothing to wire up in `test/setup.ts` when adding a new table.
 
 **Name migrations descriptively, never ship the auto-generated tag.** drizzle-kit emits files like `0003_small_jetstream.sql` — that name is meaningless six months later. Immediately after `pnpm db:generate` (or `pnpm drizzle-kit generate --custom --name=<descriptive_name>` for data-only migrations), rename the file and update the corresponding `tag` in `drizzle/meta/_journal.json` to something that describes the change: `0003_add_ownership_tables.sql`, `0004_seed_initial_seasons.sql`, `0007_add_passkey_aaguid_index.sql`. Only rename migrations that haven't shipped to production yet — once a migration is in any prod `__drizzle_migrations` table, the tag is part of its identity and must stay stable.
 
-**Adding a service**: create `src/lib/services/<entity>.ts` (named exports) plus colocated `<entity>.test.ts`. Tests call `truncateAll()` in `beforeEach` and run serially against Neon Local.
+**Adding a service**: create `src/lib/services/<entity>.ts` (named exports) plus colocated `<entity>.test.ts`. Tests run serially against Neon Local and are self-cleaning — `test/setup.ts` wraps every test in a Postgres `BEGIN`/`ROLLBACK`, so writes never persist past the test (this works because `src/lib/db/index.ts` caps the postgres-js pool at `max: 1` under `VITEST`, forcing every query through the same connection; that file also short-circuits `db.transaction(cb)` inside services to run the callback inline while the outer test tx is in flight, because postgres-js doesn't translate a nested `db.transaction()` into a SAVEPOINT and the inner `COMMIT` would otherwise leak past `ROLLBACK`). Use `newScope()` from `test/scope.ts` to mint unique IDs/emails per test (`scope.user('alice')`, `scope.email('alice')`); when asserting against global queries like `listAll()` or `countAdmins()`, filter the result by scope-owned IDs or assert on the delta — never assume the table is empty. When a test needs exclusive ownership of a shared catalog row (e.g. a single `share_part`), `DELETE` the conflicting rows inside the test (see `takeExclusivePart` in `src/lib/services/share.test.ts`) — the delete is also rolled back at the end.
 
 **Regenerating Better Auth schema**: after upgrading `better-auth` or changing plugin config in `src/lib/auth.ts`, run:
 ```
@@ -272,7 +273,7 @@ WebFetch these before guessing APIs. They beat the model's memorized snapshots.
 - **File blobs in R2, metadata in Postgres** (when R2 is wired). Uploads go browser → R2 directly; never proxy bytes through Vercel.
 - **`vercel env pull` is dangerous**: it writes prod `DATABASE_URL` into `.env.local`, which Vite + Drizzle prefer over `.env`. If you must run it, immediately delete the `DATABASE_URL*` lines from `.env.local` — otherwise `pnpm db:migrate` would migrate **production**.
 - **Migrations are explicit locally.** `pnpm build` does not migrate. `vercel-build` does, on deploy. Run `pnpm db:migrate` yourself against the local ephemeral branch.
-- **Tests run only against Neon Local.** `truncateAll()` enforces this — it refuses non-localhost `DATABASE_URL`.
+- **Tests run only against Neon Local.** `test/setup.ts` enforces this with a localhost-only guard; the per-test `BEGIN`/`ROLLBACK` then ensures tests can't pollute the local branch either.
 - **Conventional Commits** for agent commits: `<type>(<scope>): <subject>` ≤ 72 chars, imperative mood, *why* in the body. Types: `feat`, `fix`, `chore`, `docs`, `refactor`, `test`, `build`, `ci`, `perf`, `style`, `revert`.
 - **Lock TanStack Start to a specific RC version** in `package.json` until 1.0 ships.
 - **Free tier first.** Before adding any third-party service, confirm a free tier covers ~20 users.

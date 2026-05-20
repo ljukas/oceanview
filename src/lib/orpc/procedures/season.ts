@@ -24,6 +24,7 @@ export const seasonRouter = {
         return {
           week,
           shareCode: slot.shareCode,
+          partId: slot.partId,
           month: seasonService.monthForISOWeek(s.year, week),
         }
       })

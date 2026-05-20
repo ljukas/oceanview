@@ -55,6 +55,11 @@ export const auth = betterAuth({
     }),
     tanstackStartCookies(),
   ],
+  advanced: {
+    database: {
+      generateId: 'uuid',
+    },
+  },
   databaseHooks: {
     user: {
       create: {

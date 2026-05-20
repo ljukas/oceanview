@@ -30,3 +30,16 @@ export const shareBackgroundClass: Record<ShareCode, string> = {
   I: 'bg-share-i',
   J: 'bg-share-j',
 }
+
+export const shareRingClass: Record<ShareCode, string> = {
+  A: 'ring-share-a',
+  B: 'ring-share-b',
+  C: 'ring-share-c',
+  D: 'ring-share-d',
+  E: 'ring-share-e',
+  F: 'ring-share-f',
+  G: 'ring-share-g',
+  H: 'ring-share-h',
+  I: 'ring-share-i',
+  J: 'ring-share-j',
+}

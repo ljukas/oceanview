@@ -96,6 +96,18 @@ export async function listAssignmentsForUser(userId: string): Promise<Array<Assi
     .orderBy(desc(ownershipAssignment.assignedFrom))
 }
 
+export async function listCurrentPartsForUser(userId: string): Promise<Array<SharePartRow>> {
+  return db
+    .select(partSelection)
+    .from(sharePart)
+    .innerJoin(
+      ownershipAssignment,
+      and(eq(ownershipAssignment.partId, sharePart.id), isNull(ownershipAssignment.assignedTo)),
+    )
+    .where(eq(ownershipAssignment.userId, userId))
+    .orderBy(asc(sharePart.shareCode), asc(sharePart.partNumber))
+}
+
 export async function listAssignmentHistory(partId: string): Promise<Array<AssignmentRow>> {
   return db
     .select(assignmentSelection)

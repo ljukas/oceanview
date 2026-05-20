@@ -13,13 +13,21 @@ const indexSearchSchema = z.object({
 
 export const Route = createFileRoute('/_authenticated/')({
   validateSearch: indexSearchSchema,
-  loader: ({ context: { queryClient } }) =>
-    queryClient.ensureQueryData(orpc.season.listSchedules.queryOptions()),
+  loader: async ({ context: { queryClient } }) => {
+    const schedules = await queryClient.ensureQueryData(orpc.season.listSchedules.queryOptions())
+    const years = schedules.map((s) => s.year)
+    await queryClient.ensureQueryData(orpc.share.listMine.queryOptions({ input: { years } }))
+  },
   component: Calendar,
 })
 
 function Calendar() {
   const { data: schedules } = useSuspenseQuery(orpc.season.listSchedules.queryOptions())
+  const years = schedules.map((s) => s.year)
+  const { data: ownedParts } = useSuspenseQuery(
+    orpc.share.listMine.queryOptions({ input: { years } }),
+  )
+  const ownedPartIds = new Set(ownedParts.map((p) => p.id))
   const passkeyParam = Route.useSearch({ select: (s) => s.passkey })
   const navigate = Route.useNavigate()
   const handled = useRef(false)
@@ -43,7 +51,7 @@ function Calendar() {
   return (
     <div className="flex flex-col gap-6 p-4 md:p-8">
       <h1 className="font-semibold text-2xl tracking-tight md:text-3xl">Kalender</h1>
-      <DisponeringslistaTable schedules={schedules} />
+      <DisponeringslistaTable schedules={schedules} ownedPartIds={ownedPartIds} />
     </div>
   )
 }

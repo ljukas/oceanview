@@ -1,7 +1,7 @@
-import { beforeEach, expect, test } from 'vitest'
+import { expect, test } from 'vitest'
 import { db } from '~/lib/db'
 import { user } from '~/lib/db/schema'
-import { INITIAL_SEASONS, truncateAll } from '../../../test/setup'
+import type { ShareCode } from '~/lib/shares/codes'
 import {
   createSeason,
   defaultStartShareFor,
@@ -17,12 +17,25 @@ import {
 } from './season'
 import { assignPart } from './share'
 
-beforeEach(async () => {
-  await truncateAll()
-})
+// Mirrors drizzle/0004_seed_initial_seasons.sql. Migration-seeded data is the
+// production-like starting state; tests below treat it as a fixture and
+// roll back any year-table writes via the outer BEGIN/ROLLBACK in
+// test/setup.ts so the seed survives across runs.
+const INITIAL_SEASONS: ReadonlyArray<{
+  year: number
+  startWeek: number
+  startShare: ShareCode
+}> = [
+  { year: 2026, startWeek: 21, startShare: 'D' },
+  { year: 2027, startWeek: 20, startShare: 'A' },
+  { year: 2028, startWeek: 20, startShare: 'H' },
+  { year: 2029, startWeek: 21, startShare: 'E' },
+]
 
-test('the migration-seeded seasons (2026..2029) are present after truncate', async () => {
-  const rows = await listSeasons()
+const SEEDED_YEARS = new Set(INITIAL_SEASONS.map((s) => s.year))
+
+test('the migration-seeded seasons (2026..2029) are present in the season table', async () => {
+  const rows = (await listSeasons()).filter((r) => SEEDED_YEARS.has(r.year))
   expect(rows).toEqual(
     INITIAL_SEASONS.map((s) => ({
       year: s.year,
@@ -33,7 +46,7 @@ test('the migration-seeded seasons (2026..2029) are present after truncate', asy
 })
 
 test('createSeason without startShare uses the anchor when no prior year exists', async () => {
-  // 2023 is not seeded, so 2024 has no prior year to derive from.
+  // 2024 is not seeded, so it has no prior year to derive from.
   const s = await createSeason({ year: 2024, startWeek: 21 })
   expect(s).toMatchObject({ year: 2024, startWeek: 21, startShare: 'J' })
 })
@@ -82,8 +95,9 @@ test('listSeasons returns rows ordered by year ascending', async () => {
   await createSeason({ year: 2024, startWeek: 21, startShare: 'J' })
   await createSeason({ year: 2030, startWeek: 21, startShare: 'B' })
 
-  const rows = await listSeasons()
-  expect(rows.map((r) => r.year)).toEqual([2024, 2026, 2027, 2028, 2029, 2030])
+  const interesting = new Set([2024, 2026, 2027, 2028, 2029, 2030])
+  const years = (await listSeasons()).map((r) => r.year).filter((y) => interesting.has(y))
+  expect(years).toEqual([2024, 2026, 2027, 2028, 2029, 2030])
 })
 
 test('partForWeek reproduces the 2026 row from the Disponeringslista', () => {
@@ -125,21 +139,24 @@ test('partForWeek returns null for weeks outside the 20-week window', () => {
 })
 
 test('scheduleForYear joins each weekly slot with the current owner', async () => {
-  await db.insert(user).values([
-    { id: 'u-alice', name: 'Alice', email: 'alice@example.com' },
-    { id: 'u-bob', name: 'Bob', email: 'bob@example.com' },
-  ])
-  await assignPart({ partId: 'D1', userId: 'u-alice', from: new Date('2020-01-01') })
-  await assignPart({ partId: 'A1', userId: 'u-bob', from: new Date('2020-01-01') })
+  const [alice, bob] = await db
+    .insert(user)
+    .values([
+      { name: 'Alice', email: 'alice@example.se' },
+      { name: 'Bob', email: 'bob@example.se' },
+    ])
+    .returning()
+  await assignPart({ partId: 'D1', userId: alice.id, from: new Date('2020-01-01') })
+  await assignPart({ partId: 'A1', userId: bob.id, from: new Date('2020-01-01') })
 
   const schedule = await scheduleForYear(2026)
   if (!schedule) throw new Error('expected schedule for year 2026')
   expect(schedule).toHaveLength(20)
 
   const byWeek = new Map(schedule.map((e) => [e.week, e]))
-  expect(byWeek.get(21)).toMatchObject({ partId: 'D1', userId: 'u-alice' })
+  expect(byWeek.get(21)).toMatchObject({ partId: 'D1', userId: alice.id })
   expect(byWeek.get(22)).toMatchObject({ partId: 'D2', userId: null })
-  expect(byWeek.get(35)).toMatchObject({ partId: 'A1', userId: 'u-bob' })
+  expect(byWeek.get(35)).toMatchObject({ partId: 'A1', userId: bob.id })
   expect(byWeek.get(40)).toMatchObject({ partId: 'C2', userId: null })
 })
 
