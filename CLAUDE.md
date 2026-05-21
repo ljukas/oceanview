@@ -30,10 +30,14 @@ Load on demand, not eagerly. The `pnpm dlx @tanstack/intent` block at the bottom
 | Vercel function runtime/timeout/region tuning | `vercel:vercel-functions` |
 | Adding shadcn/ui components | `vercel:shadcn` + project-local `shadcn` (at `.claude/skills/shadcn/`) |
 | Theming / CSS vars / dark mode tweaks | project-local `shadcn#customization.md` |
-| Building or editing forms (TanStack Form + shadcn) | project-local `shadcn#rules/forms.md` |
+| Building or editing forms (composition, bound fields, validation, accessibility) | `docs/adr/0005-form-architecture.md` |
 | Reviewing React components | `vercel:react-best-practices` |
 | End-to-end verification before claiming done | `vercel:verification` |
 | Adding oRPC procedures, middleware, error handling | https://orpc.dev/docs |
+| Adding services, domain rules, error mapping | `docs/adr/0002-service-domain-architecture.md` |
+| Adding side effects (email, storage, audit, …) | `docs/adr/0001-side-effects-architecture.md` |
+| Adding realtime sync (publish events, new event kinds, SSE/subscriber behaviour) | `docs/adr/0004-realtime-sync-architecture.md` |
+| Adding logging — significant events, error sinks, request-scoped context | `docs/adr/0003-logging-architecture.md` |
 | Wiring oRPC into Better Auth | https://orpc.dev/docs/integrations/better-auth |
 | oRPC + TanStack Query (`queryOptions`, `mutationOptions`, invalidation) | https://orpc.dev/docs/integrations/tanstack-query |
 | SSR optimization for oRPC (`createRouterClient`, serializer) | https://orpc.dev/docs/best-practices/optimize-ssr |
@@ -78,15 +82,42 @@ src/
       client.ts                    isomorphic client (createRouterClient on server, RPCLink on browser) + `orpc` TanStack Query utils
       procedures/
         health.ts                  liveness probe
-        user.ts                    list / getById / create / update / delete / restore
+        user.ts                    thin handlers: parse → service → map UserDomainError → cross-system side effects (auth.api.revokeUserSessions on delete)
     db/
       index.ts                     drizzle(postgres(DATABASE_URL)) with snake_case casing
       schema/
         betterAuth.ts              CLI-regenerated; DO NOT hand-edit
         index.ts                   barrel — one re-export per feature schema
-    services/
-      user.ts                      user CRUD; ALL user db access lives here
-      user.test.ts                 colocated test using newScope(); fresh schema-per-test from test/setup.ts
+    services/                      one folder per entity; barrel `index.ts` re-exports the public surface
+      user/
+        index.ts                   re-exports from ./user and ./errors
+        user.ts                    user data access + admin-CRUD invariants (LAST_ADMIN, CANNOT_ACT_ON_SELF, …)
+        errors.ts                  UserDomainError + discriminating `code` union — mapped to ORPCError by procedures
+        user.test.ts               colocated; fresh schema-per-test from test/setup.ts; exercises invariants through the service interface
+      season/
+        index.ts                   re-exports from ./season
+        season.ts                  season CRUD + schedule grid
+        season.test.ts             DB-touching tests
+        logic.test.ts              pure date / share-rotation math tests (no DB)
+      share/
+        index.ts                   re-exports from ./share
+        share.ts                   share-part data access + assignment transactions
+        share.test.ts              colocated tests
+    effects/                       cross-system side-effect adapters; see docs/adr/0001
+      email/
+        email.ts                   EmailEffects interface + selected adapter
+        adapters/devLog.ts         routes magic-link sends through logger.info (used until Resend is wired)
+        index.ts                   barrel
+        email.test.ts              colocated test (pure; no DB)
+      index.ts                     barrel
+    logger/                        structured logging — JSON to stdout (captured by Vercel Runtime Logs)
+      types.ts                     Logger interface — debug/info/warn/error + child(fields)
+      server.ts                    pino-backed logger; createServerLogger(destination?) factory; createRequestLogger(request) helper
+      browser.ts                   console + keepalive POST /api/log on warn|error; installGlobalHandlers() for window.error + unhandledrejection
+      redact.ts                    pino redact paths — strips authorization/cookie headers if logged
+      index.ts                     barrel — re-exports the Logger type
+      server.test.ts               colocated; injectable destination → assert JSON shape, levels, child scope, redaction
+      browser.test.ts              colocated; mocked fetch → assert forwarding, swallowed errors, child scope
   hooks/
     useMobile.ts                   media-query hook
     usePasskeys.ts                 TanStack Query wrappers around authClient.passkey.*
@@ -120,19 +151,19 @@ vite.config.ts                     TanStack Start + React + Tailwind + Nitro; vi
 
 ## How we write code
 
-**Services own the database.** All `db` access lives in `src/lib/services/<entity>.ts` as named exports. Auth hooks, route handlers, and server functions call services — never `db.select()` from a route or a server function directly.
+**Services own data access and domain rules.** All `db` access lives in `src/lib/services/<entity>/`; invariants live inside the guarded operations there (`updateAsAdmin`, `softDeleteAsAdmin`, …) and surface as a typed `<Entity>DomainError` with a discriminating English `code` union. Procedures `try { await service.op() } catch (err) { rethrowAsORPC(err, ...) }` to map codes to Swedish `ORPCError` messages. Callers import through the barrel: `import * as userService from '~/lib/services/user'`. Canonical example: `src/lib/services/user/`. See `docs/adr/0002-service-domain-architecture.md` for the architecture, the guarded-operation pattern, error mapping, and verification greps.
 
-```ts
-// caller
-import * as userService from '~/lib/services/user'
-const id = await userService.findIdByEmail(email)
-```
+**Cross-system side effects stay out of services and live in `src/lib/effects/`.** A service touches its own DB tables and nothing else; cross-system work (Better Auth session revocation, R2 deletes, sending email) goes through a typed effect adapter (e.g. `email.sendMagicLink(...)` from `~/lib/effects`) invoked from the procedure or route handler *after* the service call succeeds. This keeps services free of Better Auth / S3 / Resend imports and testable against the per-test-schema harness alone. See `docs/adr/0001-side-effects-architecture.md` for the full layering, the three execution tiers (sync-critical / fire-and-forget / durable), and the comparison to pub/sub.
+
+**Logging goes through `~/lib/logger/`** — pino on the server, console + `keepalive` POST to `/api/log` in the browser. Inside an oRPC procedure use `context.log` (already tagged with `requestId` + `userId`); elsewhere import the singleton: `import { logger } from '~/lib/logger/server'` (or `~/lib/logger/browser` in components). Never call `console.*` directly. New significant events (admin actions, auth lifecycle, effect failures) get one `info` line; caught exceptions get one `error` line with `{ error }`. See `docs/adr/0003-logging-architecture.md` for the architecture, conventions (message-as-noun-phrase, structured fields over interpolation, level semantics), what-to-log policy, redaction, browser→server forwarding contract, and verification greps.
 
 **Adding a feature schema**: create `src/lib/db/schema/<feature>.ts`, add one re-export line to `schema/index.ts`, then `pnpm db:generate && pnpm db:migrate`. The test setup runs every migration into a fresh schema before each test, so any new table or seed migration is automatically applied — nothing in `test/setup.ts` needs touching when adding a feature schema.
 
 **Name migrations descriptively, never ship the auto-generated tag.** drizzle-kit emits files like `0003_small_jetstream.sql` — that name is meaningless six months later. Immediately after `pnpm db:generate` (or `pnpm drizzle-kit generate --custom --name=<descriptive_name>` for data-only migrations), rename the file and update the corresponding `tag` in `drizzle/meta/_journal.json` to something that describes the change: `0003_add_ownership_tables.sql`, `0004_seed_initial_seasons.sql`, `0007_add_passkey_aaguid_index.sql`. Only rename migrations that haven't shipped to production yet — once a migration is in any prod `__drizzle_migrations` table, the tag is part of its identity and must stay stable.
 
-**Adding a service**: create `src/lib/services/<entity>.ts` (named exports) plus colocated `<entity>.test.ts`.
+**Adding a service**: copy `services/user/` — `<entity>.ts` (named exports), `<entity>.test.ts` (colocated, `setupDatabase()` first), `index.ts` (barrel: `export * from './<entity>'`). Add `errors.ts` only when the first invariant lands. See ADR-0002 for the full recipe.
+
+**Adding an effect**: create `src/lib/effects/<domain>/` containing `<domain>.ts` (typed interface plus the exported adapter), `adapters/<name>.ts` (one file per implementation — a `devLog` adapter is appropriate while the transport is deferred), `index.ts` (`export * from './<domain>'`), and `<domain>.test.ts` (colocated; pure if the adapter doesn't touch the DB). Extend `src/lib/effects/index.ts` with the new named export. Procedures and auth callbacks import the effect (`import { email } from '~/lib/effects'`) and call it after the service call. See `src/lib/effects/email/` for the canonical example; full rationale (why not pub/sub, when to reach for fire-and-forget or the outbox tier) lives in `docs/adr/0001-side-effects-architecture.md`.
 
 **Regenerating Better Auth schema**: after upgrading `better-auth` or changing plugin config in `src/lib/auth.ts`, run:
 ```
@@ -144,7 +175,7 @@ Never hand-edit `betterAuth.ts`.
 
 **Component placement**: feature components live in `src/components/<entity>/<Component>.tsx` (entity-singular: `user/`, `passkey/`, etc. — same naming as `src/lib/services/<entity>.ts` and `src/lib/orpc/procedures/<entity>.ts`). Top-level `src/components/*.tsx` is reserved for app-wide chrome (sidebar, theme toggle, error/404). Don't use TanStack's `-components/` route-local convention — we promote every component to `src/components/<entity>/` so they're discoverable from one place and trivially shareable.
 
-**Adding an oRPC procedure**: create or edit `src/lib/orpc/procedures/<entity>.ts`. Pick the right builder — `publicProcedure` (no auth), `protectedProcedure` (signed in, `context.session`/`context.user` are non-null), or `adminProcedure` (admin role, also enforces non-null). Validate input with `.input(zodSchema)`. Delegate DB work to a service. Then export from the file and add to `appRouter` in `src/lib/orpc/router.ts`. Call from the client via `orpc.<entity>.<op>.queryOptions()` / `.mutationOptions()` from `~/lib/orpc/client`.
+**Adding an oRPC procedure**: create or edit `src/lib/orpc/procedures/<entity>.ts`. Pick the right builder — `publicProcedure` (no auth), `protectedProcedure` (signed in, `context.session`/`context.user` are non-null), or `adminProcedure` (admin role, also enforces non-null). Validate input with `.input(zodSchema)`. **Handlers stay thin**: parse input → delegate to a service → catch `<Entity>DomainError` and rethrow as `ORPCError` with the Swedish message → run any cross-system side effects (e.g. `auth.api.revokeUserSessions`) *after* the service call succeeds. Never re-implement domain invariants inline in a handler — if you find yourself counting admins or checking `deletedAt` in a procedure, that rule belongs in the service. Then export from the file and add to `appRouter` in `src/lib/orpc/router.ts`. Call from the client via `orpc.<entity>.<op>.queryOptions()` / `.mutationOptions()` from `~/lib/orpc/client`.
 
 **Route loader for oRPC data**: `loader: ({ context: { queryClient } }) => queryClient.ensureQueryData(orpc.x.y.queryOptions())`, then read with `useSuspenseQuery(orpc.x.y.queryOptions())` in the component. SSR runs the procedure in-process via `createRouterClient` — no HTTP roundtrip during loaders.
 
@@ -152,18 +183,7 @@ Never hand-edit `betterAuth.ts`.
 
 **Input validation**: Zod v4 (already a dep). Validate at the boundary (oRPC `.input(schema)`, server function args, route loaders) — trust internal call sites.
 
-**Forms own all user input.** Any text input, select, checkbox, or confirmation that captures or mutates data goes through `@tanstack/react-form`. **Never store field values in `useState`** — `useForm` is the only field-state primitive in this codebase. This applies to dialogs and inline edits too (see `RenamePasskeyForm` in `src/components/passkey/PasskeyRow.tsx` for an inline example, and `src/components/user/UserFormDialog.tsx` for a dialog with create+edit shapes).
-
-Canonical pattern (see `src/routes/login.tsx`):
-
-- `useForm({ defaultValues, validators: { onSubmit: zodSchema }, onSubmit })` — validate on submit, not onChange.
-- `<form onSubmit={(e) => { e.preventDefault(); form.handleSubmit() }}>` — never a raw `<form action>` or an `onSubmit` that bypasses the form instance.
-- Each field rendered via `<form.Field name="..." children={(field) => …}>`, wrapped in shadcn `<FieldGroup>` / `<Field>` / `<FieldLabel>` / `<Input>` (or `<Select>`) / `<FieldError>`.
-- Compute `const isInvalid = field.state.meta.isTouched && !field.state.meta.isValid` once per field; pass to `<Field data-invalid>` and `<Input aria-invalid>`; render `<FieldError errors={field.state.meta.errors} />` only when invalid.
-- Disable inputs during submit via `disabled={form.state.isSubmitting}`.
-- Drive the submit button with `<form.Subscribe selector={(s) => [s.canSubmit, s.isSubmitting]} children={…}>` — `disabled={!canSubmit || isSubmitting}`, render `<Spinner />` while submitting.
-- **Field-level errors** → `<FieldError>`. **Async / API / mutation errors** → `toast.error(...)` from `sonner`. Don't mix the two channels.
-- **Mutations** integrate via oRPC's `mutationOptions({ onSuccess, onError })` — invalidate with `queryClient.invalidateQueries({ queryKey: orpc.<entity>.<op>.key() })`, then `toast.success(...)` and close the dialog.
+**Forms own all user input.** Every form uses `useAppForm` from `~/hooks/form`; fields render via `<form.AppField name="..." children={(field) => <field.TextField label="..." />}>` (or `<field.SelectField>`); submit gates via `<form.AppForm><form.SubmitButton label="..." /></form.AppForm>`. Field errors → `<FieldError>` (rendered by the bound component); async / API / mutation errors → `toast.error(...)` from `sonner`. Never store field values in `useState`. Canonical example: `src/components/login/LoginFormCard.tsx`. See `docs/adr/0005-form-architecture.md` for the architecture, the composition mechanism (`createFormHook`), the icon-button exception, the SSR door we leave open, and verification greps.
 
 **Zod errors**: `src/lib/zodLocale.ts` calls `z.config(z.locales.sv())` at module load, imported once from `src/router.tsx`. Every Zod schema gets Swedish default error messages without per-field overrides — only pass an explicit message when you need wording more specific than the locale default.
 
@@ -206,6 +226,8 @@ Canonical pattern (see `src/routes/login.tsx`):
 **Set in Vercel + `.env`**: `BETTER_AUTH_SECRET` (32+ chars; `openssl rand -base64 32`), `BETTER_AUTH_URL` (site origin), `ADMIN_EMAILS` (comma-separated allowlist).
 
 **Manual, added when wired**: `RESEND_API_KEY`, `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET`.
+
+**Optional**: `LOG_LEVEL` — pino level (`trace`/`debug`/`info`/`warn`/`error`/`fatal`). Defaults to `debug` in dev, `info` in prod.
 
 `.env.example` lists everything. The `vercel env pull` hazard is in [Non-negotiables](#non-negotiables).
 
@@ -252,7 +274,7 @@ WebFetch these before guessing APIs. They beat the model's memorized snapshots.
 
 **Cloudflare R2** — not yet wired. Planned pattern: browser PUTs directly to R2 via a presigned URL minted server-side; Vercel functions never see file bytes. Postgres holds metadata only (name, folder, owner, size, mime, uploaded_at).
 
-**Resend** — not yet wired. `sendMagicLink` in `src/lib/auth.ts:17` currently `console.log`s the URL, which is fine for local testing and the first prod sign-ins. Wire Resend once a sender domain is verified (e.g. `mail.<domain>`).
+**Resend** — not yet wired. `sendMagicLink` in `src/lib/auth.ts` currently routes through the `devLog` adapter, which calls `logger.info('magic-link (devLog)', { to, url })`. The URL appears in the terminal in dev and in Vercel Runtime Logs in prod — fine for local testing and the first prod sign-ins. Wire Resend once a sender domain is verified (e.g. `mail.<domain>`) by adding `adapters/resend.ts` and swapping the export in `email.ts`.
 
 ---
 
@@ -260,8 +282,9 @@ WebFetch these before guessing APIs. They beat the model's memorized snapshots.
 
 - **Magic-link only.** No passwords. Don't add password sign-in without revisiting the auth design.
 - **Two roles only**: `user` and `admin`. Don't introduce more without a real reason.
-- **All `db` access through `src/lib/services/`.** No `db.select()` in routes, handlers, or auth hooks.
-- **All non-auth server calls go through oRPC procedures.** Procedures handle auth (pick `protectedProcedure` / `adminProcedure`, never inline checks) and Zod validation; services still own all `db` access. Better Auth's own routes (`/api/auth/*`) stay on the Better Auth handler.
+- **All `db` access through `src/lib/services/<entity>/`. Services own data invariants** (admin-count, self-action, soft-delete checks) and raise typed `<Entity>DomainError`. Procedures map codes to Swedish `ORPCError`. No `db.select()` in routes/handlers/auth hooks. See ADR-0002.
+- **oRPC procedures are thin glue.** Parse input, gate with `protectedProcedure` / `adminProcedure` (never inline auth checks), delegate to a service, catch `<Entity>DomainError` and map to `ORPCError`, then run cross-system side effects. Better Auth's own routes (`/api/auth/*`) stay on the Better Auth handler.
+- **All logging goes through `~/lib/logger/`. Never call `console.*` directly in app code.** Inside an oRPC procedure use `context.log`; elsewhere import the singleton from `~/lib/logger/server` or `~/lib/logger/browser`. See ADR-0003.
 - **Never hand-edit `src/lib/db/schema/betterAuth.ts`** — re-run the CLI (see [How we write code](#how-we-write-code)).
 - **File naming.**
   - **Routes** (`src/routes/`) follow [TanStack file-naming conventions](https://tanstack.com/router/latest/docs/routing/file-naming-conventions): lowercase + special tokens (`__root`, `_authenticated`, `$id`, `index`).
@@ -296,8 +319,11 @@ One line each. The reasoning lives in `git log CLAUDE.md` if anyone needs it.
 - **Email**: Resend.
 - **UI**: shadcn/ui (style `radix-nova`, base color `slate`) + Tailwind v4. CSS vars live in `src/styles/app.css`; `components.json` is the source of truth.
 - **Dark mode**: `next-themes` with `attribute="class"` + system preference + manual toggle (`ModeToggle` mounted in `__root.tsx`). No flash on hard reload — next-themes injects its own preload script.
-- **Forms**: `@tanstack/react-form` composed with shadcn `<Field>` primitives. Zod v4 schemas via `validators: { onSubmit: schema }`. See `src/routes/login.tsx`.
+- **Forms**: `@tanstack/react-form` v1 `createFormHook` composition + shadcn `<Field>` primitives. `useAppForm` from `~/hooks/form` with bound `<field.TextField>` / `<field.SelectField>` / `<form.SubmitButton>`. Zod v4 schemas via `validators: { onSubmit: schema }`. See ADR-0005.
 - **Data layer**: oRPC + TanStack Query (decided 2026-05-15). First-class TanStack Start adapter, native `Date`/`File`/`BigInt`, builder-based auth (`protectedProcedure` / `adminProcedure`) over `requireSession`-style helpers. Server-side procedures called in-process via `createRouterClient` during SSR (zero HTTP). See `src/lib/orpc/`.
+- **Domain rules live in services; service files live in per-entity folders** (decided 2026-05-21). Services throw `<Entity>DomainError` (English `code` union); procedures map to Swedish `ORPCError`. `src/lib/services/<entity>/` with `<entity>.ts`, `errors.ts` (when invariants exist), `<entity>.test.ts`, one-line `index.ts` barrel. Imports stay `'~/lib/services/<entity>'`. See ADR-0002.
+- **Logging is pino → stdout, captured by Vercel Runtime Logs** (decided 2026-05-21). No external observability service. Browser `warn`/`error` forwarded to `/api/log` so client crashes land in the same place. See ADR-0003 (`docs/adr/0003-logging-architecture.md`).
+- **Realtime sync is server-push invalidation via SSE + in-process pub/sub** (decided 2026-05-21). Procedures `realtime.publish({ kind: '<namespace>.changed', ids })` after the service call; one `useRealtimeSync()` per authenticated tab dispatches to `queryClient.invalidateQueries({ queryKey: orpc.<namespace>.key() })`. Single-instance assumption — broker-backed adapter when that changes. See ADR-0004 (`docs/adr/0004-realtime-sync-architecture.md`).
 - **Package manager**: pnpm.
 - **Linter/formatter**: Biome — single tool over Prettier+ESLint or oxlint+Prettier. Editor-only enforcement (no CI gate, no git hook). Tailwind class sorting on; CSS skipped (Biome can't parse Tailwind v4 directives yet).
 - **Sidebar breakpoint**: drawer (Sheet + scrim) below 1024px, icon rail at 1024–1279px, full sidebar ≥1280px. `MOBILE_BREAKPOINT` lives in `src/hooks/useMobile.ts` and only the shadcn sidebar primitive consumes it. shadcn `<Sidebar collapsible="icon">` with `tooltip={label}` on each `SidebarMenuButton` (icon-rail is the canonical exception to the "skip tooltips for self-evident icons" rule — the icon *is* the label). Sidebar-coupled responsive utilities use `lg:`; page padding and heading sizes still step at `md:`.

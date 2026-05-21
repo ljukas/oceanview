@@ -1,6 +1,7 @@
 import { expect, test } from 'vitest'
 import { db } from '~/lib/db'
 import { user } from '~/lib/db/schema'
+import { assignPart } from '~/lib/services/share'
 import type { ShareCode } from '~/lib/shares/codes'
 import { setupDatabase } from '~test/setup'
 import {
@@ -13,7 +14,6 @@ import {
   scheduleForYear,
   updateSeason,
 } from './season'
-import { assignPart } from './share'
 
 setupDatabase()
 

@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated/index'
+import { Route as ApiLogRouteImport } from './routes/api/log'
 import { Route as AuthenticatedKontoRouteImport } from './routes/_authenticated/konto'
 import { Route as AuthenticatedDocumentsRouteImport } from './routes/_authenticated/documents'
 import { Route as AuthenticatedContactsRouteImport } from './routes/_authenticated/contacts'
@@ -33,6 +34,11 @@ const AuthenticatedIndexRoute = AuthenticatedIndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => AuthenticatedRoute,
+} as any)
+const ApiLogRoute = ApiLogRouteImport.update({
+  id: '/api/log',
+  path: '/api/log',
+  getParentRoute: () => rootRouteImport,
 } as any)
 const AuthenticatedKontoRoute = AuthenticatedKontoRouteImport.update({
   id: '/konto',
@@ -77,6 +83,7 @@ export interface FileRoutesByFullPath {
   '/contacts': typeof AuthenticatedContactsRoute
   '/documents': typeof AuthenticatedDocumentsRoute
   '/konto': typeof AuthenticatedKontoRoute
+  '/api/log': typeof ApiLogRoute
   '/admin/users': typeof AuthenticatedAdminUsersRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/rpc/$': typeof ApiRpcSplatRoute
@@ -87,6 +94,7 @@ export interface FileRoutesByTo {
   '/contacts': typeof AuthenticatedContactsRoute
   '/documents': typeof AuthenticatedDocumentsRoute
   '/konto': typeof AuthenticatedKontoRoute
+  '/api/log': typeof ApiLogRoute
   '/': typeof AuthenticatedIndexRoute
   '/admin/users': typeof AuthenticatedAdminUsersRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
@@ -100,6 +108,7 @@ export interface FileRoutesById {
   '/_authenticated/contacts': typeof AuthenticatedContactsRoute
   '/_authenticated/documents': typeof AuthenticatedDocumentsRoute
   '/_authenticated/konto': typeof AuthenticatedKontoRoute
+  '/api/log': typeof ApiLogRoute
   '/_authenticated/': typeof AuthenticatedIndexRoute
   '/_authenticated/admin/users': typeof AuthenticatedAdminUsersRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
@@ -114,6 +123,7 @@ export interface FileRouteTypes {
     | '/contacts'
     | '/documents'
     | '/konto'
+    | '/api/log'
     | '/admin/users'
     | '/api/auth/$'
     | '/api/rpc/$'
@@ -124,6 +134,7 @@ export interface FileRouteTypes {
     | '/contacts'
     | '/documents'
     | '/konto'
+    | '/api/log'
     | '/'
     | '/admin/users'
     | '/api/auth/$'
@@ -136,6 +147,7 @@ export interface FileRouteTypes {
     | '/_authenticated/contacts'
     | '/_authenticated/documents'
     | '/_authenticated/konto'
+    | '/api/log'
     | '/_authenticated/'
     | '/_authenticated/admin/users'
     | '/api/auth/$'
@@ -145,6 +157,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   AuthenticatedRoute: typeof AuthenticatedRouteWithChildren
   LoginRoute: typeof LoginRoute
+  ApiLogRoute: typeof ApiLogRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
   ApiRpcSplatRoute: typeof ApiRpcSplatRoute
 }
@@ -171,6 +184,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/'
       preLoaderRoute: typeof AuthenticatedIndexRouteImport
       parentRoute: typeof AuthenticatedRoute
+    }
+    '/api/log': {
+      id: '/api/log'
+      path: '/api/log'
+      fullPath: '/api/log'
+      preLoaderRoute: typeof ApiLogRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/_authenticated/konto': {
       id: '/_authenticated/konto'
@@ -258,6 +278,7 @@ const AuthenticatedRouteWithChildren = AuthenticatedRoute._addFileChildren(
 const rootRouteChildren: RootRouteChildren = {
   AuthenticatedRoute: AuthenticatedRouteWithChildren,
   LoginRoute: LoginRoute,
+  ApiLogRoute: ApiLogRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
   ApiRpcSplatRoute: ApiRpcSplatRoute,
 }

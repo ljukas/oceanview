@@ -1,17 +1,47 @@
 import { ORPCError } from '@orpc/server'
 import { z } from 'zod'
 import { auth } from '~/lib/auth'
+import { realtime } from '~/lib/effects'
 import { adminProcedure, protectedProcedure } from '~/lib/orpc/context'
 import * as userService from '~/lib/services/user'
+import { UserDomainError } from '~/lib/services/user'
 
 const roleSchema = z.enum(['user', 'admin'])
 
 const userInputSchema = z.object({
-  name: z.string().min(1),
-  email: z.email(),
-  phone: z.string().min(5).max(30),
+  name: z.string(),
+  email: z
+    .email({ error: 'Ange en giltig e-postadress' })
+    .min(1, { error: 'Ange en e-postadress' }),
+  phone: z
+    .string()
+    .max(30, { error: 'Telefonnumret är för långt (max 30 tecken)' })
+    .refine((v) => v === '' || v.length >= 5, {
+      error: 'Telefonnumret är för kort (minst 5 tecken)',
+    }),
   role: roleSchema,
 })
+
+function rethrowAsORPC(err: unknown, context: 'update' | 'delete' | 'restore'): never {
+  if (!(err instanceof UserDomainError)) throw err
+  switch (err.code) {
+    case 'NOT_FOUND':
+      throw new ORPCError('NOT_FOUND', { message: 'Användaren hittades inte' })
+    case 'TARGET_DELETED':
+      throw new ORPCError('CONFLICT', {
+        message: 'Användaren är borttagen och kan inte ändras',
+      })
+    case 'CANNOT_ACT_ON_SELF':
+      throw new ORPCError('FORBIDDEN', {
+        message:
+          context === 'delete' ? 'Du kan inte radera dig själv' : 'Du kan inte degradera dig själv',
+      })
+    case 'LAST_ADMIN':
+      throw new ORPCError('CONFLICT', {
+        message: 'Det måste finnas minst en administratör',
+      })
+  }
+}
 
 export const userRouter = {
   me: protectedProcedure.handler(({ context }) => context.user),
@@ -20,107 +50,66 @@ export const userRouter = {
     .input(z.object({ email: z.email() }))
     .handler(({ input }) => userService.findIdByEmail(input.email)),
 
-  setAdmin: adminProcedure
-    .input(z.object({ id: z.string() }))
-    .handler(({ input }) => userService.setAdmin(input.id)),
-
   list: adminProcedure
     .input(z.object({ filter: z.enum(['active', 'deleted']).default('active') }))
     .handler(({ input }) =>
       input.filter === 'deleted' ? userService.listDeleted() : userService.listAll(),
     ),
 
-  getById: adminProcedure.input(z.object({ id: z.string().min(1) })).handler(async ({ input }) => {
-    const target = await userService.findById(input.id)
-    if (!target || target.deletedAt) {
-      throw new ORPCError('NOT_FOUND', {
-        message: 'Användaren hittades inte',
-      })
+  getById: adminProcedure.input(z.object({ id: z.uuid() })).handler(async ({ input }) => {
+    const target = await userService.findActiveById(input.id)
+    if (!target) {
+      throw new ORPCError('NOT_FOUND', { message: 'Användaren hittades inte' })
     }
     return target
   }),
 
-  create: adminProcedure
-    .input(userInputSchema)
-    .handler(({ input }) => userService.createUser(input)),
+  create: adminProcedure.input(userInputSchema).handler(async ({ input, context }) => {
+    const created = await userService.createAsAdmin(input)
+    context.log.info('admin created user', { targetId: created.id, role: input.role })
+    await realtime.publish({ kind: 'user.changed', ids: [created.id] })
+    return created
+  }),
 
   update: adminProcedure
-    .input(userInputSchema.extend({ id: z.string().min(1) }))
+    .input(userInputSchema.extend({ id: z.uuid() }))
     .handler(async ({ input, context }) => {
-      const target = await userService.findById(input.id)
-      if (!target) {
-        throw new ORPCError('NOT_FOUND', { message: 'Användaren hittades inte' })
-      }
-      if (target.deletedAt) {
-        throw new ORPCError('CONFLICT', {
-          message: 'Användaren är borttagen och kan inte ändras',
+      try {
+        const updated = await userService.updateAsAdmin(context.user.id, input.id, {
+          name: input.name,
+          email: input.email,
+          phone: input.phone,
+          role: input.role,
         })
+        context.log.info('admin updated user', { targetId: input.id, role: input.role })
+        await realtime.publish({ kind: 'user.changed', ids: [updated.id] })
+        return updated
+      } catch (err) {
+        rethrowAsORPC(err, 'update')
       }
-
-      const demotingSelf = input.id === context.user.id && input.role !== 'admin'
-      if (demotingSelf) {
-        throw new ORPCError('FORBIDDEN', {
-          message: 'Du kan inte degradera dig själv',
-        })
-      }
-
-      const demotingAdmin = target.role === 'admin' && input.role !== 'admin'
-      if (demotingAdmin) {
-        const admins = await userService.countAdmins()
-        if (admins <= 1) {
-          throw new ORPCError('CONFLICT', {
-            message: 'Det måste finnas minst en administratör',
-          })
-        }
-      }
-
-      return userService.updateUser(input.id, {
-        name: input.name,
-        email: input.email,
-        phone: input.phone,
-        role: input.role,
-      })
     }),
 
-  delete: adminProcedure
-    .input(z.object({ id: z.string().min(1) }))
-    .handler(async ({ input, context }) => {
-      if (input.id === context.user.id) {
-        throw new ORPCError('FORBIDDEN', {
-          message: 'Du kan inte radera dig själv',
-        })
-      }
-
-      const target = await userService.findById(input.id)
-      if (!target) {
-        throw new ORPCError('NOT_FOUND', { message: 'Användaren hittades inte' })
-      }
-      if (target.deletedAt) {
-        return
-      }
-
-      if (target.role === 'admin') {
-        const admins = await userService.countAdmins()
-        if (admins <= 1) {
-          throw new ORPCError('CONFLICT', {
-            message: 'Det måste finnas minst en administratör',
-          })
-        }
-      }
-
-      await userService.softDeleteUser(input.id)
-      await auth.api.revokeUserSessions({
-        body: { userId: input.id },
-        headers: context.headers,
-      })
-    }),
-
-  restore: adminProcedure.input(z.object({ id: z.string().min(1) })).handler(async ({ input }) => {
-    const target = await userService.findById(input.id)
-    if (!target) {
-      throw new ORPCError('NOT_FOUND', { message: 'Användaren hittades inte' })
+  delete: adminProcedure.input(z.object({ id: z.uuid() })).handler(async ({ input, context }) => {
+    try {
+      await userService.softDeleteAsAdmin(context.user.id, input.id)
+    } catch (err) {
+      rethrowAsORPC(err, 'delete')
     }
-    if (!target.deletedAt) return
-    await userService.restoreUser(input.id)
+    await auth.api.revokeUserSessions({
+      body: { userId: input.id },
+      headers: context.headers,
+    })
+    context.log.info('admin soft-deleted user', { targetId: input.id })
+    await realtime.publish({ kind: 'user.changed', ids: [input.id] })
+  }),
+
+  restore: adminProcedure.input(z.object({ id: z.uuid() })).handler(async ({ input, context }) => {
+    try {
+      await userService.restoreAsAdmin(input.id)
+    } catch (err) {
+      rethrowAsORPC(err, 'restore')
+    }
+    context.log.info('admin restored user', { targetId: input.id })
+    await realtime.publish({ kind: 'user.changed', ids: [input.id] })
   }),
 }

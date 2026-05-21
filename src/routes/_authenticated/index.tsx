@@ -22,17 +22,22 @@ export const Route = createFileRoute('/_authenticated/')({
 })
 
 function Calendar() {
+  const passkeyParam = Route.useSearch({ select: (s) => s.passkey })
+  const navigate = Route.useNavigate()
+
   const { data: schedules } = useSuspenseQuery(orpc.season.listSchedules.queryOptions())
+
   const years = schedules.map((s) => s.year)
+
   const { data: ownedParts } = useSuspenseQuery(
     orpc.share.listMine.queryOptions({ input: { years } }),
   )
+
   const ownedPartIds = new Set(ownedParts.map((p) => p.id))
-  const passkeyParam = Route.useSearch({ select: (s) => s.passkey })
-  const navigate = Route.useNavigate()
   const handled = useRef(false)
 
   const passkeysQuery = useListPasskeys()
+
   const addPasskey = useAddPasskey({
     onAdded: () => toast.success('Passkey kopplad. Nästa gång loggar du in direkt.'),
   })

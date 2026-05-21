@@ -1,5 +1,6 @@
 import type { ErrorComponentProps } from '@tanstack/react-router'
 import { ErrorComponent, Link, rootRouteId, useMatch, useRouter } from '@tanstack/react-router'
+import { logger } from '~/lib/logger/browser'
 
 export function DefaultCatchBoundary({ error }: ErrorComponentProps) {
   const router = useRouter()
@@ -8,7 +9,7 @@ export function DefaultCatchBoundary({ error }: ErrorComponentProps) {
     select: (state) => state.id === rootRouteId,
   })
 
-  console.error('DefaultCatchBoundary Error:', error)
+  logger.error('react error boundary', { error })
 
   return (
     <div className="flex min-w-0 flex-1 flex-col items-center justify-center gap-6 p-4">
