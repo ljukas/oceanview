@@ -8,6 +8,7 @@ import {
   StarIcon,
   Trash2Icon,
 } from 'lucide-react'
+import { formatPhoneNumberIntl } from 'react-phone-number-input'
 import { z } from 'zod'
 import { Button } from '~/components/ui/button'
 import {
@@ -20,9 +21,11 @@ import {
 } from '~/components/ui/table'
 import { ToggleGroup, ToggleGroupItem } from '~/components/ui/toggle-group'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '~/components/ui/tooltip'
+import { CreateUserDialog } from '~/components/user/CreateUserDialog'
 import { DeleteUserDialog } from '~/components/user/DeleteUserDialog'
+import { EditUserDialog } from '~/components/user/EditUserDialog'
 import { RestoreUserDialog } from '~/components/user/RestoreUserDialog'
-import { UserFormDialog } from '~/components/user/UserFormDialog'
+import { UserCard } from '~/components/user/UserCard'
 import { orpc } from '~/lib/orpc/client'
 import { seo } from '~/utils/seo'
 
@@ -137,7 +140,7 @@ function AdminUsers() {
           </ToggleGroup>
         </div>
 
-        <div className="rounded-lg border bg-card">
+        <div className="hidden rounded-lg border bg-card lg:block">
           <Table>
             <TableHeader>
               <TableRow>
@@ -165,12 +168,14 @@ function AdminUsers() {
                     <TableRow key={u.id}>
                       <TableCell className="font-medium">{u.name || '—'}</TableCell>
                       <TableCell className="text-muted-foreground">{u.email}</TableCell>
-                      <TableCell className="text-muted-foreground">
+                      <TableCell className="text-muted-foreground tabular-nums">
                         {showDeleted
                           ? u.deletedAt
                             ? dateFormatter.format(u.deletedAt)
                             : '—'
-                          : (u.phone ?? '—')}
+                          : u.phone
+                            ? formatPhoneNumberIntl(u.phone) || u.phone
+                            : '—'}
                       </TableCell>
                       <TableCell>
                         {isAdmin ? (
@@ -253,8 +258,40 @@ function AdminUsers() {
           </Table>
         </div>
 
-        <UserFormDialog
-          open={isCreate || (isEdit && editUserId !== undefined)}
+        <div className="flex flex-col gap-3 lg:hidden">
+          {users.length === 0 ? (
+            <div className="rounded-lg border bg-card py-8 text-center text-muted-foreground text-sm">
+              {showDeleted ? 'Inga borttagna användare' : 'Inga användare än'}
+            </div>
+          ) : (
+            users.map((u) => (
+              <UserCard
+                key={u.id}
+                user={u}
+                isSelf={u.id === currentUser.id}
+                showDeleted={showDeleted}
+                onEdit={() => navigate({ to: '.', search: { dialog: 'edit', userId: u.id } })}
+                onDelete={() => navigate({ to: '.', search: { dialog: 'delete', userId: u.id } })}
+                onRestore={() =>
+                  navigate({
+                    to: '.',
+                    search: { filter: 'deleted', dialog: 'restore', userId: u.id },
+                  })
+                }
+              />
+            ))
+          )}
+        </div>
+
+        <CreateUserDialog
+          open={isCreate}
+          onOpenChange={(open) => {
+            if (!open) closeModal()
+          }}
+        />
+
+        <EditUserDialog
+          open={isEdit && editUserId !== undefined}
           userId={editUserId}
           onOpenChange={(open) => {
             if (!open) closeModal()

@@ -88,7 +88,6 @@ export function useSignInPasskeyAutofill(options: { onSignedIn: () => void }) {
   const { onSignedIn } = options
 
   useEffect(() => {
-    if (typeof window === 'undefined') return
     if (!window.PublicKeyCredential?.isConditionalMediationAvailable?.()) return
 
     void authClient.signIn.passkey({

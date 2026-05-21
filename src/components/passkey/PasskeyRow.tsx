@@ -1,12 +1,11 @@
-import { useForm } from '@tanstack/react-form'
 import { CheckIcon, KeyRoundIcon, PencilIcon, RotateCcwIcon, Trash2Icon, XIcon } from 'lucide-react'
 import { useState } from 'react'
 import { z } from 'zod'
 import { Button } from '~/components/ui/button'
-import { Field, FieldError, FieldGroup, FieldLabel } from '~/components/ui/field'
-import { Input } from '~/components/ui/input'
+import { FieldGroup } from '~/components/ui/field'
 import { Spinner } from '~/components/ui/spinner'
 import { Tooltip, TooltipContent, TooltipTrigger } from '~/components/ui/tooltip'
+import { useAppForm } from '~/hooks/form'
 import { type Passkey, useRenamePasskey } from '~/hooks/usePasskeys'
 import { getPasskeyProvider } from '~/lib/passkeyProviders'
 
@@ -105,7 +104,7 @@ export function PasskeyRow({ passkey, onDelete }: { passkey: Passkey; onDelete: 
 
 function RenamePasskeyForm({ passkey, onDone }: { passkey: Passkey; onDone: () => void }) {
   const renamePasskey = useRenamePasskey()
-  const form = useForm({
+  const form = useAppForm({
     defaultValues: { name: passkey.name ?? '' },
     validators: { onSubmit: renameSchema },
     onSubmit: async ({ value }) => {
@@ -127,34 +126,23 @@ function RenamePasskeyForm({ passkey, onDone }: { passkey: Passkey; onDone: () =
     >
       <FieldGroup>
         <div className="flex items-start gap-2">
-          <form.Field
+          <form.AppField
             name="name"
-            children={(field) => {
-              const isInvalid = field.state.meta.isTouched && !field.state.meta.isValid
-              return (
-                <Field data-invalid={isInvalid} className="flex-1">
-                  <FieldLabel htmlFor={field.name} className="sr-only">
-                    Namn på passkey
-                  </FieldLabel>
-                  <Input
-                    id={field.name}
-                    name={field.name}
-                    value={field.state.value}
-                    onChange={(e) => field.handleChange(e.target.value)}
-                    onBlur={field.handleBlur}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Escape') onDone()
-                    }}
-                    disabled={form.state.isSubmitting}
-                    aria-invalid={isInvalid}
-                    autoFocus
-                    className="h-8"
-                  />
-                  {isInvalid && <FieldError errors={field.state.meta.errors} />}
-                </Field>
-              )
-            }}
+            children={(field) => (
+              <field.TextField
+                label="Namn på passkey"
+                srOnlyLabel
+                autoFocus
+                inputClassName="h-8"
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape') onDone()
+                }}
+              />
+            )}
           />
+          {/* Icon save button — bound SubmitButton renders a labelled button; this caller
+            needs an icon-only ghost variant, so we drop to raw <form.Subscribe>.
+            See ADR-0005 "The icon-button exception". */}
           <form.Subscribe
             selector={(state) => [state.canSubmit, state.isSubmitting] as const}
             children={([canSubmit, isSubmitting]) => (

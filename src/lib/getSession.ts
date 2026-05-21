@@ -1,5 +1,6 @@
 import { createServerFn } from '@tanstack/react-start'
 import { getRequest } from '@tanstack/react-start/server'
+import { logger } from '~/lib/logger/server'
 import { auth } from './auth'
 
 export const getSession = createServerFn().handler(async () => {
@@ -7,7 +8,7 @@ export const getSession = createServerFn().handler(async () => {
   try {
     return await auth.api.getSession({ headers: request.headers })
   } catch (error) {
-    console.error('[getSession] failed to resolve session', error)
+    logger.warn('getSession failed', { error })
     return null
   }
 })

@@ -5,11 +5,13 @@ import { createRouter } from '@tanstack/react-router'
 import { routerWithQueryClient } from '@tanstack/react-router-with-query'
 import { DefaultCatchBoundary } from './components/DefaultCatchBoundary'
 import { NotFound } from './components/NotFound'
+import { installGlobalHandlers } from './lib/logger/browser'
 import { routeTree } from './routeTree.gen'
 
 const serializer = new StandardRPCJsonSerializer()
 
 export function getRouter() {
+  installGlobalHandlers()
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: {

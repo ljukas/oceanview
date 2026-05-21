@@ -1,16 +1,20 @@
+import { environmentManager } from '@tanstack/react-query'
 import { createFileRoute, Outlet, redirect } from '@tanstack/react-router'
-import { useEffect } from 'react'
 import { AppSidebar } from '~/components/AppSidebar'
 import { SidebarInset, SidebarProvider, SidebarTrigger } from '~/components/ui/sidebar'
 import { TooltipProvider } from '~/components/ui/tooltip'
-import { saveEmail } from '~/hooks/useSavedLogin'
+import { useRealtimeSync } from '~/hooks/useRealtimeSync'
 import { getSession } from '~/lib/getSession'
+import { ensureSavedEmail } from '~/lib/savedEmailFns'
 
 export const Route = createFileRoute('/_authenticated')({
   beforeLoad: async () => {
     const session = await getSession()
     if (!session) throw redirect({ to: '/login' })
     if (session.user.deletedAt) throw redirect({ to: '/login' })
+    if (environmentManager.isServer()) {
+      await ensureSavedEmail({ data: { email: session.user.email } })
+    }
     return { user: session.user }
   },
   component: AuthenticatedLayout,
@@ -18,10 +22,7 @@ export const Route = createFileRoute('/_authenticated')({
 
 function AuthenticatedLayout() {
   const { user } = Route.useRouteContext()
-
-  useEffect(() => {
-    saveEmail(user.email)
-  }, [user.email])
+  useRealtimeSync()
 
   return (
     <TooltipProvider>

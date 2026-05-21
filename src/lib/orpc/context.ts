@@ -1,18 +1,22 @@
 import { ORPCError, os } from '@orpc/server'
 import { auth } from '~/lib/auth'
+import type { Logger } from '~/lib/logger'
 
 type Session = Awaited<ReturnType<typeof auth.api.getSession>>
 type SessionUser = NonNullable<Session>['user']
 type SessionData = NonNullable<Session>['session']
 
-export const base = os.$context<{ headers: Headers }>()
+export const base = os.$context<{ headers: Headers; log: Logger; requestId: string }>()
 
 const sessionMiddleware = base.middleware(async ({ context, next }) => {
   const data = await auth.api.getSession({ headers: context.headers })
+  const user = data?.user ?? null
+  const log = user ? context.log.child({ userId: user.id }) : context.log
   return next({
     context: {
       session: data?.session ?? null,
-      user: data?.user ?? null,
+      user,
+      log,
     },
   })
 })

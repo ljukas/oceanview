@@ -7,6 +7,8 @@ import { tanstackStartCookies } from 'better-auth/tanstack-start'
 import { isAllowlistedAdmin, normalizeEmail } from './adminAllowlist'
 import { db } from './db'
 import * as schema from './db/schema'
+import { email as emailEffect } from './effects'
+import { logger } from './logger/server'
 import * as userService from './services/user'
 
 export const auth = betterAuth({
@@ -38,13 +40,14 @@ export const auth = betterAuth({
         const normalized = normalizeEmail(email)
         const existingId = await userService.findIdByEmail(normalized)
         if (!existingId && !isAllowlistedAdmin(normalized)) {
+          logger.info('magic-link denied (unknown email)', { email: normalized })
           throw new APIError('BAD_REQUEST', {
             message:
               'Inget konto finns för denna e-postadress. Kontakta en administratör för att läggas till.',
           })
         }
-        // biome-ignore lint/suspicious/noConsole: intentional dev log until Resend is wired
-        console.log(`[magic-link] ${email}: ${url}`)
+        await emailEffect.sendMagicLink({ to: email, url })
+        logger.info('magic-link sent', { email: normalized, userId: existingId ?? null })
       },
     }),
     admin(),
@@ -67,6 +70,21 @@ export const auth = betterAuth({
           if (isAllowlistedAdmin(user.email)) {
             return { data: { ...user, role: 'admin' } }
           }
+        },
+        after: async (user) => {
+          logger.info('auth user created', { userId: user.id, role: user.role })
+        },
+      },
+      update: {
+        after: async (user) => {
+          logger.info('auth user updated', { userId: user.id })
+        },
+      },
+    },
+    session: {
+      create: {
+        after: async (session) => {
+          logger.info('auth session created', { userId: session.userId })
         },
       },
     },
