@@ -16,16 +16,17 @@ type Props = {
   email: string
   onSent: (email: string) => void
   onSwitchUser: () => void
+  callbackURL: string
 }
 
-export function WelcomeBackCard({ email, onSent, onSwitchUser }: Props) {
+export function WelcomeBackCard({ email, onSent, onSwitchUser, callbackURL }: Props) {
   const [isSending, setIsSending] = useState(false)
 
   async function sendMagicLink() {
     setIsSending(true)
     const { error } = await authClient.signIn.magicLink({
       email,
-      callbackURL: '/?passkey=setup',
+      callbackURL,
     })
     setIsSending(false)
     if (error) {

@@ -7,10 +7,25 @@ import { useSignInPasskeyAutofill } from '~/hooks/usePasskeys'
 import { getSession } from '~/lib/getSession'
 import { clearSavedEmail, getSavedEmail } from '~/lib/savedEmailFns'
 
+function sanitizeRedirect(raw: unknown): string | undefined {
+  if (typeof raw !== 'string') return undefined
+  return /^\/(?!\/)/.test(raw) ? raw : undefined
+}
+
+function buildCallbackURL(redirectPath: string | undefined): string {
+  const base = redirectPath ?? '/'
+  const separator = base.includes('?') ? '&' : '?'
+  return `${base}${separator}passkey=setup`
+}
+
 export const Route = createFileRoute('/login')({
-  beforeLoad: async () => {
+  validateSearch: (search: Record<string, unknown>): { redirect?: string } => {
+    const safe = sanitizeRedirect(search.redirect)
+    return safe ? { redirect: safe } : {}
+  },
+  beforeLoad: async ({ search }) => {
     const session = await getSession()
-    if (session) throw redirect({ to: '/' })
+    if (session) throw redirect({ to: search.redirect ?? '/' })
   },
   loader: async () => ({ savedEmail: await getSavedEmail() }),
   component: Login,
@@ -18,15 +33,17 @@ export const Route = createFileRoute('/login')({
 
 function Login() {
   const navigate = useNavigate()
+  const { redirect: redirectPath } = Route.useSearch()
   const { savedEmail: initialSavedEmail } = Route.useLoaderData()
   const [sentTo, setSentTo] = useState<string | null>(null)
   const [useOther, setUseOther] = useState(false)
 
   const savedEmail = useOther ? null : initialSavedEmail
+  const callbackURL = buildCallbackURL(redirectPath)
 
   useSignInPasskeyAutofill({
     onSignedIn: () => {
-      navigate({ to: '/' })
+      navigate({ to: redirectPath ?? '/' })
     },
   })
 
@@ -42,13 +59,14 @@ function Login() {
       ) : savedEmail ? (
         <WelcomeBackCard
           email={savedEmail}
+          callbackURL={callbackURL}
           onSent={setSentTo}
           onSwitchUser={() => {
             void switchToOtherEmail()
           }}
         />
       ) : (
-        <LoginFormCard onSent={setSentTo} />
+        <LoginFormCard onSent={setSentTo} callbackURL={callbackURL} />
       )}
       <input
         type="text"

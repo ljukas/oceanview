@@ -8,10 +8,11 @@ import { getSession } from '~/lib/getSession'
 import { ensureSavedEmail } from '~/lib/savedEmailFns'
 
 export const Route = createFileRoute('/_authenticated')({
-  beforeLoad: async () => {
+  beforeLoad: async ({ location }) => {
     const session = await getSession()
-    if (!session) throw redirect({ to: '/login' })
-    if (session.user.deletedAt) throw redirect({ to: '/login' })
+    if (!session || session.user.deletedAt) {
+      throw redirect({ to: '/login', search: { redirect: location.href } })
+    }
     if (environmentManager.isServer()) {
       await ensureSavedEmail({ data: { email: session.user.email } })
     }
