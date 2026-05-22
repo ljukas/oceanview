@@ -14,6 +14,9 @@ function dispatch(queryClient: QueryClient, event: RealtimeEvent) {
     case 'season.changed':
       void queryClient.invalidateQueries({ queryKey: orpc.season.key() })
       return
+    case 'presence.changed':
+      void queryClient.invalidateQueries({ queryKey: orpc.presence.key() })
+      return
   }
 }
 
