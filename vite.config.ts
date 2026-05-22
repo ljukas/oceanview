@@ -34,7 +34,28 @@ export default defineConfig({
           srcDirectory: 'src',
         }),
         viteReact(),
-        nitro(),
+        // `@better-auth/passkey` → `@simplewebauthn/server` → `@peculiar/x509`
+        // uses tsyringe decorators that call `Reflect.getMetadata` at module-
+        // load time. The polyfill lives at the top of x509's ESM build as a
+        // bare `import 'reflect-metadata'`, which Nitro's Rolldown pipeline
+        // tree-shakes out by default — so SSR crashes with
+        // `TypeError: Reflect.getMetadata is not a function` on the first page
+        // request in prod. Tell Rolldown to keep bare side-effect imports of
+        // reflect-metadata (and re-state Nitro's own polyfill defaults so we
+        // don't accidentally drop those either).
+        // See https://github.com/better-auth/better-auth/issues/7463.
+        nitro({
+          rollupConfig: {
+            treeshake: {
+              moduleSideEffects: (id: string) => {
+                if (id.includes('reflect-metadata')) return true
+                if (id.includes('unenv/polyfill/')) return true
+                if (id.includes('node-fetch-native/polyfill')) return true
+                return false
+              },
+            },
+          },
+        }),
       ],
   test: {
     environment: 'node',
