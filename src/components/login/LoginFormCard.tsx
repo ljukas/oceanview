@@ -16,16 +16,16 @@ const loginSchema = z.object({
   email: z.email(),
 })
 
-type Props = { onSent: (email: string) => void }
+type Props = { onSent: (email: string) => void; callbackURL: string }
 
-export function LoginFormCard({ onSent }: Props) {
+export function LoginFormCard({ onSent, callbackURL }: Props) {
   const form = useAppForm({
     defaultValues: { email: '' },
     validators: { onSubmit: loginSchema },
     onSubmit: async ({ value }) => {
       const { error } = await authClient.signIn.magicLink({
         email: value.email,
-        callbackURL: '/?passkey=setup',
+        callbackURL,
       })
       if (error) {
         toast.error(error.message ?? 'Kunde inte skicka inloggningslänken')
