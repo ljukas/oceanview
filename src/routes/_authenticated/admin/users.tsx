@@ -10,6 +10,7 @@ import {
 } from 'lucide-react'
 import { formatPhoneNumberIntl } from 'react-phone-number-input'
 import { z } from 'zod'
+import { Avatar, AvatarBadge, AvatarFallback } from '~/components/ui/avatar'
 import { Button } from '~/components/ui/button'
 import {
   Table,
@@ -27,6 +28,7 @@ import { EditUserDialog } from '~/components/user/EditUserDialog'
 import { RestoreUserDialog } from '~/components/user/RestoreUserDialog'
 import { UserCard } from '~/components/user/UserCard'
 import { orpc } from '~/lib/orpc/client'
+import { initials } from '~/lib/utils'
 import { seo } from '~/utils/seo'
 
 const usersSearchSchema = z.object({
@@ -49,14 +51,17 @@ export const Route = createFileRoute('/_authenticated/admin/users')({
     userId: search.userId,
   }),
   loader: async ({ context: { queryClient }, deps }) => {
-    await queryClient.ensureQueryData(
-      orpc.user.list.queryOptions({ input: { filter: deps.filter } }),
-    )
-    if ((deps.dialog === 'edit' || deps.dialog === 'delete') && deps.userId) {
-      await queryClient.ensureQueryData(
-        orpc.user.getById.queryOptions({ input: { id: deps.userId } }),
-      )
-    }
+    await Promise.all([
+      queryClient.ensureQueryData(orpc.user.list.queryOptions({ input: { filter: deps.filter } })),
+      queryClient.ensureQueryData(orpc.presence.listOnline.queryOptions()),
+      ...((deps.dialog === 'edit' || deps.dialog === 'delete') && deps.userId
+        ? [
+            queryClient.ensureQueryData(
+              orpc.user.getById.queryOptions({ input: { id: deps.userId } }),
+            ),
+          ]
+        : []),
+    ])
   },
   component: AdminUsers,
 })
@@ -71,6 +76,8 @@ function AdminUsers() {
   const { user: currentUser } = Route.useRouteContext()
   const filter = Route.useSearch({ select: (s) => s.filter ?? 'active' })
   const { data: users } = useSuspenseQuery(orpc.user.list.queryOptions({ input: { filter } }))
+  const { data: onlineIds } = useSuspenseQuery(orpc.presence.listOnline.queryOptions())
+  const onlineSet = new Set(onlineIds)
   const navigate = Route.useNavigate()
   const matchRoute = useMatchRoute()
   const userId = Route.useSearch({ select: (s) => s.userId })
@@ -166,7 +173,23 @@ function AdminUsers() {
                   const isAdmin = u.role === 'admin'
                   return (
                     <TableRow key={u.id}>
-                      <TableCell className="font-medium">{u.name || '—'}</TableCell>
+                      <TableCell className="font-medium">
+                        <div className="flex items-center gap-3">
+                          <Avatar className="size-9 shrink-0">
+                            <AvatarFallback>{initials(u.name)}</AvatarFallback>
+                            {onlineSet.has(u.id) && (
+                              <AvatarBadge className="size-3 bg-success ring-2">
+                                <span
+                                  aria-hidden
+                                  className="absolute inset-0 animate-ping rounded-full bg-success opacity-75"
+                                />
+                                <span className="sr-only">Ansluten</span>
+                              </AvatarBadge>
+                            )}
+                          </Avatar>
+                          <span>{u.name || '—'}</span>
+                        </div>
+                      </TableCell>
                       <TableCell className="text-muted-foreground">{u.email}</TableCell>
                       <TableCell className="text-muted-foreground tabular-nums">
                         {showDeleted
@@ -269,6 +292,7 @@ function AdminUsers() {
                 key={u.id}
                 user={u}
                 isSelf={u.id === currentUser.id}
+                isOnline={onlineSet.has(u.id)}
                 showDeleted={showDeleted}
                 onEdit={() => navigate({ to: '.', search: { dialog: 'edit', userId: u.id } })}
                 onDelete={() => navigate({ to: '.', search: { dialog: 'delete', userId: u.id } })}

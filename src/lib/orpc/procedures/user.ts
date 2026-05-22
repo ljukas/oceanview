@@ -3,8 +3,15 @@ import { z } from 'zod'
 import { auth } from '~/lib/auth'
 import { realtime } from '~/lib/effects'
 import { adminProcedure, protectedProcedure } from '~/lib/orpc/context'
+import type { SharePartRow } from '~/lib/services/share'
+import * as shareService from '~/lib/services/share'
 import * as userService from '~/lib/services/user'
 import { UserDomainError } from '~/lib/services/user'
+
+function surnameKey(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean)
+  return parts.at(-1) ?? name
+}
 
 const roleSchema = z.enum(['user', 'admin'])
 
@@ -55,6 +62,29 @@ export const userRouter = {
     .handler(({ input }) =>
       input.filter === 'deleted' ? userService.listDeleted() : userService.listAll(),
     ),
+
+  listContacts: protectedProcedure.handler(async () => {
+    const [users, partsWithOwner] = await Promise.all([
+      userService.listAll(),
+      shareService.listPartsWithCurrentOwner(),
+    ])
+
+    const byUser = new Map<string, Array<SharePartRow>>()
+    for (const p of partsWithOwner) {
+      if (!p.currentUserId) continue
+      const list = byUser.get(p.currentUserId) ?? []
+      list.push({ id: p.id, shareCode: p.shareCode, partNumber: p.partNumber })
+      byUser.set(p.currentUserId, list)
+    }
+
+    return users
+      .map((u) => ({ ...u, shares: byUser.get(u.id) ?? [] }))
+      .sort(
+        (a, b) =>
+          surnameKey(a.name).localeCompare(surnameKey(b.name), 'sv-SE') ||
+          a.name.localeCompare(b.name, 'sv-SE'),
+      )
+  }),
 
   getById: adminProcedure.input(z.object({ id: z.uuid() })).handler(async ({ input }) => {
     const target = await userService.findActiveById(input.id)

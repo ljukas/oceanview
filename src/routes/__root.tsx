@@ -5,6 +5,7 @@ import type { QueryClient } from '@tanstack/react-query'
 import { ReactQueryDevtoolsPanel } from '@tanstack/react-query-devtools'
 import { createRootRouteWithContext, HeadContent, Scripts } from '@tanstack/react-router'
 import { TanStackRouterDevtoolsPanel } from '@tanstack/react-router-devtools'
+import { Analytics } from '@vercel/analytics/react'
 import type * as React from 'react'
 import { DefaultCatchBoundary } from '~/components/DefaultCatchBoundary'
 import { NotFound } from '~/components/NotFound'
@@ -69,6 +70,7 @@ function RootDocument({ children }: { children: React.ReactNode }) {
             { name: 'TanStack Query', render: <ReactQueryDevtoolsPanel /> },
           ]}
         />
+        <Analytics />
         <Scripts />
       </body>
     </html>
