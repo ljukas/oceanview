@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { toast } from 'sonner'
 import { authClient } from '~/lib/authClient'
 
@@ -103,4 +103,24 @@ export function useSignInPasskeyAutofill(options: { onSignedIn: () => void }) {
       },
     })
   }, [onSignedIn])
+}
+
+export function useHandlePasskeySetup(options: { enabled: boolean; onHandled: () => void }) {
+  const { enabled, onHandled } = options
+  const handled = useRef(false)
+  const passkeysQuery = useListPasskeys()
+  const addPasskey = useAddPasskey({
+    onAdded: () => toast.success('Passkey kopplad. Nästa gång loggar du in direkt.'),
+  })
+
+  useEffect(() => {
+    if (!enabled || handled.current) return
+    if (passkeysQuery.isLoading) return
+    handled.current = true
+
+    onHandled()
+
+    if ((passkeysQuery.data ?? []).length > 0) return
+    addPasskey.mutate()
+  }, [enabled, passkeysQuery.isLoading, passkeysQuery.data, onHandled, addPasskey])
 }
