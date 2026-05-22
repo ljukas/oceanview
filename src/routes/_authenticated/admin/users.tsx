@@ -52,9 +52,7 @@ export const Route = createFileRoute('/_authenticated/admin/users')({
   }),
   loader: async ({ context: { queryClient }, deps }) => {
     await Promise.all([
-      queryClient.ensureQueryData(
-        orpc.user.list.queryOptions({ input: { filter: deps.filter } }),
-      ),
+      queryClient.ensureQueryData(orpc.user.list.queryOptions({ input: { filter: deps.filter } })),
       queryClient.ensureQueryData(orpc.presence.listOnline.queryOptions()),
       ...((deps.dialog === 'edit' || deps.dialog === 'delete') && deps.userId
         ? [

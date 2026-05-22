@@ -46,7 +46,7 @@ PhoneInput.displayName = 'PhoneInput'
 
 const InputComponent = React.forwardRef<HTMLInputElement, React.ComponentProps<'input'>>(
   ({ className, ...props }, ref) => (
-    <Input className={cn('rounded-e-lg rounded-s-none', className)} {...props} ref={ref} />
+    <Input className={cn('rounded-s-none rounded-e-lg', className)} {...props} ref={ref} />
   ),
 )
 InputComponent.displayName = 'InputComponent'
@@ -158,7 +158,7 @@ const CountrySelectOption = ({
     <CommandItem className="gap-2" onSelect={handleSelect}>
       <FlagComponent country={country} countryName={countryName} />
       <span className="flex-1 text-sm">{countryName}</span>
-      <span className="text-sm text-foreground/50">
+      <span className="text-foreground/50 text-sm">
         {`+${RPNInput.getCountryCallingCode(country)}`}
       </span>
       <CheckIcon
