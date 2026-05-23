@@ -1,5 +1,5 @@
 import { MailIcon, PhoneIcon, SailboatIcon, StarIcon } from 'lucide-react'
-import { Avatar, AvatarBadge, AvatarFallback } from '~/components/ui/avatar'
+import { Avatar, AvatarBadge, AvatarFallback, AvatarImage } from '~/components/ui/avatar'
 import { Badge } from '~/components/ui/badge'
 import { Button } from '~/components/ui/button'
 import type { SharePartRow } from '~/lib/services/share'
@@ -22,6 +22,15 @@ export function ContactCard({ contact, isSelf, isOnline }: Props) {
   return (
     <article className="flex w-full flex-col items-center gap-5 rounded-lg border bg-card p-6 text-center sm:w-80">
       <Avatar className="size-16 shadow-sm">
+        {contact.image ? (
+          <AvatarImage
+            src={contact.image}
+            alt={contact.name}
+            width={64}
+            height={64}
+            blurhash={contact.imageBlurhash}
+          />
+        ) : null}
         <AvatarFallback className="font-medium text-xl">{initials(contact.name)}</AvatarFallback>
         {isOnline && (
           <AvatarBadge className="size-4 bg-success ring-[3px]">

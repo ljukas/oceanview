@@ -1,6 +1,6 @@
 import { PencilIcon, RotateCcwIcon, SailboatIcon, StarIcon, Trash2Icon } from 'lucide-react'
 import { formatPhoneNumberIntl } from 'react-phone-number-input'
-import { Avatar, AvatarBadge, AvatarFallback } from '~/components/ui/avatar'
+import { Avatar, AvatarBadge, AvatarFallback, AvatarImage } from '~/components/ui/avatar'
 import { Button } from '~/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '~/components/ui/tooltip'
 import type { UserRow } from '~/lib/services/user'
@@ -38,6 +38,15 @@ export function UserCard({
       <div className="flex items-center justify-between gap-3">
         <div className="flex min-w-0 flex-1 items-center gap-3">
           <Avatar className="size-12 shrink-0 shadow-sm">
+            {user.image ? (
+              <AvatarImage
+                src={user.image}
+                alt={user.name}
+                width={48}
+                height={48}
+                blurhash={user.imageBlurhash}
+              />
+            ) : null}
             <AvatarFallback className="font-medium">{initials(user.name)}</AvatarFallback>
             {isOnline && (
               <AvatarBadge className="size-3.5 bg-success ring-[3px]">

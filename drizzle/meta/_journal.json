@@ -22,6 +22,27 @@
       "when": 1779270375026,
       "tag": "0002_seed_share_parts",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1779458558760,
+      "tag": "0003_add_file_table",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1779557224960,
+      "tag": "0004_add_blurhash_to_file",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1779558547061,
+      "tag": "0005_add_user_image_blurhash",
+      "breakpoints": true
     }
   ]
 }

@@ -1,0 +1,83 @@
+import { randomUUID } from 'node:crypto'
+import { ORPCError } from '@orpc/server'
+import { z } from 'zod'
+import { auth } from '~/lib/auth'
+import { queue, realtime, storage } from '~/lib/effects'
+import { protectedProcedure } from '~/lib/orpc/context'
+import * as fileService from '~/lib/services/file'
+
+const AVATAR_MAX_BYTES = 5_000_000
+const AVATAR_MIME = ['image/jpeg', 'image/png', 'image/webp', 'image/avif'] as const
+const AVATAR_EXT: Record<(typeof AVATAR_MIME)[number], string> = {
+  'image/jpeg': 'jpg',
+  'image/png': 'png',
+  'image/webp': 'webp',
+  'image/avif': 'avif',
+}
+
+export const imageRouter = {
+  mintAvatarUpload: protectedProcedure
+    .input(
+      z.object({
+        contentType: z.enum(AVATAR_MIME),
+        sizeBytes: z.number().int().positive().max(AVATAR_MAX_BYTES),
+        name: z.string().min(1).max(255),
+      }),
+    )
+    .handler(async ({ input, context }) => {
+      return storage.mintUploadToken({
+        access: 'public',
+        pathname: `avatars/${context.user.id}/${randomUUID()}.${AVATAR_EXT[input.contentType]}`,
+        contentType: input.contentType,
+        maxBytes: AVATAR_MAX_BYTES,
+      })
+    }),
+
+  confirmAvatarUpload: protectedProcedure
+    .input(
+      z.object({
+        pathname: z.string().min(1).max(512),
+        name: z.string().min(1).max(255),
+        sizeBytes: z.number().int().positive().max(AVATAR_MAX_BYTES),
+      }),
+    )
+    .handler(async ({ input, context }) => {
+      if (!input.pathname.includes(`avatars/${context.user.id}/`)) {
+        throw new ORPCError('FORBIDDEN', { message: 'Profilbilden tillhör inte dig' })
+      }
+      const blob = await storage.head('public', input.pathname)
+      if (!blob) {
+        throw new ORPCError('NOT_FOUND', { message: 'Filen hittades inte i lagringen' })
+      }
+
+      const { newRow, previousPathnames } = await fileService.replaceAvatarForUser({
+        userId: context.user.id,
+        newRow: {
+          pathname: input.pathname,
+          name: input.name,
+          mime: blob.contentType,
+          sizeBytes: input.sizeBytes,
+        },
+      })
+      await Promise.all(
+        previousPathnames.map((p) =>
+          storage.delete('public', p).catch((error) => {
+            context.log.warn('failed to delete previous avatar blob', { pathname: p, error })
+          }),
+        ),
+      )
+      await queue.publish('blurhash', { fileId: newRow.id }).catch((error) => {
+        context.log.warn('failed to enqueue avatar blurhash', { fileId: newRow.id, error })
+      })
+      await auth.api.updateUser({
+        body: { image: blob.url },
+        headers: context.headers,
+      })
+      context.log.info('avatar uploaded', {
+        pathname: input.pathname,
+        replacedCount: previousPathnames.length,
+      })
+      await realtime.publish({ kind: 'user.changed', ids: [context.user.id] })
+      return { imageUrl: blob.url }
+    }),
+}
