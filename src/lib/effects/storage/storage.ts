@@ -37,8 +37,12 @@ export interface StorageEffects {
 
   delete(access: 'public' | 'private', pathname: string): Promise<void>
 
-  /** Signed time-limited download URL for a private-store object. */
-  getReadUrl(pathname: string, ttlSeconds: number): Promise<string>
+  /**
+   * Download URL for a stored object. For `private`, returns a signed,
+   * time-limited URL. For `public`, returns the canonical public URL
+   * (`ttlSeconds` is ignored — public URLs don't expire).
+   */
+  getReadUrl(access: 'public' | 'private', pathname: string, ttlSeconds: number): Promise<string>
 }
 
 function pickAdapter(): StorageEffects {

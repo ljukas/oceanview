@@ -53,7 +53,7 @@ export default definePlugin((nitro) => {
       return
     }
 
-    const url = await storage.getReadUrl(row.pathname, READ_URL_TTL_SECONDS)
+    const url = await storage.getReadUrl(row.access, row.pathname, READ_URL_TTL_SECONDS)
     const res = await fetch(url)
     if (!res.ok) {
       throw new Error(`blurhash: download failed ${res.status}`)

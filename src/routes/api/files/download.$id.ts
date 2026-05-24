@@ -19,7 +19,7 @@ export const Route = createFileRoute('/api/files/download/$id')({
           return new Response('Not Found', { status: 404 })
         }
 
-        const url = await storage.getReadUrl(row.pathname, 60)
+        const url = await storage.getReadUrl(row.access, row.pathname, 60)
         log.info('document download', { fileId: row.id, userId: session.user.id })
         return new Response(null, {
           status: 302,

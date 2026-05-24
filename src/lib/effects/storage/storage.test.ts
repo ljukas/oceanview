@@ -36,8 +36,14 @@ test('delete resolves without throwing', async () => {
   await expect(storage.delete('private', 'documents/test.pdf')).resolves.toBeUndefined()
 })
 
-test('getReadUrl returns a string URL', async () => {
-  const url = await storage.getReadUrl('documents/test.pdf', 60)
+test('getReadUrl returns a string URL for private', async () => {
+  const url = await storage.getReadUrl('private', 'documents/test.pdf', 60)
+  expect(typeof url).toBe('string')
+  expect(url.length).toBeGreaterThan(0)
+})
+
+test('getReadUrl returns a string URL for public', async () => {
+  const url = await storage.getReadUrl('public', 'avatars/user-1/abc.png', 60)
   expect(typeof url).toBe('string')
   expect(url.length).toBeGreaterThan(0)
 })

@@ -68,9 +68,13 @@ export const vercelBlob: StorageEffects = {
     await del(fullPath(pathname), { token: tokenFor(access) })
   },
 
-  async getReadUrl(pathname, ttlSeconds) {
-    const validUntil = Date.now() + ttlSeconds * 1000
+  async getReadUrl(access, pathname, ttlSeconds) {
     const prefixed = fullPath(pathname)
+    if (access === 'public') {
+      const result = await head(prefixed, { token: tokenFor('public') })
+      return result.url
+    }
+    const validUntil = Date.now() + ttlSeconds * 1000
     const signedToken = await issueSignedToken({
       token: tokenFor('private'),
       pathname: prefixed,
