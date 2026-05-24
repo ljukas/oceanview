@@ -3,6 +3,7 @@ import { definePlugin } from 'nitro'
 import { db } from '~/lib/db'
 import { user } from '~/lib/db/schema'
 import { storage } from '~/lib/effects'
+import type { QueuePayloadMap } from '~/lib/effects/queue/queue'
 import { generateBlurhash, SHARP_DECODABLE_MIME_SET } from '~/lib/image/blurhash'
 import { logger } from '~/lib/logger/server'
 import * as fileService from '~/lib/services/file'
@@ -13,10 +14,11 @@ const READ_URL_TTL_SECONDS = 60
  * Vercel Queues consumer for the `blurhash` topic. Wired by Nitro's
  * vercel preset via `vercel.queues.triggers` in vite.config.ts.
  *
- * The producer (oRPC procedures) only sends `{ fileId }`. We re-fetch the
- * row and mint a fresh signed URL inside the consumer so:
- *   1. an expired/leaked URL from the message body is never trusted,
- *   2. a soft-delete that races the job is a clean no-op.
+ * Producers carry the `kind` of the file in the message so downstream
+ * side-effects (mirroring onto `user.image_blurhash`, etc.) are explicit
+ * at publish time rather than inferred from the file row. We still
+ * re-fetch the row to mint a fresh signed URL — so an expired URL is
+ * never trusted and a soft-delete that races the job is a clean no-op.
  *
  * Sharp + blurhash are pulled in via a dynamic import of
  * `~/lib/image/blurhash` so the heavy native module only loads after the
@@ -27,9 +29,11 @@ export default definePlugin((nitro) => {
   nitro.hooks.hook('vercel:queue', async ({ message, metadata }) => {
     if (metadata.topicName !== 'blurhash') return
 
-    const { fileId } = message as { fileId: string }
+    const msg = message as QueuePayloadMap['blurhash']
+    const { fileId } = msg
     const log = logger.child({
       topic: 'blurhash',
+      kind: msg.kind,
       fileId,
       messageId: metadata.messageId,
       deliveryCount: metadata.deliveryCount,
@@ -68,13 +72,17 @@ export default definePlugin((nitro) => {
     await fileService.setBlurhash({ fileId, blurhash: hash })
     log.info('blurhash: stored', { length: hash.length })
 
-    // Avatars also mirror their blurhash onto the user row so it flows
-    // through every existing user-returning oRPC procedure without a
-    // join. Documents skip this step — DocumentList reads file.blurhash
-    // directly.
-    if (row.access === 'public' && row.folder === 'avatars') {
-      await db.update(user).set({ imageBlurhash: hash }).where(eq(user.id, row.ownerId))
-      log.info('blurhash: denormalized to user.imageBlurhash', { userId: row.ownerId })
+    if (msg.kind === 'avatar') {
+      const updated = await db
+        .update(user)
+        .set({ imageBlurhash: hash })
+        .where(eq(user.id, msg.userId))
+        .returning({ id: user.id })
+      if (updated.length > 0) {
+        log.info('blurhash: denormalized to user.imageBlurhash', { userId: msg.userId })
+      } else {
+        log.warn('blurhash: target user gone, skipped denormalization', { userId: msg.userId })
+      }
     }
   })
 })

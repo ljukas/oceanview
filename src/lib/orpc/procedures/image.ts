@@ -66,9 +66,11 @@ export const imageRouter = {
           }),
         ),
       )
-      await queue.publish('blurhash', { fileId: newRow.id }).catch((error) => {
-        context.log.warn('failed to enqueue avatar blurhash', { fileId: newRow.id, error })
-      })
+      await queue
+        .publish('blurhash', { fileId: newRow.id, kind: 'avatar', userId: context.user.id })
+        .catch((error) => {
+          context.log.warn('failed to enqueue avatar blurhash', { fileId: newRow.id, error })
+        })
       await auth.api.updateUser({
         body: { image: blob.url },
         headers: context.headers,

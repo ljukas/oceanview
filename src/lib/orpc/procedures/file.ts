@@ -88,9 +88,11 @@ export const fileRouter = {
       })
       context.log.info('document uploaded', { fileId: inserted.id, pathname: input.pathname })
       if (SHARP_DECODABLE_MIME_SET.has(inserted.mime)) {
-        await queue.publish('blurhash', { fileId: inserted.id }).catch((error) => {
-          context.log.warn('failed to enqueue document blurhash', { fileId: inserted.id, error })
-        })
+        await queue
+          .publish('blurhash', { fileId: inserted.id, kind: 'document' })
+          .catch((error) => {
+            context.log.warn('failed to enqueue document blurhash', { fileId: inserted.id, error })
+          })
       }
       await realtime.publish({ kind: 'file.changed', ids: [inserted.id] })
       return { id: inserted.id }

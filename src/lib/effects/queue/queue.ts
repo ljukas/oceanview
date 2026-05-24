@@ -14,8 +14,16 @@ import { vercelQueue } from './adapters/vercelQueue'
  */
 export type QueueTopic = 'blurhash'
 
+/**
+ * Per-topic payload shape. The blurhash payload is a discriminated union
+ * over `kind` so the consumer can dispatch downstream side effects (e.g.
+ * mirroring onto `user.image_blurhash`) without introspecting the file row
+ * — job semantics live in the message, not in storage layout.
+ */
 export type QueuePayloadMap = {
-  blurhash: { fileId: string }
+  blurhash:
+    | { fileId: string; kind: 'avatar'; userId: string }
+    | { fileId: string; kind: 'document' }
 }
 
 export interface QueueEffects {
