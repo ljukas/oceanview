@@ -4,6 +4,7 @@ import { tanstackStart } from '@tanstack/react-start/plugin/vite'
 import viteReact from '@vitejs/plugin-react'
 import { nitro } from 'nitro/vite'
 import { defineConfig } from 'vitest/config'
+import { IMAGE_SIZES } from './src/lib/image/sizes'
 
 const isTest = process.env.VITEST === 'true'
 
@@ -57,8 +58,12 @@ export default defineConfig({
           vercel: {
             config: {
               version: 3,
+              // `sizes` is the optimizer's allow-list — any `?w=` not in the
+              // array is rejected with INVALID_IMAGE_OPTIMIZE_REQUEST. Source
+              // of truth is `src/lib/image/sizes.ts` (shared with
+              // `snapBreakpoints`, which components use to build srcsets).
               images: {
-                sizes: [32, 48, 64, 96, 128, 192, 256, 384, 512],
+                sizes: [...IMAGE_SIZES],
                 domains: [],
                 remotePatterns: [
                   { protocol: 'https', hostname: '*.public.blob.vercel-storage.com' },

@@ -4,6 +4,7 @@ import { Avatar as AvatarPrimitive } from 'radix-ui'
 import type * as React from 'react'
 import { useMemo, useState } from 'react'
 
+import { snapBreakpoints } from '~/lib/image/sizes'
 import { transformer } from '~/lib/image/transformer'
 import { cn } from '~/lib/utils'
 
@@ -73,6 +74,7 @@ function AvatarImage({
         width={width}
         height={height}
         layout="constrained"
+        breakpoints={snapBreakpoints(width)}
         transformer={transformer}
         onError={() => setHasError(true)}
         className={cn('absolute inset-0 size-full rounded-full object-cover', className)}
