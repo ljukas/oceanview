@@ -36,6 +36,7 @@ Load on demand, not eagerly. The `pnpm dlx @tanstack/intent` block at the bottom
 | Adding oRPC procedures, middleware, error handling | https://orpc.dev/docs |
 | Adding services, domain rules, error mapping | `docs/adr/0002-service-domain-architecture.md` |
 | Adding side effects (email, storage, audit, …) | `docs/adr/0001-side-effects-architecture.md` |
+| Adding a queue topic, worker, broker config, or background-job handler | `docs/adr/0007-background-job-queue-architecture.md` |
 | Adding realtime sync (publish events, new event kinds, SSE/subscriber behaviour) | `docs/adr/0004-realtime-sync-architecture.md` |
 | Adding logging — significant events, error sinks, request-scoped context | `docs/adr/0003-logging-architecture.md` |
 | Wiring oRPC into Better Auth | https://orpc.dev/docs/integrations/better-auth |
@@ -218,11 +219,17 @@ Never hand-edit `betterAuth.ts`.
 | `pnpm vercel-build` | Run pending migrations, then build + typecheck (CI/deploy only) |
 | `pnpm preview` | Preview built bundle |
 | `pnpm start` | Run production server (`.output/server/index.mjs`) |
-| `pnpm db:up` | Start the Neon Local on :5432 (creates ephemeral branch off prod). Used by both the dev app and tests — tests carve out their own `test_w*` schemas so the dev `public` schema is untouched |
-| `pnpm db:down` | Stop docker services (deletes their ephemeral branches) |
+| `pnpm db:up` | Start the Neon Local on :5432. Each local git branch gets its own persistent Neon branch (metadata lives in `./.neon_local/`, gitignored), so `down`/`up` reuses the same branch instead of recreating one. Used by both the dev app and tests — tests carve out their own `test_w*` schemas so the dev `public` schema is untouched |
+| `pnpm db:down` | Stop the `db` service. Leaves the queue running; preserves the Neon branch (delete `./.neon_local/` to force a fresh branch on next `up`) |
 | `pnpm db:generate` | Generate a new migration from schema changes |
 | `pnpm db:migrate` | Apply pending migrations to the active `DATABASE_URL` |
 | `pnpm db:studio` | Drizzle Studio UI |
+| `pnpm queue:up` | Start the Redis broker for the local blurhash queue on :6379 (`compose.yaml` service `queue`). Only needed when `REDIS_URL` is set in `.env` |
+| `pnpm queue:down` | Stop just the queue container (leaves Neon Local alone) |
+| `pnpm queue:studio` | Open Bull Studio on http://localhost:4000 to inspect BullMQ queues. Profile-gated docker service (`emirce/bullstudio`); needs `pnpm queue:up` first. Stop with `pnpm dev:down` or `docker compose stop queue-studio` |
+| `pnpm dev:up` | One-shot for the whole dev stack: brings up both `db` and `queue` services |
+| `pnpm dev:down` | One-shot for the whole dev stack: stops both `db` and `queue` services |
+| `pnpm dev:worker` | Run the local BullMQ worker (`scripts/devBlurhashWorker.ts`) that consumes the `blurhash` topic and calls the same handler as the prod Nitro plugin |
 | `pnpm test` | Vitest once. Every test gets its own `test_w<pool>_<n>` schema: CREATE SCHEMA + run all migrations + SET search_path in `beforeEach`, DROP SCHEMA in `afterEach`. Connects to :5432 via Neon Local's session-pool URL (`neondb_session`) so the per-test SET persists across queries and transactions; the dev app uses the same :5432 service via the default `neondb` URL |
 | `pnpm test:watch` | Vitest watch mode (same DB rules as `pnpm test`) |
 | `pnpm format` | Biome formatter only (writes) |
@@ -313,7 +320,7 @@ WebFetch these before guessing APIs. They beat the model's memorized snapshots.
   - **Directory roles**: `src/lib/` = wired/stateful modules (auth, db, orpc, services); `src/hooks/` = React hooks; `src/utils/` = pure helper functions; `src/data/` = static data.
 - **File blobs in Vercel Blob, metadata in Postgres.** Uploads go browser → Blob directly via `@vercel/blob/client` `upload()` + a `handleUploadUrl` route — bytes never traverse a Vercel Function. Two stores: `oceanview-public` (avatars) and `oceanview-private` (documents). All file-related code goes through the `src/lib/effects/storage/` seam — `@vercel/blob` is only imported from `adapters/vercelBlob.ts`. See ADR-0006.
 - **`vercel env pull` is dangerous**: it writes prod `DATABASE_URL` into `.env.local`, which Vite + Drizzle prefer over `.env`. If you must run it, immediately delete the `DATABASE_URL*` lines from `.env.local` — otherwise `pnpm db:migrate` would migrate **production**.
-- **Migrations are explicit locally.** `pnpm build` does not migrate. `vercel-build` does, on deploy. Run `pnpm db:migrate` yourself against the local ephemeral branch.
+- **Migrations are explicit locally.** `pnpm build` does not migrate. `vercel-build` does, on deploy. Run `pnpm db:migrate` yourself against the local Neon branch.
 - **Conventional Commits** for agent commits: `<type>(<scope>): <subject>` ≤ 72 chars, imperative mood, *why* in the body. Types: `feat`, `fix`, `chore`, `docs`, `refactor`, `test`, `build`, `ci`, `perf`, `style`, `revert`.
 - **Lock TanStack Start to a specific RC version** in `package.json` until 1.0 ships.
 - **Free tier first.** Before adding any third-party service, confirm a free tier covers ~20 users.
@@ -342,6 +349,7 @@ One line each. The reasoning lives in `git log CLAUDE.md` if anyone needs it.
 - **Domain rules live in services; service files live in per-entity folders** (decided 2026-05-21). Services throw `<Entity>DomainError` (English `code` union); procedures map to Swedish `ORPCError`. `src/lib/services/<entity>/` with `<entity>.ts`, `errors.ts` (when invariants exist), `<entity>.test.ts`, one-line `index.ts` barrel. Imports stay `'~/lib/services/<entity>'`. See ADR-0002.
 - **Logging is pino → stdout, captured by Vercel Runtime Logs** (decided 2026-05-21). No external observability service. Browser `warn`/`error` forwarded to `/api/log` so client crashes land in the same place. See ADR-0003 (`docs/adr/0003-logging-architecture.md`).
 - **Realtime sync is server-push invalidation via SSE + in-process pub/sub** (decided 2026-05-21). Procedures `realtime.publish({ kind: '<namespace>.changed', ids })` after the service call; one `useRealtimeSync()` per authenticated tab dispatches to `queryClient.invalidateQueries({ queryKey: orpc.<namespace>.key() })`. Single-instance assumption — broker-backed adapter when that changes. See ADR-0004 (`docs/adr/0004-realtime-sync-architecture.md`).
+- **Background jobs: Vercel Queues in prod, BullMQ + Redis (docker compose) in dev** (decided 2026-05-24). Both paths invoke the same handler in `src/lib/queue/handlers/<topic>.ts`; the Nitro `vercel:queue` plugin and `scripts/devBlurhashWorker.ts` are thin wrappers. Adapter selector in `src/lib/effects/queue/queue.ts` lazy-imports the chosen adapter on first publish — keeps BullMQ out of the prod cold-start path. Local broker only runs when `REDIS_URL` is set; otherwise dev falls back to the no-op `devLog` adapter and uploads work without the placeholder gradient.
 - **Package manager**: pnpm.
 - **Linter/formatter**: Biome — single tool over Prettier+ESLint or oxlint+Prettier. Editor-only enforcement (no CI gate, no git hook). Tailwind class sorting on; CSS skipped (Biome can't parse Tailwind v4 directives yet).
 - **Sidebar breakpoint**: drawer (Sheet + scrim) below 1024px, icon rail at 1024–1279px, full sidebar ≥1280px. `MOBILE_BREAKPOINT` lives in `src/hooks/useMobile.ts` and only the shadcn sidebar primitive consumes it. shadcn `<Sidebar collapsible="icon">` with `tooltip={label}` on each `SidebarMenuButton` (icon-rail is the canonical exception to the "skip tooltips for self-evident icons" rule — the icon *is* the label). Sidebar-coupled responsive utilities use `lg:`; page padding and heading sizes still step at `md:`.
