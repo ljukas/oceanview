@@ -68,6 +68,10 @@ services:
     environment:
       RUSTFS_ACCESS_KEY: oceanview-dev
       RUSTFS_SECRET_KEY: oceanview-dev-secret-key
+      # RustFS emits no CORS headers by default; without this allow-list the
+      # browser blocks every presigned PUT from the Vite dev server. Matches
+      # the values RustFS's own scripts/run.sh ships with.
+      RUSTFS_CORS_ALLOWED_ORIGINS: "http://localhost:3000,http://127.0.0.1:3000"
     volumes:
       # Container runs as UID 10001; named volumes handle ownership.
       - storage_data:/data
