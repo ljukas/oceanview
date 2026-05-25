@@ -51,7 +51,13 @@ function rethrowAsORPC(err: unknown, context: 'update' | 'delete' | 'restore'): 
 }
 
 export const userRouter = {
-  me: protectedProcedure.handler(({ context }) => context.user),
+  me: protectedProcedure.handler(async ({ context }) => {
+    const fresh = await auth.api.getSession({
+      headers: context.headers,
+      query: { disableCookieCache: true },
+    })
+    return fresh?.user ?? context.user
+  }),
 
   findIdByEmail: adminProcedure
     .input(z.object({ email: z.email() }))

@@ -1,17 +1,22 @@
 import { createServerFn } from '@tanstack/react-start'
-import { z } from 'zod'
-import { expireSavedEmail, readSavedEmail, writeSavedEmail } from '~/lib/savedEmailCookie'
+import {
+  expireSavedLogin,
+  readSavedLogin,
+  savedLoginSchema,
+  writeSavedLogin,
+} from '~/lib/savedEmailCookie'
 
-export const getSavedEmail = createServerFn({ method: 'GET' }).handler(() => readSavedEmail())
+export const getSavedLogin = createServerFn({ method: 'GET' }).handler(() => readSavedLogin())
 
-export const clearSavedEmail = createServerFn({ method: 'POST' }).handler(() => {
-  expireSavedEmail()
+export const clearSavedLogin = createServerFn({ method: 'POST' }).handler(() => {
+  expireSavedLogin()
 })
 
-export const ensureSavedEmail = createServerFn({ method: 'POST' })
-  .inputValidator(z.object({ email: z.email() }))
+export const ensureSavedLogin = createServerFn({ method: 'POST' })
+  .inputValidator(savedLoginSchema)
   .handler(({ data }) => {
-    if (readSavedEmail() !== data.email) {
-      writeSavedEmail(data.email)
+    const current = readSavedLogin()
+    if (current?.email !== data.email || current?.image !== data.image) {
+      writeSavedLogin(data)
     }
   })

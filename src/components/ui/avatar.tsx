@@ -1,6 +1,11 @@
+import { blurhashToCssGradientString } from '@unpic/placeholder'
+import { Image } from '@unpic/react/base'
 import { Avatar as AvatarPrimitive } from 'radix-ui'
 import type * as React from 'react'
+import { useMemo, useState } from 'react'
 
+import { snapBreakpoints } from '~/lib/image/sizes'
+import { transformer } from '~/lib/image/transformer'
 import { cn } from '~/lib/utils'
 
 function Avatar({
@@ -15,7 +20,7 @@ function Avatar({
       data-slot="avatar"
       data-size={size}
       className={cn(
-        'group/avatar relative flex size-8 shrink-0 select-none rounded-full after:absolute after:inset-0 after:rounded-full after:border after:border-border after:mix-blend-darken data-[size=lg]:size-10 data-[size=sm]:size-6 dark:after:mix-blend-lighten',
+        'group/avatar relative flex size-8 shrink-0 select-none rounded-full after:pointer-events-none after:absolute after:inset-0 after:rounded-full after:border after:border-border after:mix-blend-darken data-[size=lg]:size-10 data-[size=sm]:size-6 dark:after:mix-blend-lighten',
         className,
       )}
       {...props}
@@ -23,12 +28,49 @@ function Avatar({
   )
 }
 
-function AvatarImage({ className, ...props }: React.ComponentProps<typeof AvatarPrimitive.Image>) {
+// Bypasses Radix `AvatarPrimitive.Image` deliberately: Radix preloads `src` via
+// a parallel JS `Image()` before mounting the real `<img>`, which would force a
+// second request to the raw Blob URL on top of unpic's optimized one. We render
+// the unpic Image directly with absolute positioning, layered over the
+// permanent fallback — so the image covers it on success, and `onError` removes
+// the img to reveal the fallback again.
+function AvatarImage({
+  className,
+  src,
+  alt,
+  width,
+  height,
+  blurhash,
+}: {
+  className?: string
+  src: string
+  alt: string
+  width: number
+  height: number
+  blurhash?: string | null
+}) {
+  const [hasError, setHasError] = useState(false)
+  // Memoize the gradient string — blurhashToCssGradientString builds a
+  // multi-stop CSS expression and we don't want it recomputed each render.
+  const gradient = useMemo(
+    () => (blurhash ? blurhashToCssGradientString(blurhash) : undefined),
+    [blurhash],
+  )
+
+  if (hasError) return null
   return (
-    <AvatarPrimitive.Image
+    <Image
       data-slot="avatar-image"
-      className={cn('aspect-square size-full rounded-full object-cover', className)}
-      {...props}
+      src={src}
+      alt={alt}
+      width={width}
+      height={height}
+      background={gradient}
+      layout="constrained"
+      breakpoints={snapBreakpoints(width)}
+      transformer={transformer}
+      onError={() => setHasError(true)}
+      className={cn('absolute inset-0 size-full rounded-full object-cover', className)}
     />
   )
 }

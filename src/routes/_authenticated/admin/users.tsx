@@ -10,7 +10,7 @@ import {
 } from 'lucide-react'
 import { formatPhoneNumberIntl } from 'react-phone-number-input'
 import { z } from 'zod'
-import { Avatar, AvatarBadge, AvatarFallback } from '~/components/ui/avatar'
+import { Avatar, AvatarBadge, AvatarFallback, AvatarImage } from '~/components/ui/avatar'
 import { Button } from '~/components/ui/button'
 import {
   Table,
@@ -176,6 +176,9 @@ function AdminUsers() {
                       <TableCell className="font-medium">
                         <div className="flex items-center gap-3">
                           <Avatar className="size-9 shrink-0">
+                            {u.image ? (
+                              <AvatarImage src={u.image} alt={u.name} width={36} height={36} />
+                            ) : null}
                             <AvatarFallback>{initials(u.name)}</AvatarFallback>
                             {onlineSet.has(u.id) && (
                               <AvatarBadge className="size-3 bg-success ring-2">

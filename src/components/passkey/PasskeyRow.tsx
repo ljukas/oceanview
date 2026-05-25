@@ -1,3 +1,4 @@
+import { Image } from '@unpic/react/base'
 import { CheckIcon, KeyRoundIcon, PencilIcon, RotateCcwIcon, Trash2Icon, XIcon } from 'lucide-react'
 import { useState } from 'react'
 import { z } from 'zod'
@@ -7,6 +8,7 @@ import { Spinner } from '~/components/ui/spinner'
 import { Tooltip, TooltipContent, TooltipTrigger } from '~/components/ui/tooltip'
 import { useAppForm } from '~/hooks/form'
 import { type Passkey, useRenamePasskey } from '~/hooks/usePasskeys'
+import { transformer } from '~/lib/image/transformer'
 import { getPasskeyProvider } from '~/lib/passkeyProviders'
 
 const renameSchema = z.object({ name: z.string().trim().min(1) })
@@ -38,12 +40,24 @@ export function PasskeyRow({ passkey, onDelete }: { passkey: Passkey; onDelete: 
     <li className="flex items-center justify-between gap-3 p-4">
       <div className="flex min-w-0 flex-1 items-center gap-3">
         {provider?.iconLight ? (
-          <img src={provider.iconLight} alt="" className="size-6 shrink-0 rounded-sm dark:hidden" />
+          <Image
+            src={provider.iconLight}
+            alt=""
+            width={24}
+            height={24}
+            layout="fixed"
+            transformer={transformer}
+            className="size-6 shrink-0 rounded-sm dark:hidden"
+          />
         ) : null}
         {provider?.iconDark ? (
-          <img
+          <Image
             src={provider.iconDark}
             alt=""
+            width={24}
+            height={24}
+            layout="fixed"
+            transformer={transformer}
             className="hidden size-6 shrink-0 rounded-sm dark:block"
           />
         ) : null}

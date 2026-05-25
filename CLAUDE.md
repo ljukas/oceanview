@@ -2,9 +2,9 @@
 
 Internal web app for a sailboat co-ownership group (10–20 users: owners + a couple of admins). Not a commercial product — it coordinates one boat among its owners.
 
-**State**: scaffold complete (auth, DB, schema, services, tests are live). Only R2 (file storage) and Resend (email delivery) remain unwired — see [Deferred work](#deferred-work).
+**State**: scaffold complete (auth, DB, schema, services, tests are live). File storage (Vercel Blob) is wired — avatars + documents. Only Resend (email delivery) remains unwired — see [Deferred work](#deferred-work).
 
-**Planned features**: file library, contact page, boat-week scheduling. None implemented yet.
+**Planned features**: boat-week scheduling. None implemented yet.
 
 ---
 
@@ -36,6 +36,7 @@ Load on demand, not eagerly. The `pnpm dlx @tanstack/intent` block at the bottom
 | Adding oRPC procedures, middleware, error handling | https://orpc.dev/docs |
 | Adding services, domain rules, error mapping | `docs/adr/0002-service-domain-architecture.md` |
 | Adding side effects (email, storage, audit, …) | `docs/adr/0001-side-effects-architecture.md` |
+| Adding a queue topic, worker, broker config, or background-job handler | `docs/adr/0007-background-job-queue-architecture.md` |
 | Adding realtime sync (publish events, new event kinds, SSE/subscriber behaviour) | `docs/adr/0004-realtime-sync-architecture.md` |
 | Adding logging — significant events, error sinks, request-scoped context | `docs/adr/0003-logging-architecture.md` |
 | Wiring oRPC into Better Auth | https://orpc.dev/docs/integrations/better-auth |
@@ -60,11 +61,13 @@ src/
     login.tsx                      magic-link + passkey sign-in
     api/auth/$.ts                  Better Auth catch-all — delegates to auth.handler()
     api/rpc/$.ts                   oRPC catch-all — mounts appRouter at /api/rpc
+    api/files/upload.ts            Vercel Blob handleUpload — token mint + onUploadCompleted (avatar replace OR document insert)
+    api/files/download.$id.ts      auth-gated → 302 redirect to signed Blob URL for a document
     _authenticated.tsx             pathless guard: redirects unauthed → /login
     _authenticated/
       index.tsx                    dashboard / home
       contacts.tsx                 contacts page (placeholder)
-      documents.tsx                file library page (placeholder, R2 not wired)
+      documents.tsx                shared file library — DocumentUpload + DocumentList (Vercel Blob private store)
       konto.tsx                    user's own account + passkey management
       admin.tsx                    admin landing
       admin/users.tsx              admin user CRUD
@@ -83,6 +86,8 @@ src/
       procedures/
         health.ts                  liveness probe
         user.ts                    thin handlers: parse → service → map UserDomainError → cross-system side effects (auth.api.revokeUserSessions on delete)
+        image.ts                   imageRouter (public store): mintAvatarUpload + confirmAvatarUpload — updates user.image
+        file.ts                    fileRouter (private store): mintDocumentUpload + confirmDocumentUpload + listDocuments + deleteDocument
     db/
       index.ts                     drizzle(postgres(DATABASE_URL)) with snake_case casing
       schema/
@@ -103,12 +108,23 @@ src/
         index.ts                   re-exports from ./share
         share.ts                   share-part data access + assignment transactions
         share.test.ts              colocated tests
+      file/
+        index.ts                   re-exports from ./file and ./errors
+        file.ts                    file metadata CRUD + owner/admin invariants for delete
+        errors.ts                  FileDomainError + discriminating `code` union
+        file.test.ts               colocated tests
     effects/                       cross-system side-effect adapters; see docs/adr/0001
       email/
         email.ts                   EmailEffects interface + selected adapter
         adapters/devLog.ts         routes magic-link sends through logger.info (used until Resend is wired)
         index.ts                   barrel
         email.test.ts              colocated test (pure; no DB)
+      storage/
+        storage.ts                 StorageEffects interface + adapter selector (devLog when tokens missing)
+        adapters/vercelBlob.ts     production adapter — owns env prefix + token-per-access; ONLY file that imports @vercel/blob
+        adapters/devLog.ts         test/offline adapter — logs and returns placeholder URLs
+        index.ts                   barrel
+        storage.test.ts            colocated test (devLog contract)
       index.ts                     barrel
     logger/                        structured logging — JSON to stdout (captured by Vercel Runtime Logs)
       types.ts                     Logger interface — debug/info/warn/error + child(fields)
@@ -128,8 +144,10 @@ src/
     AppSidebar.tsx                 main app shell sidebar
     ModeToggle.tsx                 light/dark/system theme toggle
     ThemeProvider.tsx              next-themes wrapper
-    user/                          UserFormDialog.tsx, DeleteUserDialog.tsx, RestoreUserDialog.tsx
+    user/                          UserFormDialog.tsx, DeleteUserDialog.tsx, RestoreUserDialog.tsx, AvatarUpload.tsx, UserCard.tsx
     passkey/                       PasskeyRow.tsx, DeletePasskeyDialog.tsx
+    document/                      DocumentList.tsx, DocumentUpload.tsx
+    contact/                       ContactCard.tsx
     ui/                            shadcn primitives (kebab-case, CLI-managed)
   data/
     passkeyAaguids.json            static AAGUID → provider metadata registry
@@ -153,13 +171,13 @@ vite.config.ts                     TanStack Start + React + Tailwind + Nitro; vi
 
 **Services own data access and domain rules.** All `db` access lives in `src/lib/services/<entity>/`; invariants live inside the guarded operations there (`updateAsAdmin`, `softDeleteAsAdmin`, …) and surface as a typed `<Entity>DomainError` with a discriminating English `code` union. Procedures `try { await service.op() } catch (err) { rethrowAsORPC(err, ...) }` to map codes to Swedish `ORPCError` messages. Callers import through the barrel: `import * as userService from '~/lib/services/user'`. Canonical example: `src/lib/services/user/`. See `docs/adr/0002-service-domain-architecture.md` for the architecture, the guarded-operation pattern, error mapping, and verification greps.
 
-**Cross-system side effects stay out of services and live in `src/lib/effects/`.** A service touches its own DB tables and nothing else; cross-system work (Better Auth session revocation, R2 deletes, sending email) goes through a typed effect adapter (e.g. `email.sendMagicLink(...)` from `~/lib/effects`) invoked from the procedure or route handler *after* the service call succeeds. This keeps services free of Better Auth / S3 / Resend imports and testable against the per-test-schema harness alone. See `docs/adr/0001-side-effects-architecture.md` for the full layering, the three execution tiers (sync-critical / fire-and-forget / durable), and the comparison to pub/sub.
+**Cross-system side effects stay out of services and live in `src/lib/effects/`.** A service touches its own DB tables and nothing else; cross-system work (Better Auth session revocation, Vercel Blob deletes, sending email) goes through a typed effect adapter (e.g. `email.sendMagicLink(...)`, `storage.delete(...)` from `~/lib/effects`) invoked from the procedure or route handler *after* the service call succeeds. This keeps services free of Better Auth / Vercel Blob / Resend imports and testable against the per-test-schema harness alone. See `docs/adr/0001-side-effects-architecture.md` for the full layering, the three execution tiers (sync-critical / fire-and-forget / durable), and the comparison to pub/sub.
 
 **Logging goes through `~/lib/logger/`** — pino on the server, console + `keepalive` POST to `/api/log` in the browser. Inside an oRPC procedure use `context.log` (already tagged with `requestId` + `userId`); elsewhere import the singleton: `import { logger } from '~/lib/logger/server'` (or `~/lib/logger/browser` in components). Never call `console.*` directly. New significant events (admin actions, auth lifecycle, effect failures) get one `info` line; caught exceptions get one `error` line with `{ error }`. See `docs/adr/0003-logging-architecture.md` for the architecture, conventions (message-as-noun-phrase, structured fields over interpolation, level semantics), what-to-log policy, redaction, browser→server forwarding contract, and verification greps.
 
-**Adding a feature schema**: create `src/lib/db/schema/<feature>.ts`, add one re-export line to `schema/index.ts`, then `pnpm db:generate && pnpm db:migrate`. The test setup runs every migration into a fresh schema before each test, so any new table or seed migration is automatically applied — nothing in `test/setup.ts` needs touching when adding a feature schema.
+**Adding a feature schema**: create `src/lib/db/schema/<feature>.ts`, add one re-export line to `schema/index.ts`, then `pnpm db:generate --name=<descriptive_name> && pnpm db:migrate`. The test setup runs every migration into a fresh schema before each test, so any new table or seed migration is automatically applied — nothing in `test/setup.ts` needs touching when adding a feature schema.
 
-**Name migrations descriptively, never ship the auto-generated tag.** drizzle-kit emits files like `0003_small_jetstream.sql` — that name is meaningless six months later. Immediately after `pnpm db:generate` (or `pnpm drizzle-kit generate --custom --name=<descriptive_name>` for data-only migrations), rename the file and update the corresponding `tag` in `drizzle/meta/_journal.json` to something that describes the change: `0003_add_ownership_tables.sql`, `0004_seed_initial_seasons.sql`, `0007_add_passkey_aaguid_index.sql`. Only rename migrations that haven't shipped to production yet — once a migration is in any prod `__drizzle_migrations` table, the tag is part of its identity and must stay stable.
+**Name migrations descriptively, never ship the auto-generated tag.** Without `--name`, drizzle-kit emits files like `0003_small_jetstream.sql` — meaningless six months later. Always pass `--name=<descriptive_name>` at generation time: `pnpm db:generate --name=add_ownership_tables` (or `pnpm drizzle-kit generate --custom --name=seed_initial_seasons` for data-only migrations). The flag sets both the filename and the `tag` in `drizzle/meta/_journal.json` in one shot. If you forget and need to rename after the fact, update both the file and the journal `tag` together — and only do it for migrations that haven't shipped to production yet, since once a migration is in any prod `__drizzle_migrations` table the tag is part of its identity.
 
 **Adding a service**: copy `services/user/` — `<entity>.ts` (named exports), `<entity>.test.ts` (colocated, `setupDatabase()` first), `index.ts` (barrel: `export * from './<entity>'`). Add `errors.ts` only when the first invariant lands. See ADR-0002 for the full recipe.
 
@@ -201,11 +219,17 @@ Never hand-edit `betterAuth.ts`.
 | `pnpm vercel-build` | Run pending migrations, then build + typecheck (CI/deploy only) |
 | `pnpm preview` | Preview built bundle |
 | `pnpm start` | Run production server (`.output/server/index.mjs`) |
-| `pnpm db:up` | Start the Neon Local on :5432 (creates ephemeral branch off prod). Used by both the dev app and tests — tests carve out their own `test_w*` schemas so the dev `public` schema is untouched |
-| `pnpm db:down` | Stop docker services (deletes their ephemeral branches) |
+| `pnpm db:up` | Start the Neon Local on :5432. Each local git branch gets its own persistent Neon branch (metadata lives in `./.neon_local/`, gitignored), so `down`/`up` reuses the same branch instead of recreating one. Used by both the dev app and tests — tests carve out their own `test_w*` schemas so the dev `public` schema is untouched |
+| `pnpm db:down` | Stop the `db` service. Leaves the queue running; preserves the Neon branch (delete `./.neon_local/` to force a fresh branch on next `up`) |
 | `pnpm db:generate` | Generate a new migration from schema changes |
 | `pnpm db:migrate` | Apply pending migrations to the active `DATABASE_URL` |
 | `pnpm db:studio` | Drizzle Studio UI |
+| `pnpm queue:up` | Start the Redis broker for the local blurhash queue on :6379 (`compose.yaml` service `queue`). Only needed when `REDIS_URL` is set in `.env` |
+| `pnpm queue:down` | Stop just the queue container (leaves Neon Local alone) |
+| `pnpm queue:studio` | Open Bull Studio on http://localhost:4000 to inspect BullMQ queues. Profile-gated docker service (`emirce/bullstudio`); needs `pnpm queue:up` first. Stop with `pnpm dev:down` or `docker compose stop queue-studio` |
+| `pnpm dev:up` | One-shot for the whole dev stack: brings up both `db` and `queue` services |
+| `pnpm dev:down` | One-shot for the whole dev stack: stops both `db` and `queue` services |
+| `pnpm dev:worker` | Run the local BullMQ worker (`scripts/devBlurhashWorker.ts`) that consumes the `blurhash` topic and calls the same handler as the prod Nitro plugin |
 | `pnpm test` | Vitest once. Every test gets its own `test_w<pool>_<n>` schema: CREATE SCHEMA + run all migrations + SET search_path in `beforeEach`, DROP SCHEMA in `afterEach`. Connects to :5432 via Neon Local's session-pool URL (`neondb_session`) so the per-test SET persists across queries and transactions; the dev app uses the same :5432 service via the default `neondb` URL |
 | `pnpm test:watch` | Vitest watch mode (same DB rules as `pnpm test`) |
 | `pnpm format` | Biome formatter only (writes) |
@@ -225,7 +249,9 @@ Never hand-edit `betterAuth.ts`.
 
 **Set in Vercel + `.env`**: `BETTER_AUTH_SECRET` (32+ chars; `openssl rand -base64 32`), `BETTER_AUTH_URL` (site origin), `ADMIN_EMAILS` (comma-separated allowlist).
 
-**Manual, added when wired**: `RESEND_API_KEY`, `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET`.
+**Set in Vercel + `.env` (auto-provisioned via Marketplace)**: `BLOB_PUBLIC_READ_WRITE_TOKEN` (oceanview-public store, avatars), `BLOB_PRIVATE_READ_WRITE_TOKEN` (oceanview-private store, documents). Optional override: `STORAGE_ADAPTER=devLog` forces the no-op adapter (used in tests by default).
+
+**Manual, added when wired**: `RESEND_API_KEY`.
 
 **Optional**: `LOG_LEVEL` — pino level (`trace`/`debug`/`info`/`warn`/`error`/`fatal`). Defaults to `debug` in dev, `info` in prod.
 
@@ -265,14 +291,13 @@ WebFetch these before guessing APIs. They beat the model's memorized snapshots.
 - next-themes (theme provider) — https://github.com/pacocoursey/next-themes
 - Vite — https://vite.dev
 - Vercel + TanStack Start — https://vercel.com/docs/frameworks/tanstack-start
-- Cloudflare R2 (deferred) — https://developers.cloudflare.com/r2
+- Vercel Blob — https://vercel.com/docs/vercel-blob
+- Cloudflare R2 (documented fallback per ADR-0006) — https://developers.cloudflare.com/r2
 - Resend (deferred) — https://resend.com/docs
 
 ---
 
 ## Deferred work
-
-**Cloudflare R2** — not yet wired. Planned pattern: browser PUTs directly to R2 via a presigned URL minted server-side; Vercel functions never see file bytes. Postgres holds metadata only (name, folder, owner, size, mime, uploaded_at).
 
 **Resend** — not yet wired. `sendMagicLink` in `src/lib/auth.ts` currently routes through the `devLog` adapter, which calls `logger.info('magic-link (devLog)', { to, url })`. The URL appears in the terminal in dev and in Vercel Runtime Logs in prod — fine for local testing and the first prod sign-ins. Wire Resend once a sender domain is verified (e.g. `mail.<domain>`) by adding `adapters/resend.ts` and swapping the export in `email.ts`.
 
@@ -293,9 +318,9 @@ WebFetch these before guessing APIs. They beat the model's memorized snapshots.
   - **Everything else** (lib modules, utils, data, config — `.ts` / `.json`) is **camelCase** — `authClient.ts`, `passkeyProviders.ts`, `passkeyAaguids.json`.
   - **`src/components/ui/` is kebab-case** and CLI-managed by shadcn — don't normalize it.
   - **Directory roles**: `src/lib/` = wired/stateful modules (auth, db, orpc, services); `src/hooks/` = React hooks; `src/utils/` = pure helper functions; `src/data/` = static data.
-- **File blobs in R2, metadata in Postgres** (when R2 is wired). Uploads go browser → R2 directly; never proxy bytes through Vercel.
+- **File blobs in Vercel Blob, metadata in Postgres.** Uploads go browser → Blob directly via `@vercel/blob/client` `upload()` + a `handleUploadUrl` route — bytes never traverse a Vercel Function. Two stores: `oceanview-public` (avatars) and `oceanview-private` (documents). All file-related code goes through the `src/lib/effects/storage/` seam — `@vercel/blob` is only imported from `adapters/vercelBlob.ts`. See ADR-0006.
 - **`vercel env pull` is dangerous**: it writes prod `DATABASE_URL` into `.env.local`, which Vite + Drizzle prefer over `.env`. If you must run it, immediately delete the `DATABASE_URL*` lines from `.env.local` — otherwise `pnpm db:migrate` would migrate **production**.
-- **Migrations are explicit locally.** `pnpm build` does not migrate. `vercel-build` does, on deploy. Run `pnpm db:migrate` yourself against the local ephemeral branch.
+- **Migrations are explicit locally.** `pnpm build` does not migrate. `vercel-build` does, on deploy. Run `pnpm db:migrate` yourself against the local Neon branch.
 - **Conventional Commits** for agent commits: `<type>(<scope>): <subject>` ≤ 72 chars, imperative mood, *why* in the body. Types: `feat`, `fix`, `chore`, `docs`, `refactor`, `test`, `build`, `ci`, `perf`, `style`, `revert`.
 - **Lock TanStack Start to a specific RC version** in `package.json` until 1.0 ships.
 - **Free tier first.** Before adding any third-party service, confirm a free tier covers ~20 users.
@@ -315,7 +340,7 @@ One line each. The reasoning lives in `git log CLAUDE.md` if anyone needs it.
 - **ORM**: Drizzle — not Prisma.
 - **DB**: Neon Postgres + Neon Local for dev/test.
 - **DB driver**: `postgres-js` — not `neon-http` (Better Auth needs multi-statement transactions; Neon Local needs the serverless driver over HTTP, which we don't use).
-- **File storage**: Cloudflare R2 — not Vercel Blob (zero egress fees).
+- **File storage**: Vercel Blob — two stores (`oceanview-public` for avatars, `oceanview-private` for documents) exposed by two oRPC routers split along the same access boundary (`imageRouter` for public uploads, `fileRouter` for private uploads + listing/deleting documents). Cloudflare R2 stays documented as a swap-in fallback. See ADR-0006.
 - **Email**: Resend.
 - **UI**: shadcn/ui (style `radix-nova`, base color `slate`) + Tailwind v4. CSS vars live in `src/styles/app.css`; `components.json` is the source of truth.
 - **Dark mode**: `next-themes` with `attribute="class"` + system preference + manual toggle (`ModeToggle` mounted in `__root.tsx`). No flash on hard reload — next-themes injects its own preload script.
@@ -324,6 +349,7 @@ One line each. The reasoning lives in `git log CLAUDE.md` if anyone needs it.
 - **Domain rules live in services; service files live in per-entity folders** (decided 2026-05-21). Services throw `<Entity>DomainError` (English `code` union); procedures map to Swedish `ORPCError`. `src/lib/services/<entity>/` with `<entity>.ts`, `errors.ts` (when invariants exist), `<entity>.test.ts`, one-line `index.ts` barrel. Imports stay `'~/lib/services/<entity>'`. See ADR-0002.
 - **Logging is pino → stdout, captured by Vercel Runtime Logs** (decided 2026-05-21). No external observability service. Browser `warn`/`error` forwarded to `/api/log` so client crashes land in the same place. See ADR-0003 (`docs/adr/0003-logging-architecture.md`).
 - **Realtime sync is server-push invalidation via SSE + in-process pub/sub** (decided 2026-05-21). Procedures `realtime.publish({ kind: '<namespace>.changed', ids })` after the service call; one `useRealtimeSync()` per authenticated tab dispatches to `queryClient.invalidateQueries({ queryKey: orpc.<namespace>.key() })`. Single-instance assumption — broker-backed adapter when that changes. See ADR-0004 (`docs/adr/0004-realtime-sync-architecture.md`).
+- **Background jobs: Vercel Queues in prod, BullMQ + Redis (docker compose) in dev** (decided 2026-05-24). Both paths invoke the same handler in `src/lib/queue/handlers/<topic>.ts`; the Nitro `vercel:queue` plugin and `scripts/devBlurhashWorker.ts` are thin wrappers. Adapter selector in `src/lib/effects/queue/queue.ts` lazy-imports the chosen adapter on first publish — keeps BullMQ out of the prod cold-start path. Local broker only runs when `REDIS_URL` is set; otherwise dev falls back to the no-op `devLog` adapter and uploads work without the placeholder gradient.
 - **Package manager**: pnpm.
 - **Linter/formatter**: Biome — single tool over Prettier+ESLint or oxlint+Prettier. Editor-only enforcement (no CI gate, no git hook). Tailwind class sorting on; CSS skipped (Biome can't parse Tailwind v4 directives yet).
 - **Sidebar breakpoint**: drawer (Sheet + scrim) below 1024px, icon rail at 1024–1279px, full sidebar ≥1280px. `MOBILE_BREAKPOINT` lives in `src/hooks/useMobile.ts` and only the shadcn sidebar primitive consumes it. shadcn `<Sidebar collapsible="icon">` with `tooltip={label}` on each `SidebarMenuButton` (icon-rail is the canonical exception to the "skip tooltips for self-evident icons" rule — the icon *is* the label). Sidebar-coupled responsive utilities use `lg:`; page padding and heading sizes still step at `md:`.

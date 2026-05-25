@@ -5,7 +5,7 @@ import { MagicLinkSentCard } from '~/components/login/MagicLinkSentCard'
 import { WelcomeBackCard } from '~/components/login/WelcomeBackCard'
 import { useSignInPasskeyAutofill } from '~/hooks/usePasskeys'
 import { getSession } from '~/lib/getSession'
-import { clearSavedEmail, getSavedEmail } from '~/lib/savedEmailFns'
+import { clearSavedLogin, getSavedLogin } from '~/lib/savedEmailFns'
 
 function sanitizeRedirect(raw: unknown): string | undefined {
   if (typeof raw !== 'string') return undefined
@@ -27,18 +27,18 @@ export const Route = createFileRoute('/login')({
     const session = await getSession()
     if (session) throw redirect({ to: search.redirect ?? '/' })
   },
-  loader: async () => ({ savedEmail: await getSavedEmail() }),
+  loader: async () => ({ savedLogin: await getSavedLogin() }),
   component: Login,
 })
 
 function Login() {
   const navigate = useNavigate()
   const { redirect: redirectPath } = Route.useSearch()
-  const { savedEmail: initialSavedEmail } = Route.useLoaderData()
+  const { savedLogin: initialSavedLogin } = Route.useLoaderData()
   const [sentTo, setSentTo] = useState<string | null>(null)
   const [useOther, setUseOther] = useState(false)
 
-  const savedEmail = useOther ? null : initialSavedEmail
+  const savedLogin = useOther ? null : initialSavedLogin
   const callbackURL = buildCallbackURL(redirectPath)
 
   useSignInPasskeyAutofill({
@@ -48,7 +48,7 @@ function Login() {
   })
 
   async function switchToOtherEmail() {
-    await clearSavedEmail()
+    await clearSavedLogin()
     setUseOther(true)
   }
 
@@ -56,9 +56,10 @@ function Login() {
     <div className="grid min-h-svh place-items-center p-4">
       {sentTo ? (
         <MagicLinkSentCard email={sentTo} />
-      ) : savedEmail ? (
+      ) : savedLogin ? (
         <WelcomeBackCard
-          email={savedEmail}
+          email={savedLogin.email}
+          image={savedLogin.image}
           callbackURL={callbackURL}
           onSent={setSentTo}
           onSwitchUser={() => {
@@ -75,7 +76,7 @@ function Login() {
         aria-hidden="true"
         tabIndex={-1}
         readOnly
-        defaultValue={savedEmail ?? ''}
+        defaultValue={savedLogin?.email ?? ''}
         className="sr-only"
       />
     </div>

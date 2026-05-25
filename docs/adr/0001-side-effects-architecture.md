@@ -7,6 +7,10 @@
 
 ---
 
+> **Amended 2026-05-25.** The tier-3 ("Durable / deferred") passages — TL;DR row, the durability footnote under "Why not pub/sub?", **Approach comparison D**, and the section formerly titled *"When to reach for tier 3 (outbox)"* — are superseded by **[ADR-0007 — Background-Job Queue Architecture](./0007-background-job-queue-architecture.md)**. The durable tier landed as Vercel Queues + a shared handler (BullMQ + Redis in local dev), not the speculated Postgres outbox + cron worker. The trigger wasn't durability; it was latency + CPU offload (blurhash). The outbox shape stays *available* as a layered option for a future effect that genuinely needs DB-atomic enqueue, but is no longer the recommended default for tier 3 — see ADR-0007. Everything else in this ADR (tiers 1 and 2, the `effects/` seam, why not pub/sub at points 1–3 and 5) stands as originally written.
+
+---
+
 ## Context
 
 Oceanview is a small internal app (10–20 users) for a sailboat co-ownership group, deployed on Vercel Hobby. The scaffold is complete; the codebase is disciplined: **services own DB access, oRPC procedures orchestrate, Better Auth owns sessions, no event bus or queue exists**. Today only one cross-system side effect actually executes — `auth.api.revokeUserSessions()` inline in `src/lib/orpc/procedures/user.ts` after `softDeleteAsAdmin`. The magic-link transport is `console.log` in `src/lib/auth.ts:46`. As Resend, R2, audit logs, scheduled boat-week reminders, and future webhooks come online, the codebase needs a **clear seat** for side-effect logic so it doesn't sprawl into procedures or hide in service files (which would break the "services own only the DB" rule).
@@ -25,7 +29,7 @@ Three execution tiers, all routed through the same `effects/` seam:
 |---|---|---|---|
 | **1. Sync-critical** | Caller must know if it failed | `await effects.x.y(...)` — surfaces to caller | Magic-link send, session revoke, R2 presign |
 | **2. Fire-and-forget** | Best-effort; failure is logged but doesn't fail the request | `runEffect(() => effects.x.y(...))` — catches + logs | Audit log entry, analytics ping |
-| **3. Durable / deferred** | Must happen eventually even if the process dies; or runs later | Insert into `effect_outbox` table inside the same DB tx; cron drains | Future: scheduled boat-week reminders, retry-on-failure email, orphan R2 cleanup |
+| **3. Durable / deferred** *(superseded by [ADR-0007](./0007-background-job-queue-architecture.md))* | Heavy / CPU-bound / runs out-of-band; latency tolerated | `queue.publish('<topic>', payload)` via `~/lib/effects/queue/`; consumed by Vercel Queues in prod, BullMQ worker in dev | Blurhash generation; future thumbnail/transcode, scheduled boat-week reminders, batched digests |
 
 This keeps the **interface** small (typed adapter functions), the **implementation** swappable (Resend today, alternative tomorrow), and the **locality** preserved (the procedure reads top-to-bottom: validate → service mutation → effect — no hidden listeners). It also satisfies the "deletion test": removing the `effects/` namespace would re-scatter Resend/R2/Slack glue across procedures, which it currently isn't doing. That's a real seam, not a pass-through.
 
@@ -41,7 +45,7 @@ Pub/sub is the obvious-looking alternative, so it deserves a direct answer. The 
 
 3. **Async / don't block the request** — On Vercel Functions, **fire-and-forget after the response is unsafe**: the function can be frozen or killed once the response is sent. The listener's `await` may never resolve. The only safe "async" inside a request is to finish before returning — which is what direct calls already do, and which `runEffect` (tier 2) makes explicit for best-effort cases. In-process pub/sub doesn't change this physics.
 
-4. **Durability** — This is the most common misconception. An in-process `EventEmitter` has **zero durability**: if the process dies mid-handler, the event is lost forever, with no record it was ever fired. People reach for pub/sub *thinking* they're getting durability, then are surprised when events vanish. Real durability requires either a managed broker (SNS/Kafka/Redis Streams — vendor + cost + ops) or the outbox pattern (Postgres table, no new vendor) — both of which are still available to you here as tier 3, exactly where they're earned.
+4. **Durability** — This is the most common misconception. An in-process `EventEmitter` has **zero durability**: if the process dies mid-handler, the event is lost forever, with no record it was ever fired. People reach for pub/sub *thinking* they're getting durability, then are surprised when events vanish. Real durability requires either a managed broker (SNS/Kafka/Redis Streams — vendor + cost + ops) or the outbox pattern (Postgres table, no new vendor) — both of which are still available to you here as tier 3, exactly where they're earned. **(Note 2026-05-25: tier 3 has landed; the mechanism is a managed queue, not the outbox — see [ADR-0007](./0007-background-job-queue-architecture.md). Both options remain composable behind the `effects/` seam.)**
 
 5. **Replay / audit log** — Also needs durable storage. Outbox gives this for the price of one table.
 
@@ -81,7 +85,7 @@ Said in the architecture skill's vocabulary: pub/sub at this scale is a **shallo
 - ➕ Uses existing Postgres; no new vendor.
 - ➖ Real complexity: dispatch table, status enum, claim semantics (SELECT … FOR UPDATE SKIP LOCKED), idempotency keys on the adapter side, dead-letter handling.
 - ➖ Vercel Hobby crons run **once per day max** (Pro = unlimited). For sub-day latency you'd need an external trigger (cron-job.org pings a `/api/effects/drain` route, or upgrade).
-- **Verdict**: opt-in tier 3. Add when (not before) the first effect demands durability — likely the boat-week reminder feature.
+- **Verdict**: **superseded by [ADR-0007](./0007-background-job-queue-architecture.md)** — the durable tier landed as Vercel Queues + a shared handler, not an outbox + cron. The 1/day Hobby-cron limit is what tipped it: blurhash needs sub-minute latency, not sub-day. Outbox stays available as a layered option *combined with* the queue if a future effect ever needs DB-atomic enqueue, but it is no longer the default tier-3 mechanism.
 
 ### E. External orchestrator (Inngest / Trigger.dev / QStash)
 - ➕ Real reliability + retries + scheduling + observability UI.
@@ -159,16 +163,9 @@ For Better Auth's `sendMagicLink` callback in `src/lib/auth.ts`, the callback be
 - **Two adapters from day one** (Resend + devLog) — the seam is real, not hypothetical.
 - **Test surface = the interface**: services + procedures use the devLog adapter; we don't mock Resend, we have a real second implementation.
 
-### When to reach for tier 3 (outbox)
+### How the durable tier landed *(superseded — see [ADR-0007](./0007-background-job-queue-architecture.md))*
 
-Add the outbox only when a procedure introduces an effect that **must** happen even if the request crashes after the DB commit. For Oceanview today, **nothing currently qualifies**:
-
-- Magic-link send: if it fails, surface to the user — they'll click "send again".
-- Session revoke: stays tier 1; failure is rare and already inline.
-- Future audit log: tier 2 is enough; lost audit rows under crash are acceptable for this scale.
-- Future user-invited email: tier 1 (admin sees the error, can retry).
-
-The first realistic tier-3 candidate is the **boat-week reminder** feature: it must fire at a scheduled time, regardless of any request. When that lands, the outbox table + a Vercel cron + a `protected drain` procedure are the right shape. Until then, the outbox/ folder stays empty — don't build it speculatively.
+The first tier-3 candidate turned out to be blurhash placeholder generation (introduced alongside [ADR-0006](./0006-file-storage.md)), not the boat-week reminder. The forcing function wasn't durability (blurhash is recomputable from the stored bytes), it was **latency + CPU offload**: doing `sharp` + `blurhash` inline would block upload responses and inflate Function CPU time. That made a managed queue the right shape over the speculated Postgres outbox + cron. ADR-0007 documents the producer seam (`~/lib/effects/queue/`), the shared handler (`~/lib/queue/handlers/<topic>.ts`), and the prod / dev / test wiring. When (if) a future effect genuinely needs DB-atomic enqueue — boat-week reminders being a likely candidate — outbox layers on top of the queue rather than replacing it.
 
 ---
 
@@ -205,13 +202,9 @@ The first realistic tier-3 candidate is the **boat-week reminder** feature: it m
 7. **Add to CLAUDE.md** "How we write code":
    - One paragraph: where effects live, the three tiers, the "services don't call effects" rule (procedures orchestrate both — services stay DB-only, preserving the existing non-negotiable).
 
-### Phase 2 — tier 3 (only when first durable effect lands)
+### Phase 2 — tier 3 *(superseded by [ADR-0007](./0007-background-job-queue-architecture.md))*
 
-8. **`src/lib/db/schema/effectOutbox.ts`**: table with `id`, `kind`, `payload jsonb`, `runAfter timestamptz`, `attempts int`, `lastError text`, `claimedAt timestamptz`, `completedAt timestamptz`, plus `pnpm db:generate` + descriptive migration name per CLAUDE.md's migration rule.
-9. **`src/lib/effects/outbox/enqueue.ts`**: `enqueueEffect(tx, kind, payload, opts?)` — called from inside a service transaction so the effect intent commits atomically with state.
-10. **`src/lib/effects/outbox/drain.ts`**: `drainOutbox(limit)` — `SELECT … FOR UPDATE SKIP LOCKED`, dispatch by `kind` to the right effects adapter, mark complete or bump `attempts` + `lastError`.
-11. **`src/routes/api/cron/drain.ts`**: minimal route that calls `drainOutbox`, gated by a shared secret header. Wire a Vercel cron entry in `vercel.json` (or `vercel.ts` — both work, see Vercel knowledge update).
-12. **`src/lib/effects/outbox/drain.test.ts`**: round-trip tests using the existing schema-per-test setup (no changes to `test/setup.ts` needed — `effectOutbox` migration runs automatically).
+The originally planned scaffolding (`effect_outbox` table, `enqueue.ts`, `drain.ts`, cron route, drain test) was not built. The realised tier-3 mechanism is a queue (`~/lib/effects/queue/` + `~/lib/queue/handlers/`); ADR-0007 documents the files that exist today. If a future effect requires DB-atomic enqueue, the outbox would slot in *next to* the queue (enqueue into an outbox row inside the service tx; cron drains by calling `queue.publish`), not replace it.
 
 ### Non-negotiables that constrain this design (carried forward)
 

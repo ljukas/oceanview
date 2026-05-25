@@ -1,12 +1,14 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { KeyRoundIcon, PlusIcon } from 'lucide-react'
-import { useState } from 'react'
+import { Suspense, useState } from 'react'
 import { DeletePasskeyDialog } from '~/components/passkey/DeletePasskeyDialog'
 import { PasskeyRow } from '~/components/passkey/PasskeyRow'
 import { Button } from '~/components/ui/button'
 import { Spinner } from '~/components/ui/spinner'
 import { TooltipProvider } from '~/components/ui/tooltip'
+import { AvatarUpload } from '~/components/user/AvatarUpload'
 import { useAddPasskey, useListPasskeys } from '~/hooks/usePasskeys'
+import { orpc } from '~/lib/orpc/client'
 import { seo } from '~/utils/seo'
 
 export const Route = createFileRoute('/_authenticated/konto')({
@@ -16,6 +18,9 @@ export const Route = createFileRoute('/_authenticated/konto')({
       description: 'Hantera ditt konto och dina passkeys',
     }),
   }),
+  loader: async ({ context: { queryClient } }) => {
+    await queryClient.ensureQueryData(orpc.user.me.queryOptions())
+  },
   component: Konto,
 })
 
@@ -32,6 +37,16 @@ function Konto() {
           <h1 className="font-semibold text-3xl tracking-tight md:text-4xl">Konto</h1>
           <p className="text-muted-foreground text-sm">Hantera hur du loggar in på Oceanview.</p>
         </header>
+
+        <section className="flex flex-col gap-4">
+          <div className="flex flex-col gap-2">
+            <h2 className="font-semibold text-xl">Profilbild</h2>
+            <p className="text-muted-foreground text-sm">Visas i kontaktlistan.</p>
+          </div>
+          <Suspense fallback={<div className="text-muted-foreground text-sm">Laddar…</div>}>
+            <AvatarUpload />
+          </Suspense>
+        </section>
 
         <section className="flex flex-col gap-4">
           <div className="flex flex-col gap-2">

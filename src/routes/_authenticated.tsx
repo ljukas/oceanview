@@ -5,7 +5,7 @@ import { SidebarInset, SidebarProvider, SidebarTrigger } from '~/components/ui/s
 import { TooltipProvider } from '~/components/ui/tooltip'
 import { useRealtimeSync } from '~/hooks/useRealtimeSync'
 import { getSession } from '~/lib/getSession'
-import { ensureSavedEmail } from '~/lib/savedEmailFns'
+import { ensureSavedLogin } from '~/lib/savedEmailFns'
 
 export const Route = createFileRoute('/_authenticated')({
   beforeLoad: async ({ location }) => {
@@ -14,7 +14,9 @@ export const Route = createFileRoute('/_authenticated')({
       throw redirect({ to: '/login', search: { redirect: location.href } })
     }
     if (environmentManager.isServer()) {
-      await ensureSavedEmail({ data: { email: session.user.email } })
+      await ensureSavedLogin({
+        data: { email: session.user.email, image: session.user.image ?? null },
+      })
     }
     return { user: session.user }
   },

@@ -9,6 +9,8 @@ export type UserRow = {
   email: string
   phone: string | null
   role: string | null
+  image: string | null
+  imageBlurhash: string | null
   createdAt: Date
   deletedAt: Date | null
 }
@@ -33,6 +35,8 @@ const userSelection = {
   email: user.email,
   phone: user.phone,
   role: user.role,
+  image: user.image,
+  imageBlurhash: user.imageBlurhash,
   createdAt: user.createdAt,
   deletedAt: user.deletedAt,
 }

@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { toast } from 'sonner'
+import { Avatar, AvatarFallback, AvatarImage } from '~/components/ui/avatar'
 import { Button } from '~/components/ui/button'
 import {
   Card,
@@ -14,12 +15,13 @@ import { authClient } from '~/lib/authClient'
 
 type Props = {
   email: string
+  image: string | null
   onSent: (email: string) => void
   onSwitchUser: () => void
   callbackURL: string
 }
 
-export function WelcomeBackCard({ email, onSent, onSwitchUser, callbackURL }: Props) {
+export function WelcomeBackCard({ email, image, onSent, onSwitchUser, callbackURL }: Props) {
   const [isSending, setIsSending] = useState(false)
 
   async function sendMagicLink() {
@@ -43,12 +45,12 @@ export function WelcomeBackCard({ email, onSent, onSwitchUser, callbackURL }: Pr
         <CardDescription>Fortsätt med ditt senaste konto.</CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col items-center gap-3">
-        <div
-          aria-hidden="true"
-          className="grid size-16 place-items-center rounded-full bg-muted font-semibold text-2xl text-muted-foreground"
-        >
-          {email[0]?.toUpperCase() ?? '?'}
-        </div>
+        <Avatar className="size-16">
+          {image ? <AvatarImage src={image} alt={email} width={64} height={64} /> : null}
+          <AvatarFallback className="font-semibold text-2xl">
+            {email[0]?.toUpperCase() ?? '?'}
+          </AvatarFallback>
+        </Avatar>
         <div className="break-all text-center font-medium text-sm">{email}</div>
       </CardContent>
       <CardFooter className="flex-col gap-3">

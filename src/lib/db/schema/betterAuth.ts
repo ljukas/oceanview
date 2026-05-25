@@ -18,6 +18,7 @@ export const user = pgTable('user', {
   banExpires: timestamp('ban_expires'),
   phone: text('phone'),
   deletedAt: timestamp('deleted_at'),
+  imageBlurhash: text('image_blurhash'),
 })
 
 export const session = pgTable(

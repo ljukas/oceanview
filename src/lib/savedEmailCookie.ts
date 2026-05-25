@@ -1,6 +1,7 @@
 import { deleteCookie, getCookie, setCookie } from '@tanstack/react-start/server'
+import { z } from 'zod'
 
-export const SAVED_EMAIL_COOKIE = 'oceanview-saved-email'
+export const SAVED_LOGIN_COOKIE = 'oceanview-saved-email'
 
 const COOKIE_OPTIONS = {
   path: '/',
@@ -10,15 +11,28 @@ const COOKIE_OPTIONS = {
   httpOnly: false,
 } as const
 
-export function readSavedEmail(): string | null {
-  const value = getCookie(SAVED_EMAIL_COOKIE)
-  return value?.includes('@') ? value : null
+export const savedLoginSchema = z.object({
+  email: z.email(),
+  image: z.string().url().nullable(),
+})
+
+export type SavedLogin = z.infer<typeof savedLoginSchema>
+
+export function readSavedLogin(): SavedLogin | null {
+  const value = getCookie(SAVED_LOGIN_COOKIE)
+  if (!value) return null
+  try {
+    const parsed = savedLoginSchema.safeParse(JSON.parse(value))
+    return parsed.success ? parsed.data : null
+  } catch {
+    return null
+  }
 }
 
-export function writeSavedEmail(email: string): void {
-  setCookie(SAVED_EMAIL_COOKIE, email, COOKIE_OPTIONS)
+export function writeSavedLogin(login: SavedLogin): void {
+  setCookie(SAVED_LOGIN_COOKIE, JSON.stringify(login), COOKIE_OPTIONS)
 }
 
-export function expireSavedEmail(): void {
-  deleteCookie(SAVED_EMAIL_COOKIE, { path: '/', sameSite: 'lax' })
+export function expireSavedLogin(): void {
+  deleteCookie(SAVED_LOGIN_COOKIE, { path: '/', sameSite: 'lax' })
 }
