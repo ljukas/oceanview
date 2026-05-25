@@ -57,7 +57,6 @@ function AvatarImage({
     [blurhash],
   )
 
-
   if (hasError) return null
   return (
     <Image
