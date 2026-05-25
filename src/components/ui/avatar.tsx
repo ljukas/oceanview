@@ -53,33 +53,26 @@ function AvatarImage({
   // Memoize the gradient string — blurhashToCssGradientString builds a
   // multi-stop CSS expression and we don't want it recomputed each render.
   const gradient = useMemo(
-    () => (blurhash ? blurhashToCssGradientString(blurhash) : null),
+    () => (blurhash ? blurhashToCssGradientString(blurhash) : undefined),
     [blurhash],
   )
+
+
   if (hasError) return null
   return (
-    <>
-      {gradient ? (
-        <span
-          aria-hidden
-          data-slot="avatar-blurhash"
-          className="absolute inset-0 size-full rounded-full"
-          style={{ backgroundImage: gradient }}
-        />
-      ) : null}
-      <Image
-        data-slot="avatar-image"
-        src={src}
-        alt={alt}
-        width={width}
-        height={height}
-        layout="constrained"
-        breakpoints={snapBreakpoints(width)}
-        transformer={transformer}
-        onError={() => setHasError(true)}
-        className={cn('absolute inset-0 size-full rounded-full object-cover', className)}
-      />
-    </>
+    <Image
+      data-slot="avatar-image"
+      src={src}
+      alt={alt}
+      width={width}
+      height={height}
+      background={gradient}
+      layout="constrained"
+      breakpoints={snapBreakpoints(width)}
+      transformer={transformer}
+      onError={() => setHasError(true)}
+      className={cn('absolute inset-0 size-full rounded-full object-cover', className)}
+    />
   )
 }
 
