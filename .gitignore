@@ -20,3 +20,4 @@ yarn.lock
 .tanstack
 .claude/settings.local.json
 .env*.local
+.neon_local/

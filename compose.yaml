@@ -1,15 +1,59 @@
 services:
   db:
-    image: neondatabase/neon_local:latest
+    image: neondatabase/neon_local:v1.5
     ports:
       - "5432:5432"
     environment:
       NEON_API_KEY: ${NEON_API_KEY}
       NEON_PROJECT_ID: ${NEON_PROJECT_ID}
       PARENT_BRANCH_ID: ${PARENT_BRANCH_ID}
+    volumes:
+      # Persist Neon Local's branch metadata so `down`/`up` reuses the same
+      # upstream branch instead of creating a fresh one. Combined with the
+      # git/HEAD mount below, each local git branch gets its own persistent
+      # Neon branch.
+      - ./.neon_local:/tmp/.neon_local
+      - ./.git/HEAD:/tmp/.git/HEAD:ro
+    restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -h localhost -U neon"]
       interval: 5s
       timeout: 3s
       retries: 12
       start_period: 10s
+  queue:
+    # Local-dev broker for the blurhash queue. Producers go through the
+    # bullmqQueue adapter; consumed by `pnpm dev:worker`. Mirrors the
+    # Vercel Queues + Nitro consumer flow we ship to production.
+    image: redis:7.4-alpine
+    ports:
+      - "6379:6379"
+    # AOF on so queued jobs survive `down`. everysec is the standard
+    # tradeoff (≤1s loss window on hard crash) and matches BullMQ defaults.
+    command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec"]
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
+  queue-studio:
+    # BullMQ dashboard. Profile-gated so it doesn't auto-start with
+    # `pnpm dev:up` / `pnpm queue:up`. Activate with `pnpm queue:studio`.
+    # Auto-discovers queues from Redis — no per-topic config needed.
+    profiles: [studio]
+    image: emirce/bullstudio:1.4.0
+    ports:
+      - "4000:4000"
+    environment:
+      REDIS_URL: redis://queue:6379
+    depends_on:
+      queue:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  redis_data:

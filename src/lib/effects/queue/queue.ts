@@ -1,6 +1,3 @@
-import { devLog } from './adapters/devLog'
-import { vercelQueue } from './adapters/vercelQueue'
-
 /**
  * Background-job queue interface. Producers (oRPC procedures) call
  * `publish('<topic>', payload)` after the synchronous service call lands.
@@ -8,9 +5,9 @@ import { vercelQueue } from './adapters/vercelQueue'
  * hook (see `server/plugins/blurhashQueue.ts`).
  *
  * `topic` is typed as a string union of currently-used topics — extend
- * the union when adding new background jobs. The adapter selector picks
- * `vercelQueue` when running on Vercel and `devLog` otherwise (so unit
- * tests and `pnpm dev` succeed without contacting the queue service).
+ * the union when adding new background jobs. Adapter selection happens on
+ * first publish via dynamic import so each runtime only ships the adapter
+ * it actually uses (BullMQ stays out of the prod Nitro bundle, etc.).
  */
 export type QueueTopic = 'blurhash'
 
@@ -30,10 +27,32 @@ export interface QueueEffects {
   publish<T extends QueueTopic>(topic: T, payload: QueuePayloadMap[T]): Promise<void>
 }
 
-function pickAdapter(): QueueEffects {
-  if (process.env.VITEST === 'true') return devLog
-  if (!process.env.VERCEL) return devLog
-  return vercelQueue
+let cached: Promise<QueueEffects> | null = null
+
+async function getAdapter(): Promise<QueueEffects> {
+  if (cached) return cached
+  cached = (async () => {
+    if (process.env.VITEST === 'true') {
+      return (await import('./adapters/devLog')).devLog
+    }
+    // Local dev: when REDIS_URL is set we route through BullMQ so a real
+    // worker (`scripts/devBlurhashWorker.ts`) can consume the queue out of
+    // band. Mirrors the prod topology in shape (durable broker, separate
+    // consumer process, retries) without depending on a Vercel runtime.
+    if (process.env.REDIS_URL) {
+      return (await import('./adapters/bullmqQueue')).bullmqQueue
+    }
+    if (!process.env.VERCEL) {
+      return (await import('./adapters/devLog')).devLog
+    }
+    return (await import('./adapters/vercelQueue')).vercelQueue
+  })()
+  return cached
 }
 
-export const queue: QueueEffects = pickAdapter()
+export const queue: QueueEffects = {
+  async publish(topic, payload) {
+    const adapter = await getAdapter()
+    await adapter.publish(topic, payload)
+  },
+}
