@@ -12,6 +12,14 @@
 > - **Two Blob stores, not one** — `oceanview-public` (avatars) and `oceanview-private` (documents), with separate read-write tokens. Per-access routing inside the adapter; pathnames are also env-prefixed (`dev/`, `preview/`, `prod/`) so the same two stores serve all environments.
 > - **Three-step oRPC upload flow, not `handleUpload`** — `orpc.{image|file}.mint*Upload` → browser PUTs to Blob with the client token → `orpc.{image|file}.confirm*Upload` writes the metadata row. No `handleUpload` helper, no `onUploadCompleted` webhook (which doesn't reach `localhost` in dev).
 > - **No Vercel Image Optimization** — avatars render against the raw Blob CDN URL. `/_vercel/image` isn't served by Vite locally and requires Build Output API + `remotePatterns` config in prod we don't maintain; at our scale (avatars ≤ 5 MB, rendered ≤ 160 px) it isn't worth wiring. Future option: client-side resize before upload.
+>
+> **Amended 2026-05-25.** Added a third adapter (`s3`) so dev can run fully offline against a local S3-compatible container (RustFS in `compose.yaml`). Mirrors the queue layer's three-path topology (ADR-0007): `vercelBlob` in prod, `s3` for local dev when `S3_ENDPOINT` is set, `devLog` for tests and offline-without-docker. Load-bearing changes:
+>
+> - **`mintUploadToken` returns a discriminated union** — `{ pathname, upload: { kind: 'vercel-blob-client'; clientToken } | { kind: 'presigned-put'; url; headers? } }`. Vercel Blob keeps the SDK's client-token flow (with progress events); S3 returns a presigned PUT URL the browser PUTs to directly.
+> - **Browser dispatcher** at `src/lib/effects/storage/clientUpload.ts` — `uploadFileToStorage(file, mint, opts)` switches on `mint.upload.kind` so `AvatarUpload.tsx` / `DocumentUpload.tsx` no longer touch `@vercel/blob/client.put()` directly. Progress events still work for the Vercel Blob path; the S3 path uses `fetch` + plain HTTPS PUT (no progress events without `XMLHttpRequest`, accepted tradeoff).
+> - **No env-prefix in the S3 adapter** — RustFS's dev bucket *is* the env boundary; one less moving part.
+> - **Public bucket → anonymous read** — `compose.yaml`'s `storage-init` sidecar runs `mc anonymous set download local/oceanview-public` so avatar URLs stored in `user.image` remain fetchable long-term without re-signing (parity with Vercel Blob's public-store behaviour). Private bucket stays auth-only and is presigned per read.
+> - **Adapter selector is now lazy** — `storage.ts` dynamically imports adapters on first use (mirrors `queue.ts`), so neither the AWS SDK nor `@vercel/blob` lands in the cold-start path of the other.
 
 ---
 
@@ -122,19 +130,26 @@ The adapter selector picks `vercelBlob` when both `BLOB_PUBLIC_READ_WRITE_TOKEN`
 
 ```ts
 // src/lib/effects/storage/storage.ts
+export type MintUploadResult = {
+  pathname: string
+  upload:
+    | { kind: 'vercel-blob-client'; clientToken: string }
+    | { kind: 'presigned-put'; url: string; headers?: Record<string, string> }
+}
+
 export interface StorageEffects {
   /**
-   * Mint a short-lived client token. `access` selects which store (and token).
-   * The input `pathname` is logical (e.g. `avatars/{userId}/{uuid}`); the
-   * adapter env-prefixes it and returns the *prefixed* pathname the browser
-   * must pass back into `put` (the token is scoped to that exact value).
+   * Mint the credential the browser needs to upload bytes directly. The
+   * adapter may env-prefix the input pathname; the *returned* pathname is
+   * what the browser must round-trip on confirm. `upload` is a discriminated
+   * union so the client picks the right transport per backend.
    */
   mintUploadToken(input: {
     access: 'public' | 'private'
     pathname: string
     contentType: string
     maxBytes: number
-  }): Promise<{ clientToken: string; pathname: string }>
+  }): Promise<MintUploadResult>
 
   /** Existence + metadata check. Returns null when the blob does not exist. */
   head(access: 'public' | 'private', pathname: string): Promise<{
@@ -145,14 +160,14 @@ export interface StorageEffects {
 
   delete(access: 'public' | 'private', pathname: string): Promise<void>
 
-  /** Signed time-limited download URL for a private-store object. */
-  getReadUrl(pathname: string, ttlSeconds: number): Promise<string>
+  /** Download URL. `private` is signed + time-limited; `public` is canonical (Vercel Blob) or stable bucket URL (S3 dev). */
+  getReadUrl(access: 'public' | 'private', pathname: string, ttlSeconds: number): Promise<string>
 }
 
-export const storage: StorageEffects = pickAdapter()
+export const storage: StorageEffects = pickAdapter()  // lazy: adapters dynamically imported on first use
 ```
 
-The interface is **intentionally backend-neutral**: `mintUploadToken` returns a token the browser passes into `put(pathname, file, { access, token })` from `@vercel/blob/client`. For R2 the equivalent shape: `mintUploadToken` would return a presigned PUT URL the browser PUTs to directly, and `head` would be an S3 HEAD against the bucket — same surface, different implementation.
+The interface is **intentionally backend-neutral**. The discriminated `upload` payload is the seam: Vercel Blob returns `{ kind: 'vercel-blob-client', clientToken }` (browser uses `@vercel/blob/client.put()` so progress events still work); S3-compatible backends (RustFS for local dev, R2 the day we ever swap to it) return `{ kind: 'presigned-put', url }` (browser does a plain HTTPS PUT). The browser dispatcher in `clientUpload.ts` switches on `kind`, so `AvatarUpload.tsx` / `DocumentUpload.tsx` only know about the seam.
 
 ### The byte-path
 

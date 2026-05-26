@@ -1,10 +1,10 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { put } from '@vercel/blob/client'
 import { UploadIcon } from 'lucide-react'
 import { useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { Button } from '~/components/ui/button'
 import { Spinner } from '~/components/ui/spinner'
+import { uploadFileToStorage } from '~/lib/effects/storage/clientUpload'
 import { orpc } from '~/lib/orpc/client'
 
 const ACCEPT_LIST = [
@@ -44,16 +44,16 @@ export function DocumentUpload() {
     }
     setPending(true)
     try {
-      const { clientToken, pathname } = await mintMutation.mutateAsync({
+      const mint = await mintMutation.mutateAsync({
         contentType: file.type,
         sizeBytes: file.size,
         name: file.name,
       })
 
-      await put(pathname, file, { access: 'private', token: clientToken })
+      await uploadFileToStorage(file, mint, { access: 'private', contentType: file.type })
 
       await confirmMutation.mutateAsync({
-        pathname,
+        pathname: mint.pathname,
         name: file.name,
         sizeBytes: file.size,
       })

@@ -61,13 +61,12 @@ src/
     login.tsx                      magic-link + passkey sign-in
     api/auth/$.ts                  Better Auth catch-all — delegates to auth.handler()
     api/rpc/$.ts                   oRPC catch-all — mounts appRouter at /api/rpc
-    api/files/upload.ts            Vercel Blob handleUpload — token mint + onUploadCompleted (avatar replace OR document insert)
-    api/files/download.$id.ts      auth-gated → 302 redirect to signed Blob URL for a document
+    api/files/download.$id.ts      auth-gated → 302 redirect to signed storage URL for a document
     _authenticated.tsx             pathless guard: redirects unauthed → /login
     _authenticated/
       index.tsx                    dashboard / home
       contacts.tsx                 contacts page (placeholder)
-      documents.tsx                shared file library — DocumentUpload + DocumentList (Vercel Blob private store)
+      documents.tsx                shared file library — DocumentUpload + DocumentList (private store)
       konto.tsx                    user's own account + passkey management
       admin.tsx                    admin landing
       admin/users.tsx              admin user CRUD
@@ -120,8 +119,10 @@ src/
         index.ts                   barrel
         email.test.ts              colocated test (pure; no DB)
       storage/
-        storage.ts                 StorageEffects interface + adapter selector (devLog when tokens missing)
+        storage.ts                 StorageEffects interface + lazy-import adapter selector (STORAGE_ADAPTER override → S3_ENDPOINT → BLOB_* → devLog)
+        clientUpload.ts            browser dispatcher — switches on the discriminated `upload.kind` from mintUploadToken (vercel-blob-client put() vs presigned-put fetch())
         adapters/vercelBlob.ts     production adapter — owns env prefix + token-per-access; ONLY file that imports @vercel/blob
+        adapters/s3.ts             local-dev adapter — talks to RustFS (compose service `storage`); ONLY file that imports @aws-sdk/client-s3 + s3-request-presigner
         adapters/devLog.ts         test/offline adapter — logs and returns placeholder URLs
         index.ts                   barrel
         storage.test.ts            colocated test (devLog contract)
@@ -227,8 +228,10 @@ Never hand-edit `betterAuth.ts`.
 | `pnpm queue:up` | Start the Redis broker for the local blurhash queue on :6379 (`compose.yaml` service `queue`). Only needed when `REDIS_URL` is set in `.env` |
 | `pnpm queue:down` | Stop just the queue container (leaves Neon Local alone) |
 | `pnpm queue:studio` | Open Bull Studio on http://localhost:4000 to inspect BullMQ queues. Profile-gated docker service (`emirce/bullstudio`); needs `pnpm queue:up` first. Stop with `pnpm dev:down` or `docker compose stop queue-studio` |
-| `pnpm dev:up` | One-shot for the whole dev stack: brings up both `db` and `queue` services |
-| `pnpm dev:down` | One-shot for the whole dev stack: stops both `db` and `queue` services |
+| `pnpm storage:up` | Start the local S3-compatible storage on :9000 (S3 API) and :9001 (web console). `compose.yaml` services `storage` (RustFS) + `storage-init` (one-shot bucket bootstrap via `mc`). Only needed when `S3_ENDPOINT` is set in `.env` |
+| `pnpm storage:down` | Stop the storage + init containers (leaves Neon Local + queue alone) |
+| `pnpm dev:up` | One-shot for the whole dev stack: brings up `db`, `queue`, `storage`, runs `storage-init`, then runs `pnpm db:migrate` against the local DB so the schema is on `HEAD` |
+| `pnpm dev:down` | One-shot for the whole dev stack: stops every service brought up by `dev:up` |
 | `pnpm dev:worker` | Run the local BullMQ worker (`scripts/devBlurhashWorker.ts`) that consumes the `blurhash` topic and calls the same handler as the prod Nitro plugin |
 | `pnpm test` | Vitest once. Every test gets its own `test_w<pool>_<n>` schema: CREATE SCHEMA + run all migrations + SET search_path in `beforeEach`, DROP SCHEMA in `afterEach`. Connects to :5432 via Neon Local's session-pool URL (`neondb_session`) so the per-test SET persists across queries and transactions; the dev app uses the same :5432 service via the default `neondb` URL |
 | `pnpm test:watch` | Vitest watch mode (same DB rules as `pnpm test`) |
@@ -249,7 +252,9 @@ Never hand-edit `betterAuth.ts`.
 
 **Set in Vercel + `.env`**: `BETTER_AUTH_SECRET` (32+ chars; `openssl rand -base64 32`), `BETTER_AUTH_URL` (site origin), `ADMIN_EMAILS` (comma-separated allowlist).
 
-**Set in Vercel + `.env` (auto-provisioned via Marketplace)**: `BLOB_PUBLIC_READ_WRITE_TOKEN` (oceanview-public store, avatars), `BLOB_PRIVATE_READ_WRITE_TOKEN` (oceanview-private store, documents). Optional override: `STORAGE_ADAPTER=devLog` forces the no-op adapter (used in tests by default).
+**Set in Vercel + `.env` (auto-provisioned via Marketplace)**: `BLOB_PUBLIC_READ_WRITE_TOKEN` (oceanview-public store, avatars), `BLOB_PRIVATE_READ_WRITE_TOKEN` (oceanview-private store, documents). For local dev, leave these blank and use the `S3_*` block below for fully offline uploads. Optional override: `STORAGE_ADAPTER=devLog` forces the no-op adapter (used in tests by default).
+
+**Local-only — S3-compatible storage** (`.env`, gitignored; backs `pnpm storage:up`): `S3_ENDPOINT` (default `http://localhost:9000`), `S3_REGION` (`eu-north-1` — AWS Stockholm, matches the rest of the prod stack's geography), `S3_ACCESS_KEY_ID` / `S3_SECRET_ACCESS_KEY` (default `oceanview-dev` / `oceanview-dev-secret-key`, set on the RustFS container via `RUSTFS_ACCESS_KEY` / `RUSTFS_SECRET_KEY`), `S3_BUCKET_PUBLIC` (`oceanview-public`), `S3_BUCKET_PRIVATE` (`oceanview-private`). When `S3_ENDPOINT` is set, the storage adapter selects `s3` (takes precedence over `BLOB_*`). Production never sets this — `vercelBlob` wins there. See ADR-0006 (Local S3 path).
 
 **Manual, added when wired**: `RESEND_API_KEY`.
 
@@ -318,9 +323,9 @@ WebFetch these before guessing APIs. They beat the model's memorized snapshots.
   - **Everything else** (lib modules, utils, data, config — `.ts` / `.json`) is **camelCase** — `authClient.ts`, `passkeyProviders.ts`, `passkeyAaguids.json`.
   - **`src/components/ui/` is kebab-case** and CLI-managed by shadcn — don't normalize it.
   - **Directory roles**: `src/lib/` = wired/stateful modules (auth, db, orpc, services); `src/hooks/` = React hooks; `src/utils/` = pure helper functions; `src/data/` = static data.
-- **File blobs in Vercel Blob, metadata in Postgres.** Uploads go browser → Blob directly via `@vercel/blob/client` `upload()` + a `handleUploadUrl` route — bytes never traverse a Vercel Function. Two stores: `oceanview-public` (avatars) and `oceanview-private` (documents). All file-related code goes through the `src/lib/effects/storage/` seam — `@vercel/blob` is only imported from `adapters/vercelBlob.ts`. See ADR-0006.
+- **File blobs in Vercel Blob (prod) or a local RustFS container (dev), metadata in Postgres.** Uploads go browser → storage directly; bytes never traverse a Vercel Function. Two stores/buckets: `oceanview-public` (avatars) and `oceanview-private` (documents). All file-related code goes through the `src/lib/effects/storage/` seam — `@vercel/blob` is only imported from `adapters/vercelBlob.ts`, `@aws-sdk/client-s3` only from `adapters/s3.ts`. The browser dispatcher (`clientUpload.ts`) switches on the discriminated `upload.kind` returned by `mintUploadToken`. See ADR-0006.
 - **`vercel env pull` is dangerous**: it writes prod `DATABASE_URL` into `.env.local`, which Vite + Drizzle prefer over `.env`. If you must run it, immediately delete the `DATABASE_URL*` lines from `.env.local` — otherwise `pnpm db:migrate` would migrate **production**.
-- **Migrations are explicit locally.** `pnpm build` does not migrate. `vercel-build` does, on deploy. Run `pnpm db:migrate` yourself against the local Neon branch.
+- **Migrations are explicit locally outside `pnpm dev:up`.** `pnpm dev:up` auto-runs `pnpm db:migrate` after the db container becomes healthy, so the dev DB stays on `HEAD`. `pnpm db:up`, `pnpm build`, and ad-hoc flows do **not** migrate — run `pnpm db:migrate` yourself in those cases. `vercel-build` migrates on deploy.
 - **Conventional Commits** for agent commits: `<type>(<scope>): <subject>` ≤ 72 chars, imperative mood, *why* in the body. Types: `feat`, `fix`, `chore`, `docs`, `refactor`, `test`, `build`, `ci`, `perf`, `style`, `revert`.
 - **Lock TanStack Start to a specific RC version** in `package.json` until 1.0 ships.
 - **Free tier first.** Before adding any third-party service, confirm a free tier covers ~20 users.
@@ -340,7 +345,7 @@ One line each. The reasoning lives in `git log CLAUDE.md` if anyone needs it.
 - **ORM**: Drizzle — not Prisma.
 - **DB**: Neon Postgres + Neon Local for dev/test.
 - **DB driver**: `postgres-js` — not `neon-http` (Better Auth needs multi-statement transactions; Neon Local needs the serverless driver over HTTP, which we don't use).
-- **File storage**: Vercel Blob — two stores (`oceanview-public` for avatars, `oceanview-private` for documents) exposed by two oRPC routers split along the same access boundary (`imageRouter` for public uploads, `fileRouter` for private uploads + listing/deleting documents). Cloudflare R2 stays documented as a swap-in fallback. See ADR-0006.
+- **File storage**: Vercel Blob in prod, local RustFS container (`compose.yaml` service `storage`) for offline dev, `devLog` for tests — same `StorageEffects` seam, three execution paths (mirrors the queue layer in ADR-0007). Two stores/buckets (`oceanview-public` for avatars, `oceanview-private` for documents) exposed by two oRPC routers split along the same access boundary (`imageRouter` for public uploads, `fileRouter` for private uploads + listing/deleting documents). `mintUploadToken` returns a discriminated `upload` payload (`vercel-blob-client` clientToken vs `presigned-put` URL); browser dispatcher in `src/lib/effects/storage/clientUpload.ts` picks the right transport. Cloudflare R2 stays documented as a swap-in fallback. See ADR-0006.
 - **Email**: Resend.
 - **UI**: shadcn/ui (style `radix-nova`, base color `slate`) + Tailwind v4. CSS vars live in `src/styles/app.css`; `components.json` is the source of truth.
 - **Dark mode**: `next-themes` with `attribute="class"` + system preference + manual toggle (`ModeToggle` mounted in `__root.tsx`). No flash on hard reload — next-themes injects its own preload script.

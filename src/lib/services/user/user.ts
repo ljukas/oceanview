@@ -142,3 +142,12 @@ export async function restoreAsAdmin(targetId: string): Promise<void> {
 
   await db.update(user).set({ deletedAt: null }).where(eq(user.id, targetId))
 }
+
+export async function setImageBlurhash(userId: string, blurhash: string): Promise<boolean> {
+  const updated = await db
+    .update(user)
+    .set({ imageBlurhash: blurhash })
+    .where(eq(user.id, userId))
+    .returning({ id: user.id })
+  return updated.length > 0
+}

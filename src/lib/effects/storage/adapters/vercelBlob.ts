@@ -51,7 +51,7 @@ export const vercelBlob: StorageEffects = {
       addRandomSuffix: false,
       allowOverwrite: false,
     })
-    return { clientToken, pathname: prefixed }
+    return { pathname: prefixed, upload: { kind: 'vercel-blob-client', clientToken } }
   },
 
   async head(access, pathname) {

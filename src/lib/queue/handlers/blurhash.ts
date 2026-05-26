@@ -1,11 +1,9 @@
-import { eq } from 'drizzle-orm'
-import { db } from '~/lib/db'
-import { user } from '~/lib/db/schema'
 import { storage } from '~/lib/effects'
 import type { QueuePayloadMap } from '~/lib/effects/queue/queue'
 import { generateBlurhash, SHARP_DECODABLE_MIME_SET } from '~/lib/image/blurhash'
 import { logger } from '~/lib/logger/server'
 import * as fileService from '~/lib/services/file'
+import * as userService from '~/lib/services/user'
 
 const READ_URL_TTL_SECONDS = 60
 
@@ -74,12 +72,8 @@ export async function handleBlurhashMessage(
   log.info('blurhash: stored', { length: hash.length })
 
   if (msg.kind === 'avatar') {
-    const updated = await db
-      .update(user)
-      .set({ imageBlurhash: hash })
-      .where(eq(user.id, msg.userId))
-      .returning({ id: user.id })
-    if (updated.length > 0) {
+    const denormalized = await userService.setImageBlurhash(msg.userId, hash)
+    if (denormalized) {
       log.info('blurhash: denormalized to user.imageBlurhash', { userId: msg.userId })
     } else {
       log.warn('blurhash: target user gone, skipped denormalization', { userId: msg.userId })

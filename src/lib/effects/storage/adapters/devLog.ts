@@ -10,7 +10,7 @@ import type { StorageEffects } from '../storage'
 export const devLog: StorageEffects = {
   async mintUploadToken({ access, pathname, contentType, maxBytes }) {
     logger.info('storage mintUploadToken (devLog)', { access, pathname, contentType, maxBytes })
-    return { clientToken: 'devlog-stub', pathname }
+    return { pathname, upload: { kind: 'vercel-blob-client', clientToken: 'devlog-stub' } }
   },
 
   async head(access, pathname) {

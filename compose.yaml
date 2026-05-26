@@ -54,6 +54,52 @@ services:
       queue:
         condition: service_healthy
     restart: unless-stopped
+  storage:
+    # Local S3-compatible storage for offline dev. MinIO-protocol-compatible
+    # (port 9000 = S3 API, port 9001 = web console). RustFS refuses default
+    # `rustfsadmin` creds on non-loopback listeners, so we override with the
+    # same values committed to `.env.example`. Production uses Vercel Blob —
+    # the adapter selector in `src/lib/effects/storage/storage.ts` picks the
+    # `s3` adapter only when `S3_ENDPOINT` is set in the environment.
+    image: rustfs/rustfs:1.0.0-beta.4
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      RUSTFS_ACCESS_KEY: oceanview-dev
+      RUSTFS_SECRET_KEY: oceanview-dev-secret-key
+      # RustFS emits no CORS headers by default; without this allow-list the
+      # browser blocks every presigned PUT from the Vite dev server. Matches
+      # the values RustFS's own scripts/run.sh ships with.
+      RUSTFS_CORS_ALLOWED_ORIGINS: "http://localhost:3000,http://127.0.0.1:3000"
+    volumes:
+      # Container runs as UID 10001; named volumes handle ownership.
+      - storage_data:/data
+      - storage_logs:/logs
+    restart: unless-stopped
+  storage-init:
+    # One-shot bucket bootstrap. Waits for the RustFS S3 API, creates both
+    # buckets idempotently, and sets `oceanview-public` to allow anonymous
+    # read so avatar URLs (stored on `user.image`) stay fetchable without
+    # re-signing. Exits when done; re-runs on subsequent `dev:up`s are
+    # no-ops because of `--ignore-existing`.
+    image: minio/mc:latest
+    depends_on:
+      - storage
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        until mc alias set local http://storage:9000 oceanview-dev oceanview-dev-secret-key >/dev/null 2>&1; do
+          echo 'waiting for rustfs...';
+          sleep 2;
+        done;
+        mc mb --ignore-existing local/oceanview-public;
+        mc mb --ignore-existing local/oceanview-private;
+        mc anonymous set download local/oceanview-public || true;
+        echo 'storage init complete';
+    restart: "no"
 
 volumes:
   redis_data:
+  storage_data:
+  storage_logs:

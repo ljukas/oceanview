@@ -1,5 +1,4 @@
 import { useMutation, useQueryClient, useSuspenseQuery } from '@tanstack/react-query'
-import { put } from '@vercel/blob/client'
 import { ImageUpIcon } from 'lucide-react'
 import { useRef, useState } from 'react'
 import { toast } from 'sonner'
@@ -7,6 +6,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '~/components/ui/avatar'
 import { Button } from '~/components/ui/button'
 import { Progress } from '~/components/ui/progress'
 import { Spinner } from '~/components/ui/spinner'
+import { type UploadProgress, uploadFileToStorage } from '~/lib/effects/storage/clientUpload'
 import { orpc } from '~/lib/orpc/client'
 import { initials } from '~/lib/utils'
 
@@ -14,8 +14,6 @@ const ACCEPT = 'image/jpeg,image/png,image/webp,image/avif,image/heic,image/heif
 const DIRECT_UPLOAD_MIME = ['image/jpeg', 'image/png', 'image/webp', 'image/avif'] as const
 type DirectUploadMime = (typeof DIRECT_UPLOAD_MIME)[number]
 const MAX_BYTES = 5_000_000
-
-type UploadProgress = { loaded: number; total: number; percentage: number }
 
 function formatBytes(n: number) {
   if (n < 1000) return `${n} B`
@@ -86,21 +84,20 @@ export function AvatarUpload() {
       }
 
       setProgress({ loaded: 0, total: file.size, percentage: 0 })
-      const { clientToken, pathname } = await mintMutation.mutateAsync({
+      const mint = await mintMutation.mutateAsync({
         contentType,
         sizeBytes: file.size,
         name: file.name,
       })
 
-      await put(pathname, file, {
+      await uploadFileToStorage(file, mint, {
         access: 'public',
-        token: clientToken,
         contentType,
-        onUploadProgress: (e) => setProgress(e),
+        onProgress: (e) => setProgress(e),
       })
 
       await confirmMutation.mutateAsync({
-        pathname,
+        pathname: mint.pathname,
         name: file.name,
         sizeBytes: file.size,
       })

@@ -1,15 +1,20 @@
 import { expect, test } from 'vitest'
 import { storage } from './storage'
 
-test('mintUploadToken returns a clientToken and echoes the pathname', async () => {
+test('mintUploadToken returns a pathname and a typed upload payload', async () => {
   const result = await storage.mintUploadToken({
     access: 'public',
     pathname: 'avatars/user-1/abc',
     contentType: 'image/jpeg',
     maxBytes: 1_000_000,
   })
-  expect(result.clientToken).toBeTypeOf('string')
   expect(result.pathname).toBe('avatars/user-1/abc')
+  expect(result.upload.kind).toBeTypeOf('string')
+  if (result.upload.kind === 'vercel-blob-client') {
+    expect(result.upload.clientToken).toBeTypeOf('string')
+  } else {
+    expect(result.upload.url).toBeTypeOf('string')
+  }
 })
 
 test('mintUploadToken routes private the same way', async () => {
@@ -19,8 +24,8 @@ test('mintUploadToken routes private the same way', async () => {
     contentType: 'application/pdf',
     maxBytes: 25_000_000,
   })
-  expect(result.clientToken).toBeTypeOf('string')
   expect(result.pathname).toBe('documents/manual.pdf')
+  expect(result.upload.kind).toBeTypeOf('string')
 })
 
 test('head returns a stub HeadResult for any pathname', async () => {
