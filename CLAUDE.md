@@ -2,7 +2,7 @@
 
 Internal web app for a sailboat co-ownership group (10–20 users: owners + a couple of admins). Not a commercial product — it coordinates one boat among its owners.
 
-**State**: scaffold complete (auth, DB, schema, services, tests are live). File storage (Vercel Blob) is wired — avatars + documents. Only Resend (email delivery) remains unwired — see [Deferred work](#deferred-work).
+**State**: scaffold complete (auth, DB, schema, services, tests are live). File storage (Vercel Blob) is wired — avatars + documents. Email is wired — Mailpit in dev, Resend stubbed for prod (activates once the sender domain is verified — see [Deferred work](#deferred-work)).
 
 **Planned features**: boat-week scheduling. None implemented yet.
 
@@ -36,6 +36,7 @@ Load on demand, not eagerly. The `pnpm dlx @tanstack/intent` block at the bottom
 | Adding oRPC procedures, middleware, error handling | https://orpc.dev/docs |
 | Adding services, domain rules, error mapping | `docs/adr/0002-service-domain-architecture.md` |
 | Adding side effects (email, storage, audit, …) | `docs/adr/0001-side-effects-architecture.md` |
+| Adding or editing email templates (React Email components, `renderMagicLink` helpers) | `docs/adr/0008-email-architecture.md` + https://react.email/docs |
 | Adding a queue topic, worker, broker config, or background-job handler | `docs/adr/0007-background-job-queue-architecture.md` |
 | Adding realtime sync (publish events, new event kinds, SSE/subscriber behaviour) | `docs/adr/0004-realtime-sync-architecture.md` |
 | Adding logging — significant events, error sinks, request-scoped context | `docs/adr/0003-logging-architecture.md` |
@@ -114,10 +115,12 @@ src/
         file.test.ts               colocated tests
     effects/                       cross-system side-effect adapters; see docs/adr/0001
       email/
-        email.ts                   EmailEffects interface + selected adapter
-        adapters/devLog.ts         routes magic-link sends through logger.info (used until Resend is wired)
+        email.ts                   EmailEffects interface + lazy-import adapter selector (VITEST/EMAIL_ADAPTER override → SMTP_HOST → RESEND_API_KEY → devLog)
+        adapters/smtp.ts           nodemailer SMTP — local dev (Mailpit); ONLY file that imports nodemailer
+        adapters/resend.ts         Resend SDK — production; ONLY file that imports resend
+        adapters/devLog.ts         test/offline adapter — logs to the structured logger
         index.ts                   barrel
-        email.test.ts              colocated test (pure; no DB)
+        email.test.ts              colocated test (selector contract — VITEST short-circuit forces devLog)
       storage/
         storage.ts                 StorageEffects interface + lazy-import adapter selector (STORAGE_ADAPTER override → S3_ENDPOINT → BLOB_* → devLog)
         clientUpload.ts            browser dispatcher — switches on the discriminated `upload.kind` from mintUploadToken (vercel-blob-client put() vs presigned-put fetch())
@@ -150,6 +153,11 @@ src/
     document/                      DocumentList.tsx, DocumentUpload.tsx
     contact/                       ContactCard.tsx
     ui/                            shadcn primitives (kebab-case, CLI-managed)
+  emails/                          React Email templates (server-rendered; consumed by smtp + resend adapters); preview with `pnpm email:dev`
+    theme.ts                       Tailwind config + neutral palette + font-scale plugin (MIT; from React Email demo Studio pack)
+    Fonts.tsx                      Inter + Geist via <Font> (MIT; from React Email demo Studio pack)
+    MagicLinkEmail.tsx             magic-link template + renderMagicLink() helper (adapted from Studio activation.tsx)
+    MagicLinkEmail.test.tsx        colocated; asserts subject + URL-in-html-and-text + non-empty bodies
   data/
     passkeyAaguids.json            static AAGUID → provider metadata registry
   utils/
@@ -230,7 +238,10 @@ Never hand-edit `betterAuth.ts`.
 | `pnpm queue:studio` | Open Bull Studio on http://localhost:4000 to inspect BullMQ queues. Profile-gated docker service (`emirce/bullstudio`); needs `pnpm queue:up` first. Stop with `pnpm dev:down` or `docker compose stop queue-studio` |
 | `pnpm storage:up` | Start the local S3-compatible storage on :9000 (S3 API) and :9001 (web console). `compose.yaml` services `storage` (RustFS) + `storage-init` (one-shot bucket bootstrap via `mc`). Only needed when `S3_ENDPOINT` is set in `.env` |
 | `pnpm storage:down` | Stop the storage + init containers (leaves Neon Local + queue alone) |
-| `pnpm dev:up` | One-shot for the whole dev stack: brings up `db`, `queue`, `storage`, runs `storage-init`, then runs `pnpm db:migrate` against the local DB so the schema is on `HEAD` |
+| `pnpm mail:up` | Start the local SMTP catcher Mailpit on :1025 (SMTP) and :8025 (web UI). `compose.yaml` service `mail`. Only needed when `SMTP_HOST` is set in `.env` |
+| `pnpm mail:down` | Stop the Mailpit container (leaves the rest of the dev stack alone) |
+| `pnpm email:dev` | Start the React Email preview server (`react-email dev --dir src/emails`) on http://localhost:3001 — browse and live-edit templates without going through the auth flow |
+| `pnpm dev:up` | One-shot for the whole dev stack: brings up `db`, `queue`, `mail`, `storage`, runs `storage-init`, then runs `pnpm db:migrate` against the local DB so the schema is on `HEAD` |
 | `pnpm dev:down` | One-shot for the whole dev stack: stops every service brought up by `dev:up` |
 | `pnpm dev:worker` | Run the local BullMQ worker (`scripts/devBlurhashWorker.ts`) that consumes the `blurhash` topic and calls the same handler as the prod Nitro plugin |
 | `pnpm test` | Vitest once. Every test gets its own `test_w<pool>_<n>` schema: CREATE SCHEMA + run all migrations + SET search_path in `beforeEach`, DROP SCHEMA in `afterEach`. Connects to :5432 via Neon Local's session-pool URL (`neondb_session`) so the per-test SET persists across queries and transactions; the dev app uses the same :5432 service via the default `neondb` URL |
@@ -256,7 +267,9 @@ Never hand-edit `betterAuth.ts`.
 
 **Local-only — S3-compatible storage** (`.env`, gitignored; backs `pnpm storage:up`): `S3_ENDPOINT` (default `http://localhost:9000`), `S3_REGION` (`eu-north-1` — AWS Stockholm, matches the rest of the prod stack's geography), `S3_ACCESS_KEY_ID` / `S3_SECRET_ACCESS_KEY` (default `oceanview-dev` / `oceanview-dev-secret-key`, set on the RustFS container via `RUSTFS_ACCESS_KEY` / `RUSTFS_SECRET_KEY`), `S3_BUCKET_PUBLIC` (`oceanview-public`), `S3_BUCKET_PRIVATE` (`oceanview-private`). When `S3_ENDPOINT` is set, the storage adapter selects `s3` (takes precedence over `BLOB_*`). Production never sets this — `vercelBlob` wins there. See ADR-0006 (Local S3 path).
 
-**Manual, added when wired**: `RESEND_API_KEY`.
+**Set in Vercel + `.env` (after sender-domain verification)**: `RESEND_API_KEY`, `EMAIL_FROM`. The Resend adapter activates automatically when `RESEND_API_KEY` is set and `SMTP_HOST` is unset. Until DNS for `mail.<domain>` is verified, leave these blank — auth still works via the devLog fallback in production (URL appears in Vercel Runtime Logs).
+
+**Local-only — Mailpit SMTP catcher** (`.env`, gitignored; backs `pnpm mail:up`): `SMTP_HOST` (default `localhost`), `SMTP_PORT` (default `1025`), `EMAIL_FROM` (sender — Mailpit accepts anything). When `SMTP_HOST` is set, the email adapter selects `smtp` (takes precedence over `RESEND_API_KEY` so `vercel env pull` accidents don't send real mail). Optional override: `EMAIL_ADAPTER=devLog` forces the no-op adapter (tests also short-circuit via `VITEST`). See ADR-0008.
 
 **Optional**: `LOG_LEVEL` — pino level (`trace`/`debug`/`info`/`warn`/`error`/`fatal`). Defaults to `debug` in dev, `info` in prod.
 
@@ -298,13 +311,17 @@ WebFetch these before guessing APIs. They beat the model's memorized snapshots.
 - Vercel + TanStack Start — https://vercel.com/docs/frameworks/tanstack-start
 - Vercel Blob — https://vercel.com/docs/vercel-blob
 - Cloudflare R2 (documented fallback per ADR-0006) — https://developers.cloudflare.com/r2
-- Resend (deferred) — https://resend.com/docs
+- React Email — https://react.email/docs
+- React Email Studio demo pack (template source) — https://github.com/resend/react-email/tree/canary/apps/demo/emails/05-Studio
+- Resend — https://resend.com/docs
+- Nodemailer — https://nodemailer.com/about/
+- Mailpit (local SMTP catcher) — https://mailpit.axllent.org/docs/
 
 ---
 
 ## Deferred work
 
-**Resend** — not yet wired. `sendMagicLink` in `src/lib/auth.ts` currently routes through the `devLog` adapter, which calls `logger.info('magic-link (devLog)', { to, url })`. The URL appears in the terminal in dev and in Vercel Runtime Logs in prod — fine for local testing and the first prod sign-ins. Wire Resend once a sender domain is verified (e.g. `mail.<domain>`) by adding `adapters/resend.ts` and swapping the export in `email.ts`.
+**Resend sender domain** — the `resend` adapter ships in `src/lib/effects/email/adapters/resend.ts`, but is gated on `RESEND_API_KEY` + `EMAIL_FROM` being set in Vercel (and `SMTP_HOST` being unset, which is the prod default). Pending DNS for `mail.<oceanview-domain>` (SPF/DKIM/return-path). Once verified, drop the values into Vercel envs — no code change. Until then, prod magic-links route through the `devLog` adapter and the URL appears in Vercel Runtime Logs. See ADR-0008.
 
 ---
 
@@ -346,7 +363,7 @@ One line each. The reasoning lives in `git log CLAUDE.md` if anyone needs it.
 - **DB**: Neon Postgres + Neon Local for dev/test.
 - **DB driver**: `postgres-js` — not `neon-http` (Better Auth needs multi-statement transactions; Neon Local needs the serverless driver over HTTP, which we don't use).
 - **File storage**: Vercel Blob in prod, local RustFS container (`compose.yaml` service `storage`) for offline dev, `devLog` for tests — same `StorageEffects` seam, three execution paths (mirrors the queue layer in ADR-0007). Two stores/buckets (`oceanview-public` for avatars, `oceanview-private` for documents) exposed by two oRPC routers split along the same access boundary (`imageRouter` for public uploads, `fileRouter` for private uploads + listing/deleting documents). `mintUploadToken` returns a discriminated `upload` payload (`vercel-blob-client` clientToken vs `presigned-put` URL); browser dispatcher in `src/lib/effects/storage/clientUpload.ts` picks the right transport. Cloudflare R2 stays documented as a swap-in fallback. See ADR-0006.
-- **Email**: Resend.
+- **Email**: Resend in prod, Mailpit (compose service `mail`) + nodemailer in local dev, `devLog` for tests — same `EmailEffects` seam, three execution paths (mirrors storage and queue). Selector precedence: `VITEST`/`EMAIL_ADAPTER` override → `SMTP_HOST` → `RESEND_API_KEY` → `devLog` fallback. Magic-link send is tier-1 sync-critical (per ADR-0001's canonical example); future non-auth emails (invitations, reminders, digests) go through the queue (tier-3). Templates are React Email components in `src/emails/`, seeded from the React Email demo's Studio pack (MIT). See ADR-0008.
 - **UI**: shadcn/ui (style `radix-nova`, base color `slate`) + Tailwind v4. CSS vars live in `src/styles/app.css`; `components.json` is the source of truth.
 - **Dark mode**: `next-themes` with `attribute="class"` + system preference + manual toggle (`ModeToggle` mounted in `__root.tsx`). No flash on hard reload — next-themes injects its own preload script.
 - **Forms**: `@tanstack/react-form` v1 `createFormHook` composition + shadcn `<Field>` primitives. `useAppForm` from `~/hooks/form` with bound `<field.TextField>` / `<field.SelectField>` / `<form.SubmitButton>`. Zod v4 schemas via `validators: { onSubmit: schema }`. See ADR-0005.

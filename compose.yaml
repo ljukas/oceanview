@@ -77,6 +77,27 @@ services:
       - storage_data:/data
       - storage_logs:/logs
     restart: unless-stopped
+  mail:
+    # Local SMTP catcher for development. Accepts mail on :1025 and shows it
+    # in a web UI on :8025. In-memory ring buffer (MP_MAX_MESSAGES) — no
+    # persistence; messages disappear on container restart, which is the
+    # right default for a transient inspector. Production uses Resend via
+    # the adapter selector in `src/lib/effects/email/email.ts`.
+    image: axllent/mailpit:latest
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+    environment:
+      MP_MAX_MESSAGES: 500
+      MP_SMTP_AUTH_ACCEPT_ANY: 1
+      MP_SMTP_AUTH_ALLOW_INSECURE: 1
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8025/livez"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
   storage-init:
     # One-shot bucket bootstrap. Waits for the RustFS S3 API, creates both
     # buckets idempotently, and sets `oceanview-public` to allow anonymous
