@@ -1,7 +1,47 @@
-import { devLog } from './adapters/devLog'
-
+/**
+ * Email interface backed by one of three adapters:
+ *   - `smtp` — nodemailer SMTP transport. Selected when `SMTP_HOST` is set;
+ *     used in local dev to send through the Mailpit container (compose
+ *     service `mail`). Takes precedence over `RESEND_API_KEY` so a stray
+ *     `vercel env pull` doesn't route dev sends through the real Resend
+ *     account.
+ *   - `resend` — Resend SDK. Selected when `RESEND_API_KEY` is set and
+ *     `SMTP_HOST` is not — i.e. production.
+ *   - `devLog` — logs to the structured logger. Used in tests (VITEST
+ *     short-circuit) and as the offline fallback when neither SMTP nor
+ *     Resend is configured.
+ *
+ * Adapters render the React Email template internally and hand
+ * `{ subject, html, text }` to their transport. Procedures and auth
+ * callbacks (`src/lib/auth.ts`) call this interface; they never import
+ * a transport or template directly.
+ *
+ * Magic-link send stays sync-critical (tier-1 per ADR-0001). Future
+ * non-auth emails (user invitations, schedule reminders, digests) will
+ * be invoked from the queue (tier-3) — same adapter, different caller.
+ * See ADR-0008.
+ */
 export interface EmailEffects {
   sendMagicLink(input: { to: string; url: string }): Promise<void>
 }
 
-export const email: EmailEffects = devLog
+let cached: Promise<EmailEffects> | null = null
+
+async function getAdapter(): Promise<EmailEffects> {
+  if (cached) return cached
+  cached = (async () => {
+    if (process.env.VITEST === 'true') return (await import('./adapters/devLog')).devLog
+    if (process.env.EMAIL_ADAPTER === 'devLog') return (await import('./adapters/devLog')).devLog
+    if (process.env.SMTP_HOST) return (await import('./adapters/smtp')).smtp
+    if (process.env.RESEND_API_KEY) return (await import('./adapters/resend')).resend
+    return (await import('./adapters/devLog')).devLog
+  })()
+  return cached
+}
+
+export const email: EmailEffects = {
+  async sendMagicLink(input) {
+    const adapter = await getAdapter()
+    return adapter.sendMagicLink(input)
+  },
+}
