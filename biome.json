@@ -10,7 +10,7 @@
     "includes": [
       "**",
       "!**/src/routeTree.gen.ts",
-      "!**/src/lib/db/schema/better-auth.ts",
+      "!**/src/lib/db/schema/betterAuth.ts",
       "!**/drizzle/**",
       "!**/pnpm-lock.yaml",
       "!**/.vinxi/**",
@@ -118,6 +118,16 @@
         "rules": {
           "style": {
             "noRestrictedImports": "off"
+          }
+        }
+      }
+    },
+    {
+      "includes": ["scripts/**"],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noConsole": "off"
           }
         }
       }

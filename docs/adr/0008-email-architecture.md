@@ -36,8 +36,8 @@ Concretely:
   3. `SMTP_HOST` set → `smtp`. Local dev (Mailpit) wins over Resend — protects against `vercel env pull` polluting `.env.local` with prod creds.
   4. `RESEND_API_KEY` set → `resend`. Production.
   5. Fallback → `devLog`. Offline dev without docker — auth flow still works; magic-links just appear in the log.
-- **Mailpit** (`axllent/mailpit`) is the local catcher — `compose.yaml` service `mail`, SMTP on `:1025`, web UI on `:8025`. In-memory ring buffer (`MP_MAX_MESSAGES=500`); no persistent volume.
-- **Templates** live in `src/emails/` (React Email convention; `react-email dev` previews them at `:3001`). Each template exports the React component and a typed `render<Name>(props): Promise<{ subject, html, text }>` helper. Adapters import the render helper, never the JSX.
+- **Mailpit** (`axllent/mailpit`) is the local catcher — `compose.yaml` service `mail`, SMTP on `:14522`, web UI on `:14502`. In-memory ring buffer (`MP_MAX_MESSAGES=500`); no persistent volume.
+- **Templates** live in `src/emails/` (React Email convention; `react-email dev` previews them at `:14501`). Each template exports the React component and a typed `render<Name>(props): Promise<{ subject, html, text }>` helper. Adapters import the render helper, never the JSX.
 - **First template** (`MagicLinkEmail.tsx`) is adapted from the official React Email demo's Studio brand pack (`apps/demo/emails/05-Studio/activation.tsx`, MIT — © 2024 Plus Five Five, Inc.). `theme.ts` (Tailwind config + neutral palette + font-scale plugin) and `Fonts.tsx` (Inter + Geist via `<Font>`) are copied verbatim with attribution; `MagicLinkEmail.tsx` is adapted (Swedish copy, no logo image, added URL-fallback block, reduced footer).
 - **Subject lives in the render helper**, not the adapter — keeps localization next to the copy and lets every adapter stay dumb.
 - **Magic-link send stays tier-1** (per ADR-0001 canonical example). See § Execution tier choice.
@@ -165,7 +165,7 @@ Net cost for the foreseeable future: **$0/mo**.
 - **Wire-up**: ~3 new source files (`adapters/smtp.ts`, `adapters/resend.ts`, `emails/MagicLinkEmail.tsx`), 2 copied (`emails/theme.ts`, `emails/Fonts.tsx`), 1 restructured (`email.ts`).
 - **`auth.ts` unchanged** — already calls `emailEffect.sendMagicLink({ to, url })`. The selector picks the right adapter from env.
 - **Cold-start path**: only the chosen adapter is imported (lazy `import('./adapters/<name>')`).
-- **Dev workflow**: `pnpm dev:up` brings Mailpit alongside db/queue/storage; login mail is visible at http://localhost:8025.
+- **Dev workflow**: `pnpm dev:up` brings Mailpit alongside db/queue/storage; login mail is visible at http://localhost:14502.
 - **Deprecation note**: pnpm's deprecation warning on `@react-email/components@1.0.x` led us to use the `react-email` umbrella package directly. Modern recommended path.
 
 ---
@@ -212,9 +212,9 @@ Re-open this decision if any of the following land:
 End-to-end manual:
 
 1. `pnpm dev:up` — Mailpit container healthy alongside db/queue/storage; `pnpm db:migrate` runs.
-2. `open http://localhost:8025` — Mailpit web UI loads, inbox empty.
-3. `pnpm dev` (separate terminal) — Vite on :3000.
-4. Open http://localhost:3000/login, enter an allowlisted email, request a magic link.
+2. `open http://localhost:14502` — Mailpit web UI loads, inbox empty.
+3. `pnpm dev` (separate terminal) — Vite on :14500.
+4. Open http://localhost:14500/login, enter an allowlisted email, request a magic link.
 5. Mailpit inbox shows one message. HTML tab renders the Swedish template; URL fallback appears below the button; headers show `From: Oceanview <no-reply@oceanview.local>`.
 6. Click the button → signed in.
 7. Server logs show `magic-link sent (smtp)` (not the devLog form).

@@ -4,8 +4,8 @@ import { AppSidebar } from '~/components/AppSidebar'
 import { SidebarInset, SidebarProvider, SidebarTrigger } from '~/components/ui/sidebar'
 import { TooltipProvider } from '~/components/ui/tooltip'
 import { useRealtimeSync } from '~/hooks/useRealtimeSync'
+import { rememberBrowserUser } from '~/lib/browserSessionFns'
 import { getSession } from '~/lib/getSession'
-import { ensureSavedLogin } from '~/lib/savedEmailFns'
 
 export const Route = createFileRoute('/_authenticated')({
   beforeLoad: async ({ location }) => {
@@ -14,7 +14,7 @@ export const Route = createFileRoute('/_authenticated')({
       throw redirect({ to: '/login', search: { redirect: location.href } })
     }
     if (environmentManager.isServer()) {
-      await ensureSavedLogin({
+      await rememberBrowserUser({
         data: { email: session.user.email, image: session.user.image ?? null },
       })
     }

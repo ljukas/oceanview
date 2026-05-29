@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import { defaultStartWeekFor, monthBandsForSeason, monthForISOWeek, partForWeek } from './season'
+import { monthBandsForSeason, monthForISOWeek, partForWeek } from './season'
 
 test('partForWeek reproduces the 2026 row from the Disponeringslista', () => {
   const s = { startWeek: 21, startShare: 'D' as const }
@@ -39,24 +39,6 @@ test('partForWeek returns null for weeks outside the 20-week window', () => {
   expect(partForWeek(s, 40)?.partId).toBe('C2')
 })
 
-test('defaultStartWeekFor returns the second-to-last ISO week of May per year', () => {
-  // Calendar-verified per year. ISO weeks belong to the month containing
-  // their Thursday, so the rule yields W20 in years where May 31 falls on
-  // Mon/Tue/Wed (the last May Thursday is one week earlier than usual,
-  // shifting the anchor down by 1).
-  expect(defaultStartWeekFor(2024)).toBe(21)
-  expect(defaultStartWeekFor(2025)).toBe(21)
-  expect(defaultStartWeekFor(2026)).toBe(21)
-  expect(defaultStartWeekFor(2027)).toBe(20) // May 31 falls Monday
-  expect(defaultStartWeekFor(2028)).toBe(20) // May 31 falls Wednesday
-  expect(defaultStartWeekFor(2029)).toBe(21)
-  expect(defaultStartWeekFor(2030)).toBe(21)
-  expect(defaultStartWeekFor(2031)).toBe(21)
-  expect(defaultStartWeekFor(2032)).toBe(21)
-  expect(defaultStartWeekFor(2033)).toBe(20) // May 31 falls Tuesday
-  expect(defaultStartWeekFor(2034)).toBe(20) // May 31 falls Wednesday
-})
-
 test('monthForISOWeek follows the ISO Thursday-month rule', () => {
   // 2026 — Thursday of W21 is May 21 → Maj.
   expect(monthForISOWeek(2026, 21)).toBe(4)
@@ -85,8 +67,9 @@ test('monthBandsForSeason produces the 2026 split 2/4/5/4/4/1 across Maj..Okt', 
 })
 
 test('monthBandsForSeason for 2027 (startWeek=20) covers Maj..Sep with no October overflow', () => {
-  // With the corrected anchor rule 2027 starts a week earlier (W20), so the
-  // 20-week season ends at W39 and stays inside September.
+  // Logic check for the rare override case: when a season starts at W20
+  // instead of the canonical W21 (ADR-0009 Rule 2 is a soft default), the
+  // 20-week window ends at W39 and stays inside September.
   const bands = monthBandsForSeason({ year: 2027, startWeek: 20 })
   expect(bands).toEqual([
     { month: 4, firstWeek: 20, lastWeek: 21, span: 2 },

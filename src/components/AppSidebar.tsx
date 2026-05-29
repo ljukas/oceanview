@@ -1,5 +1,6 @@
 import { Link, useMatchRoute } from '@tanstack/react-router'
 import {
+  AnchorIcon,
   CalendarIcon,
   ContactIcon,
   FolderIcon,
@@ -30,7 +31,7 @@ type SidebarUser = {
 }
 
 type NavItem = {
-  to: '/' | '/contacts' | '/documents' | '/admin/users' | '/konto'
+  to: '/' | '/contacts' | '/documents' | '/admin/users' | '/admin/shares' | '/konto'
   label: string
   icon: ComponentType<{ className?: string }>
 }
@@ -41,7 +42,10 @@ const mainNavItems: Array<NavItem> = [
   { to: '/documents', label: 'Dokument', icon: FolderIcon },
 ]
 
-const adminNavItems: Array<NavItem> = [{ to: '/admin/users', label: 'Användare', icon: UsersIcon }]
+const adminNavItems: Array<NavItem> = [
+  { to: '/admin/users', label: 'Användare', icon: UsersIcon },
+  { to: '/admin/shares', label: 'Andelar', icon: AnchorIcon },
+]
 
 export function AppSidebar({ user }: { user: SidebarUser }) {
   const matchRoute = useMatchRoute()

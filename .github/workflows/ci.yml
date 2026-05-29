@@ -41,7 +41,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       BETTER_AUTH_SECRET: ${{ secrets.BETTER_AUTH_SECRET }}
-      BETTER_AUTH_URL: http://localhost:3000
+      BETTER_AUTH_URL: http://localhost:14500
       ADMIN_EMAILS: ''
     steps:
       - uses: actions/checkout@v6

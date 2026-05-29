@@ -43,6 +43,34 @@
       "when": 1779558547061,
       "tag": "0005_add_user_image_blurhash",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1779816598628,
+      "tag": "0006_use_timestamptz",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1779816725463,
+      "tag": "0007_add_invariant_checks",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1779859302641,
+      "tag": "0008_add_assignment_events",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1780039936553,
+      "tag": "0009_add_rate_limit_table",
+      "breakpoints": true
     }
   ]
 }

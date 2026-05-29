@@ -53,18 +53,18 @@ export const seasonRouter = {
     })
   }),
 
-  // Defaults the "Ny säsong" dialog pre-fills. Pure projection of the
-  // season service's date/rotation helpers; no DB write. The next year is
-  // max(year) + 1, or the current calendar year when no seasons exist.
+  // Defaults the "Ny säsong" dialog pre-fills. The next year is max(year) +
+  // 1, or the current calendar year when no seasons exist. The start week
+  // is the SEASON_START_WEEK constant (ADR-0009 Rule 2). The start share
+  // rotates −3 from the prior year.
   suggestedNext: adminProcedure.handler(async () => {
     const existing = await seasonService.listSeasons()
     const year =
       existing.length === 0
         ? new Date().getFullYear()
         : Math.max(...existing.map((s) => s.year)) + 1
-    const startWeek = seasonService.defaultStartWeekFor(year)
     const startShare = await seasonService.defaultStartShareFor(year)
-    return { year, startWeek, startShare }
+    return { year, startWeek: seasonService.SEASON_START_WEEK, startShare }
   }),
 
   create: adminProcedure.input(createSeasonSchema).handler(async ({ input, context }) => {

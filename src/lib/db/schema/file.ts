@@ -1,5 +1,5 @@
-import { relations } from 'drizzle-orm'
-import { index, integer, pgEnum, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core'
+import { relations, sql } from 'drizzle-orm'
+import { check, index, integer, pgEnum, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core'
 import { user } from './betterAuth'
 
 export const fileAccessEnum = pgEnum('file_access', ['public', 'private'])
@@ -18,12 +18,13 @@ export const file = pgTable(
     folder: text('folder'),
     access: fileAccessEnum('access').notNull(),
     blurhash: text('blurhash'),
-    uploadedAt: timestamp('uploaded_at').defaultNow().notNull(),
-    deletedAt: timestamp('deleted_at'),
+    uploadedAt: timestamp('uploaded_at', { withTimezone: true }).defaultNow().notNull(),
+    deletedAt: timestamp('deleted_at', { withTimezone: true }),
   },
   (table) => [
     index('file_owner_id_idx').on(table.ownerId),
     index('file_access_idx').on(table.access),
+    check('file_size_bytes_nonneg_check', sql`${table.sizeBytes} >= 0`),
   ],
 )
 

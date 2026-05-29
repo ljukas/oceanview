@@ -19,5 +19,6 @@ yarn.lock
 /playwright/.cache/
 .tanstack
 .claude/settings.local.json
+.claude/worktrees/
 .env*.local
 .neon_local/
