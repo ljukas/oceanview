@@ -15,7 +15,7 @@ import { handleBlurhashMessage } from '~/lib/queue/handlers/blurhash'
  * graceful shutdown.
  */
 const log = logger.child({ component: 'devBlurhashWorker' })
-const url = process.env.REDIS_URL ?? 'redis://localhost:6379'
+const url = process.env.REDIS_URL ?? 'redis://localhost:14521'
 
 const worker = new Worker<QueuePayloadMap['blurhash']>(
   'blurhash',

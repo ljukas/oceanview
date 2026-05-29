@@ -22,7 +22,7 @@ cp .env.example .env
 
 pnpm db:up        # start Neon Local docker proxy → ephemeral DB branch
 pnpm db:migrate   # apply pending migrations (no-op until first table)
-pnpm dev          # http://localhost:3000
+pnpm dev          # http://localhost:14500
 
 pnpm db:studio    # browse the DB at https://local.drizzle.studio
 pnpm db:down      # stop docker; ephemeral branch is auto-deleted

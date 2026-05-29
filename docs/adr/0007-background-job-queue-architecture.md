@@ -186,7 +186,7 @@ Two halves: a broker (docker) and a worker process (separate terminal). With `RE
 ```yaml
 queue:
   image: redis:7.4-alpine
-  ports: ["6379:6379"]
+  ports: ["14521:6379"]
   command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec"]
   volumes: [redis_data:/data]
   healthcheck: { test: ["CMD", "redis-cli", "ping"], ... }
@@ -194,11 +194,11 @@ queue:
 queue-studio:
   profiles: [studio]       # opt-in via `pnpm queue:studio`
   image: emirce/bullstudio:1.4.0
-  ports: ["4000:4000"]
+  ports: ["14504:4000"]
   environment: { REDIS_URL: redis://queue:6379 }
 ```
 
-AOF (`appendfsync everysec`) means queued jobs survive `docker compose down`. `queue-studio` is profile-gated so it doesn't auto-start with `pnpm dev:up`; activate via `pnpm queue:studio` and visit `http://localhost:4000`.
+AOF (`appendfsync everysec`) means queued jobs survive `docker compose down`. `queue-studio` is profile-gated so it doesn't auto-start with `pnpm dev:up`; activate via `pnpm queue:studio` and visit `http://localhost:14504`.
 
 **2. The worker** — `scripts/devBlurhashWorker.ts` wraps BullMQ's `Worker` around the same `handleBlurhashMessage` the prod plugin uses:
 
@@ -211,7 +211,7 @@ const worker = new Worker<QueuePayloadMap['blurhash']>(
       deliveryCount: job.attemptsMade + 1,
     })
   },
-  { connection: { url: process.env.REDIS_URL ?? 'redis://localhost:6379' } },
+  { connection: { url: process.env.REDIS_URL ?? 'redis://localhost:14521' } },
 )
 ```
 
@@ -229,7 +229,7 @@ pnpm dev:worker
 # Terminal 3 — app
 pnpm dev
 
-# Optional — BullMQ dashboard at http://localhost:4000
+# Optional — BullMQ dashboard at http://localhost:14504
 pnpm queue:studio
 ```
 
@@ -277,7 +277,7 @@ After this ADR's pattern lands or is touched:
 - `grep -rn "vercel:queue" server/` — only `server/plugins/blurhashQueue.ts` should match (no other hook subscribers).
 - `pnpm test` — `src/lib/effects/queue/queue.test.ts` passes; selects the `devLog` adapter regardless of `REDIS_URL`.
 - Manual smoke (dev, `REDIS_URL` unset + no worker): upload an avatar → 200; log shows `queue publish (devLog)`; avatar renders without a placeholder.
-- Manual smoke (dev, `REDIS_URL` set + `pnpm dev:worker` running): upload an avatar → 200; within a few seconds the worker logs `blurhash: stored`, the user row gains a `blurhash`, and Bull Studio (`:4000`) lists the completed job.
+- Manual smoke (dev, `REDIS_URL` set + `pnpm dev:worker` running): upload an avatar → 200; within a few seconds the worker logs `blurhash: stored`, the user row gains a `blurhash`, and Bull Studio (`:14504`) lists the completed job.
 - Manual smoke (preview deploy): upload an avatar in a preview URL → Vercel Runtime Logs show `queue publish` on the producer Function and `blurhash: stored` on the consumer Function.
 
 ---

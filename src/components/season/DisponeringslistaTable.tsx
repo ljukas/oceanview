@@ -1,7 +1,7 @@
 import { PencilIcon, StarIcon, Trash2Icon } from 'lucide-react'
 import { Button } from '~/components/ui/button'
 import type { ShareCode } from '~/lib/shares/codes'
-import { shareBackgroundClass, shareRingClass } from '~/lib/shares/colors'
+import { shareBackgroundClass } from '~/lib/shares/colors'
 import { cn } from '~/lib/utils'
 
 export type MonthBand = {
@@ -51,6 +51,13 @@ const MONTH_LABELS = [
   'Nov',
   'Dec',
 ] as const
+
+// Owned-cell highlight: 2px inset ring drawn inside the cell box so it
+// never collides with the table's month-divider `border-r` or the
+// year-block's heavy `border-t-2`. `--foreground` is the semantic
+// contrast token against both the light share-pastel backgrounds
+// (current-year cells) and the card background (other-year cells).
+const OWNED_RING = 'ring-2 ring-inset ring-foreground'
 
 export function DisponeringslistaTable({
   schedules,
@@ -218,13 +225,14 @@ function YearBlock({
           return (
             <td
               key={cell.week}
+              aria-label={isMine ? `Din vecka ${cell.week}` : undefined}
               className={cn(
-                'px-1 py-2 text-center font-medium',
+                'relative px-1 py-2 text-center font-medium',
                 monthEndWeeks.has(cell.week) && 'border-r',
                 isCurrent
                   ? cn(shareBackgroundClass[cell.shareCode], 'font-bold text-foreground')
                   : 'text-muted-foreground',
-                isMine && cn('ring-2 ring-inset', shareRingClass[cell.shareCode]),
+                isMine && OWNED_RING,
               )}
             >
               {cell.shareCode}
@@ -347,39 +355,42 @@ function MonthSection({ band, cells, isCurrent, ownedPartIds }: MonthSectionProp
         {MONTH_LABELS[band.month]}
       </h3>
       <div className="grid grid-cols-2">
-        {cells.map((cell, i) => (
-          <div
-            key={cell.week}
-            className={cn(
-              'flex items-center justify-between px-4 py-2',
-              // Inner cell separators — every left-column cell carries the
-              // vertical divider to the right; rows past the first carry the
-              // horizontal divider on top.
-              i % 2 === 0 && 'border-r',
-              i >= 2 && 'border-t',
-              isCurrent && shareBackgroundClass[cell.shareCode],
-              ownedPartIds.has(cell.partId) &&
-                cn('ring-2 ring-inset', shareRingClass[cell.shareCode]),
-            )}
-          >
-            <span
+        {cells.map((cell, i) => {
+          const isMine = ownedPartIds.has(cell.partId)
+          return (
+            <div
+              key={cell.week}
               className={cn(
-                'tabular-nums',
-                isCurrent ? 'text-foreground/80' : 'text-muted-foreground',
+                'flex items-center justify-between gap-2 px-4 py-2',
+                // Inner cell separators — every left-column cell carries the
+                // vertical divider to the right; rows past the first carry the
+                // horizontal divider on top.
+                i % 2 === 0 && 'border-r',
+                i >= 2 && 'border-t',
+                isCurrent && shareBackgroundClass[cell.shareCode],
+                isMine && OWNED_RING,
               )}
             >
-              {cell.week}
-            </span>
-            <span
-              className={cn(
-                'font-semibold',
-                isCurrent ? 'font-bold text-foreground' : 'text-muted-foreground',
-              )}
-            >
-              {cell.shareCode}
-            </span>
-          </div>
-        ))}
+              {isMine && <span className="sr-only">Din vecka </span>}
+              <span
+                className={cn(
+                  'tabular-nums',
+                  isCurrent ? 'text-foreground/80' : 'text-muted-foreground',
+                )}
+              >
+                {cell.week}
+              </span>
+              <span
+                className={cn(
+                  'font-semibold',
+                  isCurrent ? 'font-bold text-foreground' : 'text-muted-foreground',
+                )}
+              >
+                {cell.shareCode}
+              </span>
+            </div>
+          )
+        })}
         {needsPlaceholder && <div className={cn(cells.length >= 3 && 'border-t')} aria-hidden />}
       </div>
     </section>

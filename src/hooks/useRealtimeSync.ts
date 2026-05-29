@@ -17,6 +17,11 @@ function dispatch(queryClient: QueryClient, event: RealtimeEvent) {
     case 'presence.changed':
       void queryClient.invalidateQueries({ queryKey: orpc.presence.key() })
       return
+    case 'share.changed':
+      void queryClient.invalidateQueries({ queryKey: orpc.share.key() })
+      // ContactCard renders owned shares; keep that view in sync.
+      void queryClient.invalidateQueries({ queryKey: orpc.user.listContacts.key() })
+      return
   }
 }
 

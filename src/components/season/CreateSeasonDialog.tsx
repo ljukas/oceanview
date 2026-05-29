@@ -84,7 +84,7 @@ function CreateSeasonDialogInner({ onOpenChange }: { onOpenChange: (open: boolea
 
   return (
     <Dialog open onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-sm">
         <DialogHeader>
           <DialogTitle>Ny säsong</DialogTitle>
           <DialogDescription>
@@ -99,23 +99,28 @@ function CreateSeasonDialogInner({ onOpenChange }: { onOpenChange: (open: boolea
           }}
         >
           <FieldGroup>
-            <form.AppField
-              name="year"
-              children={(field) => (
-                <field.TextField label="År" type="number" inputClassName="tabular-nums" />
-              )}
-            />
-            <form.AppField
-              name="startWeek"
-              children={(field) => (
-                <field.TextField
-                  label="Startvecka"
-                  type="number"
-                  description="ISO-veckonummer för säsongens första vecka."
-                  inputClassName="tabular-nums"
+            <div className="grid grid-cols-5 gap-3">
+              <div className="col-span-3">
+                <form.AppField
+                  name="year"
+                  children={(field) => (
+                    <field.TextField label="År" type="number" inputClassName="tabular-nums" />
+                  )}
                 />
-              )}
-            />
+              </div>
+              <div className="col-span-2">
+                <form.AppField
+                  name="startWeek"
+                  children={(field) => (
+                    <field.TextField
+                      label="Startvecka"
+                      type="number"
+                      inputClassName="tabular-nums"
+                    />
+                  )}
+                />
+              </div>
+            </div>
             <form.AppField
               name="startShare"
               children={(field) => (

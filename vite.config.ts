@@ -13,11 +13,11 @@ const isTest = process.env.VITEST === 'true'
 // `src/lib/db/index.ts` for why session pooling is required. Tests create
 // per-test schemas (`test_w*`); the dev app's `public` schema is untouched.
 // In CI (`CI=true`) we inherit DATABASE_URL from the job env instead.
-const TEST_DATABASE_URL = 'postgres://neon:npg@localhost:5432/neondb_session?sslmode=require'
+const TEST_DATABASE_URL = 'postgres://neon:npg@localhost:14520/neondb_session?sslmode=require'
 
 export default defineConfig({
   server: {
-    port: 3000,
+    port: 14500,
   },
   resolve: {
     tsconfigPaths: true,
@@ -100,6 +100,11 @@ export default defineConfig({
     // bounded; bump cautiously after observing CI stability.
     maxWorkers: 4,
     hookTimeout: 20_000,
+    // Per-test schema CREATE + migrations + DROP is the dominant cost; a
+    // single service-driven test with a couple of transactions can easily
+    // burn 5–10s. Default Vitest timeout is 5s — raise it so realistic
+    // multi-mutation scenarios don't false-fail.
+    testTimeout: 15_000,
     // TEST_SCHEMA flips src/lib/db/index.ts into test mode (pinned single
     // connection + exposed __testClient). Setting it here means the runner
     // injects it into the worker before any module evaluates, so setup.ts

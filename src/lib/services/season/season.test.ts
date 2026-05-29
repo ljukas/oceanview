@@ -7,11 +7,11 @@ import { setupDatabase } from '~test/setup'
 import {
   createSeason,
   defaultStartShareFor,
-  defaultStartWeekFor,
   deleteSeason,
   findSeason,
   listSeasons,
   scheduleForYear,
+  SEASON_START_WEEK,
   updateSeason,
 } from './season'
 
@@ -133,8 +133,15 @@ test('each initial year produces a schedule that starts at the expected share', 
   }
 })
 
-test('createSeason without startWeek defaults to the second-to-last week of May', async () => {
-  // 2033 is fresh and not seeded; uses defaultStartWeekFor under the hood.
+test('createSeason without startWeek defaults to SEASON_START_WEEK (ADR-0009 Rule 2)', async () => {
   const s = await createSeason({ year: 2033, startShare: 'A' })
-  expect(s.startWeek).toBe(defaultStartWeekFor(2033))
+  expect(s.startWeek).toBe(SEASON_START_WEEK)
+  expect(s.startWeek).toBe(21)
+})
+
+test('createSeason accepts an explicit startWeek override (soft rule)', async () => {
+  // The week-21 convention is a soft default per ADR-0009 Rule 2 — admins
+  // can still pass a different value through the service.
+  const s = await createSeason({ year: 2034, startWeek: 20, startShare: 'A' })
+  expect(s.startWeek).toBe(20)
 })

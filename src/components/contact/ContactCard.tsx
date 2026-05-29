@@ -1,11 +1,11 @@
 import { MailIcon, PhoneIcon, SailboatIcon, StarIcon } from 'lucide-react'
+import { ShareBadge } from '~/components/share/ShareBadge'
 import { Avatar, AvatarBadge, AvatarFallback, AvatarImage } from '~/components/ui/avatar'
 import { Badge } from '~/components/ui/badge'
 import { Button } from '~/components/ui/button'
 import type { SharePartRow } from '~/lib/services/share'
 import type { UserRow } from '~/lib/services/user'
-import type { ShareCode } from '~/lib/shares/codes'
-import { shareBackgroundClass } from '~/lib/shares/colors'
+import { collapseShares } from '~/lib/shares/collapse'
 import { cn, initials } from '~/lib/utils'
 
 export type ContactRow = UserRow & { shares: Array<SharePartRow> }
@@ -84,24 +84,17 @@ export function ContactCard({ contact, isSelf, isOnline }: Props) {
             Andelar
           </span>
           <div className="flex flex-wrap justify-center gap-1.5">
-            {contact.shares.map((s) => (
-              <ShareBadge key={s.id} shareCode={s.shareCode} partNumber={s.partNumber} />
+            {collapseShares(contact.shares).map((badge) => (
+              <ShareBadge
+                key={
+                  badge.kind === 'whole' ? badge.shareCode : `${badge.shareCode}${badge.partNumber}`
+                }
+                badge={badge}
+              />
             ))}
           </div>
         </div>
       )}
     </article>
-  )
-}
-
-function ShareBadge({ shareCode, partNumber }: { shareCode: ShareCode; partNumber: number }) {
-  return (
-    <Badge
-      variant="outline"
-      className={cn('border-transparent text-foreground', shareBackgroundClass[shareCode])}
-    >
-      {shareCode}
-      {partNumber}
-    </Badge>
   )
 }

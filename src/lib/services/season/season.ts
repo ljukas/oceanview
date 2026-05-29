@@ -1,4 +1,4 @@
-import { addDays, getISOWeek, getMonth, lastDayOfMonth, parseISO, subDays } from 'date-fns'
+import { addDays, getMonth, parseISO } from 'date-fns'
 import { and, asc, eq, isNull } from 'drizzle-orm'
 import { db } from '~/lib/db'
 import { ownershipAssignment, season, sharePart } from '~/lib/db/schema'
@@ -13,6 +13,12 @@ import {
   sharePartId,
   WEEKS_PER_SEASON,
 } from '~/lib/shares/codes'
+
+// The co-ownership group's fixed convention: every season starts on ISO
+// week 21. Soft rule per ADR-0009 Rule 2 — defaulted here and treated as a
+// pre-fill in the admin dialog, but the service still accepts an override
+// on the rare occasion an admin needs one.
+export const SEASON_START_WEEK = 21
 
 export type SeasonRow = {
   year: number
@@ -43,11 +49,10 @@ export type CreateSeasonInput = {
 
 // `startShare` defaults to the previous year rotated by DEFAULT_YEAR_ROTATION
 // (or ANCHOR_START_SHARE when no prior season exists). `startWeek` defaults
-// to the second-to-last week of May for the target year — the canonical
-// Disponeringslista anchor.
+// to SEASON_START_WEEK; an explicit override is passed through unchanged.
 export async function createSeason(input: CreateSeasonInput): Promise<SeasonRow> {
   const startShare = input.startShare ?? (await defaultStartShareFor(input.year))
-  const startWeek = input.startWeek ?? defaultStartWeekFor(input.year)
+  const startWeek = input.startWeek ?? SEASON_START_WEEK
   const [row] = await db
     .insert(season)
     .values({
@@ -63,22 +68,6 @@ export async function defaultStartShareFor(year: number): Promise<ShareCode> {
   const prev = await findSeason(year - 1)
   if (!prev) return ANCHOR_START_SHARE
   return rotateShare(prev.startShare, DEFAULT_YEAR_ROTATION)
-}
-
-// Pure: returns the ISO week number of the season's anchor week — the
-// second-to-last ISO week of May for the given calendar year. ISO weeks
-// belong to whichever month contains their Thursday, so we walk back from
-// May 31 to the last Thursday in May, then back another week. The rule
-// gives W21 for most years and W20 for years where May 31 falls Mon/Tue/Wed
-// (so the last May Thursday is still W21, making the second-to-last W20).
-// Stored explicitly per season so admins can override on the rare case.
-export function defaultStartWeekFor(year: number): number {
-  let d = lastDayOfMonth(new Date(year, 4, 1))
-  while (d.getDay() !== 4 /* Thursday */) {
-    d = subDays(d, 1)
-  }
-  d = subDays(d, 7)
-  return getISOWeek(d)
 }
 
 // Pure: 0-indexed calendar month of the given ISO week, per the ISO 8601

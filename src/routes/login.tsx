@@ -4,8 +4,8 @@ import { LoginFormCard } from '~/components/login/LoginFormCard'
 import { MagicLinkSentCard } from '~/components/login/MagicLinkSentCard'
 import { WelcomeBackCard } from '~/components/login/WelcomeBackCard'
 import { useSignInPasskeyAutofill } from '~/hooks/usePasskeys'
+import { clearBrowserSession, getBrowserSession } from '~/lib/browserSessionFns'
 import { getSession } from '~/lib/getSession'
-import { clearSavedLogin, getSavedLogin } from '~/lib/savedEmailFns'
 
 function sanitizeRedirect(raw: unknown): string | undefined {
   if (typeof raw !== 'string') return undefined
@@ -27,7 +27,13 @@ export const Route = createFileRoute('/login')({
     const session = await getSession()
     if (session) throw redirect({ to: search.redirect ?? '/' })
   },
-  loader: async () => ({ savedLogin: await getSavedLogin() }),
+  loader: async () => {
+    const session = await getBrowserSession()
+    const savedLogin = session?.email
+      ? { email: session.email, image: session.image ?? null }
+      : null
+    return { savedLogin }
+  },
   component: Login,
 })
 
@@ -48,7 +54,7 @@ function Login() {
   })
 
   async function switchToOtherEmail() {
-    await clearSavedLogin()
+    await clearBrowserSession()
     setUseOther(true)
   }
 

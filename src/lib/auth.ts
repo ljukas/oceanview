@@ -1,5 +1,6 @@
 import { drizzleAdapter } from '@better-auth/drizzle-adapter'
 import { passkey } from '@better-auth/passkey'
+import { waitUntil } from '@vercel/functions'
 import { betterAuth } from 'better-auth'
 import { APIError } from 'better-auth/api'
 import { admin, magicLink } from 'better-auth/plugins'
@@ -39,6 +40,9 @@ export const auth = betterAuth({
   trustedOrigins: resolveTrustedOrigins(),
   secret: process.env.BETTER_AUTH_SECRET,
   session: {
+    expiresIn: 60 * 60 * 24 * 30,
+    updateAge: 60 * 60 * 24 * 7,
+    freshAge: 60 * 60,
     cookieCache: {
       enabled: true,
       maxAge: 5 * 60,
@@ -66,6 +70,14 @@ export const auth = betterAuth({
       },
     },
   },
+  rateLimit: {
+    storage: 'database',
+    window: 60,
+    max: 100,
+    customRules: {
+      '/sign-in/magic-link': { window: 60, max: 5 },
+    },
+  },
   plugins: [
     magicLink({
       sendMagicLink: async ({ email, url }) => {
@@ -84,15 +96,18 @@ export const auth = betterAuth({
     }),
     admin(),
     passkey({
-      rpID: new URL(process.env.BETTER_AUTH_URL ?? 'http://localhost:3000').hostname,
+      rpID: new URL(process.env.BETTER_AUTH_URL ?? 'http://localhost:14500').hostname,
       rpName: 'Oceanview',
-      origin: process.env.BETTER_AUTH_URL ?? 'http://localhost:3000',
+      origin: process.env.BETTER_AUTH_URL ?? 'http://localhost:14500',
     }),
     tanstackStartCookies(),
   ],
   advanced: {
     database: {
       generateId: 'uuid',
+    },
+    backgroundTasks: {
+      handler: (promise) => waitUntil(promise),
     },
   },
   databaseHooks: {
@@ -116,7 +131,11 @@ export const auth = betterAuth({
     session: {
       create: {
         after: async (session) => {
-          logger.info('auth session created', { userId: session.userId })
+          logger.info('auth session created', {
+            userId: session.userId,
+            ip: session.ipAddress ?? null,
+            userAgent: session.userAgent ?? null,
+          })
         },
       },
     },
