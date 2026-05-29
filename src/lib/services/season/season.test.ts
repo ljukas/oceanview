@@ -10,8 +10,8 @@ import {
   deleteSeason,
   findSeason,
   listSeasons,
-  scheduleForYear,
   SEASON_START_WEEK,
+  scheduleForYear,
   updateSeason,
 } from './season'
 
