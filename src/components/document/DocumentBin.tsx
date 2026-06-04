@@ -13,10 +13,10 @@ import {
 import { Badge } from '~/components/ui/badge'
 import { Button } from '~/components/ui/button'
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '~/components/ui/empty'
-import type { RouterOutputs } from '~/lib/orpc/client'
+import { Tooltip, TooltipContent, TooltipTrigger } from '~/components/ui/tooltip'
 import { orpc } from '~/lib/orpc/client'
-
-type BinEntry = RouterOutputs['bin']['list'][number]
+import { optimisticRemove } from '~/lib/orpc/optimistic'
+import { type BinEntry, partitionBinEntries } from './documentHelpers'
 
 const dateTimeFormatter = new Intl.DateTimeFormat('sv-SE', {
   dateStyle: 'medium',
@@ -36,20 +36,7 @@ function useBinInvalidate() {
 
 export function DocumentBin() {
   const { data: entries } = useSuspenseQuery(orpc.bin.list.queryOptions())
-
-  // Cascade deletes share a correlationId → one restorable batch. Documents
-  // deleted individually carry no correlationId → restore/purge per document.
-  const batches = new Map<string, Array<BinEntry>>()
-  const loose: Array<BinEntry> = []
-  for (const entry of entries) {
-    if (entry.correlationId) {
-      const list = batches.get(entry.correlationId) ?? []
-      list.push(entry)
-      batches.set(entry.correlationId, list)
-    } else {
-      loose.push(entry)
-    }
-  }
+  const { batches, loose } = partitionBinEntries(entries)
 
   if (entries.length === 0) {
     return (
@@ -78,6 +65,7 @@ export function DocumentBin() {
 }
 
 function BatchCard({ correlationId, items }: { correlationId: string; items: Array<BinEntry> }) {
+  const queryClient = useQueryClient()
   const invalidate = useBinInvalidate()
   const folderCount = items.filter((i) => i.kind === 'folder').length
   const documentCount = items.filter((i) => i.kind === 'document').length
@@ -85,11 +73,17 @@ function BatchCard({ correlationId, items }: { correlationId: string; items: Arr
 
   const restore = useMutation(
     orpc.folder.restoreFolder.mutationOptions({
-      onSuccess: async () => {
-        await invalidate()
-        toast.success('Återställd')
-      },
+      // The whole batch leaves the bin together — drop every entry sharing this
+      // correlation id before the round-trip.
+      onMutate: () =>
+        optimisticRemove(
+          queryClient,
+          orpc.bin.list.queryKey(),
+          (e) => e.correlationId === correlationId,
+        ),
+      onSuccess: () => toast.success('Återställd'),
       onError: (err) => toast.error(err.message || 'Kunde inte återställa'),
+      onSettled: invalidate,
     }),
   )
 
@@ -120,26 +114,36 @@ function BatchCard({ correlationId, items }: { correlationId: string; items: Arr
 }
 
 function LooseRow({ entry }: { entry: BinEntry }) {
+  const queryClient = useQueryClient()
   const invalidate = useBinInvalidate()
   const [confirmHard, setConfirmHard] = useState(false)
 
+  // Both actions remove this one entry from the bin list; drop it before the
+  // round-trip. Only documents get these actions (folders restore by batch).
+  const removeFromBin = () =>
+    optimisticRemove(
+      queryClient,
+      orpc.bin.list.queryKey(),
+      (e) => e.kind === entry.kind && e.id === entry.id,
+    )
+
   const restore = useMutation(
     orpc.document.restoreDocument.mutationOptions({
-      onSuccess: async () => {
-        await invalidate()
-        toast.success('Dokumentet återställdes')
-      },
+      onMutate: removeFromBin,
+      onSuccess: () => toast.success('Dokumentet återställdes'),
       onError: (err) => toast.error(err.message || 'Kunde inte återställa'),
+      onSettled: invalidate,
     }),
   )
   const hardDelete = useMutation(
     orpc.bin.hardDeleteDocument.mutationOptions({
-      onSuccess: async () => {
-        await invalidate()
+      onMutate: removeFromBin,
+      onSuccess: () => {
         toast.success('Dokumentet raderades permanent')
         setConfirmHard(false)
       },
       onError: (err) => toast.error(err.message || 'Kunde inte radera'),
+      onSettled: invalidate,
     }),
   )
 
@@ -176,15 +180,20 @@ function LooseRow({ entry }: { entry: BinEntry }) {
               <RotateCcwIcon data-icon="inline-start" />
               Återställ
             </Button>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              aria-label="Radera permanent"
-              className="text-destructive hover:text-destructive"
-              onClick={() => setConfirmHard(true)}
-            >
-              <Trash2Icon />
-            </Button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label="Radera permanent"
+                  className="text-destructive hover:text-destructive"
+                  onClick={() => setConfirmHard(true)}
+                >
+                  <Trash2Icon />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Ta bort permanent</TooltipContent>
+            </Tooltip>
           </>
         ) : null}
       </div>

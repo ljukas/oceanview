@@ -5,7 +5,6 @@ import {
   PencilIcon,
   Trash2Icon,
 } from 'lucide-react'
-import { useState } from 'react'
 import { Button } from '~/components/ui/button'
 import {
   DropdownMenu,
@@ -15,6 +14,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '~/components/ui/dropdown-menu'
+import { useDialogState } from '~/hooks/useDialogState'
 import { CreateFolderDialog } from './CreateFolderDialog'
 import { DeleteFolderDialog } from './DeleteFolderDialog'
 import { MoveDialog } from './MoveDialog'
@@ -25,25 +25,29 @@ type Props = {
   folderId: string | null
   folderName: string | null
   isAdmin: boolean
+  triggerClassName?: string
 }
 
-type OpenDialog = 'create' | 'rename' | 'move' | 'delete' | null
-
-export function FolderActions({ folderId, folderName, isAdmin }: Props) {
-  const [dialog, setDialog] = useState<OpenDialog>(null)
+export function FolderActions({ folderId, folderName, isAdmin, triggerClassName }: Props) {
+  const dialog = useDialogState<'create' | 'rename' | 'move' | 'delete'>()
   const isRoot = folderId === null
 
   return (
     <>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="icon-sm" aria-label="Mappåtgärder">
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Mappåtgärder"
+            className={triggerClassName}
+          >
             <MoreVerticalIcon />
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
           <DropdownMenuGroup>
-            <DropdownMenuItem onSelect={() => setDialog('create')}>
+            <DropdownMenuItem onSelect={() => dialog.show('create')}>
               <FolderPlusIcon data-icon="inline-start" />
               Ny mapp här
             </DropdownMenuItem>
@@ -52,15 +56,15 @@ export function FolderActions({ folderId, folderName, isAdmin }: Props) {
             <>
               <DropdownMenuSeparator />
               <DropdownMenuGroup>
-                <DropdownMenuItem onSelect={() => setDialog('rename')}>
+                <DropdownMenuItem onSelect={() => dialog.show('rename')}>
                   <PencilIcon data-icon="inline-start" />
                   Byt namn
                 </DropdownMenuItem>
-                <DropdownMenuItem onSelect={() => setDialog('move')}>
+                <DropdownMenuItem onSelect={() => dialog.show('move')}>
                   <FolderInputIcon data-icon="inline-start" />
                   Flytta
                 </DropdownMenuItem>
-                <DropdownMenuItem variant="destructive" onSelect={() => setDialog('delete')}>
+                <DropdownMenuItem variant="destructive" onSelect={() => dialog.show('delete')}>
                   <Trash2Icon data-icon="inline-start" />
                   Ta bort
                 </DropdownMenuItem>
@@ -72,29 +76,29 @@ export function FolderActions({ folderId, folderName, isAdmin }: Props) {
 
       {/* Mounted only while open — otherwise every tree node would hold a live
           MoveDialog folder-tree subscription. */}
-      {dialog === 'create' ? (
-        <CreateFolderDialog open onOpenChange={() => setDialog(null)} parentId={folderId} />
+      {dialog.active === 'create' ? (
+        <CreateFolderDialog open onOpenChange={dialog.close} parentId={folderId} />
       ) : null}
       {!isRoot && folderName !== null ? (
         <>
-          {dialog === 'rename' ? (
+          {dialog.active === 'rename' ? (
             <RenameFolderDialog
               open
-              onOpenChange={() => setDialog(null)}
+              onOpenChange={dialog.close}
               folder={{ id: folderId, name: folderName }}
             />
           ) : null}
-          {dialog === 'move' ? (
+          {dialog.active === 'move' ? (
             <MoveDialog
               open
-              onOpenChange={() => setDialog(null)}
+              onOpenChange={dialog.close}
               target={{ kind: 'folder', id: folderId, name: folderName }}
             />
           ) : null}
-          {dialog === 'delete' ? (
+          {dialog.active === 'delete' ? (
             <DeleteFolderDialog
               open
-              onOpenChange={() => setDialog(null)}
+              onOpenChange={dialog.close}
               folder={{ id: folderId, name: folderName }}
             />
           ) : null}

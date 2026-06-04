@@ -4,7 +4,7 @@ Internal web app for a sailboat co-ownership group (10–20 users: owners + a co
 
 **State**: scaffold + auth + DB + services + file storage + email all wired. Resend in prod is gated on sender-domain verification ([Deferred work](#deferred-work)); until then prod magic-links go through `devLog` and surface in Vercel Runtime Logs.
 
-**Architecture lives in `docs/adr/`** (ADRs 0001–0009). This file is a router: rules + commands + gotchas. For *why* a pattern exists, follow the ADR link.
+**Architecture lives in `docs/adr/`** (ADRs 0001–0011). This file is a router: rules + commands + gotchas. For *why* a pattern exists, follow the ADR link.
 
 ---
 
@@ -27,6 +27,7 @@ Load on demand, not eagerly. The `pnpm dlx @tanstack/intent` block at the bottom
 | Email templates | `docs/adr/0008-email-architecture.md` + https://react.email/docs |
 | Background jobs, queue topics | `docs/adr/0007-background-job-queue-architecture.md` |
 | Realtime sync (publish events, SSE) | `docs/adr/0004-realtime-sync-architecture.md` |
+| Presence (online/away status) | `docs/adr/0011-presence-online-status-architecture.md` |
 | Logging | `docs/adr/0003-logging-architecture.md` |
 | File storage (avatars, documents) | `docs/adr/0006-file-storage.md` |
 | Organization rules (social invariants the schema can't express) | `docs/adr/0009-organization-rules.md` |
@@ -252,6 +253,7 @@ One line each. Reasoning in `git log CLAUDE.md` and in the linked ADR.
 - **Side effects in `src/lib/effects/`** with three-tier execution model. See ADR-0001.
 - **Logging**: pino → stdout → Vercel Runtime Logs; browser warn/error POSTs `/api/log`. See ADR-0003.
 - **Realtime sync**: SSE + in-process pub/sub; single-instance assumption. See ADR-0004.
+- **Presence**: online/away via an in-process refcounted `presence` effect on the SSE connection lifecycle; `presence.changed` (no ids) → `listOnline()` refetch. Single-instance assumption shared with ADR-0004. See ADR-0011.
 - **Forms**: `@tanstack/react-form` v1 `createFormHook` + bound shadcn `<Field>`. See ADR-0005.
 - **File storage**: Vercel Blob (prod) / RustFS (dev) / devLog (test); two stores, two oRPC routers, discriminated `upload.kind`. R2 documented as swap-in. See ADR-0006.
 - **Background jobs**: Vercel Queues (prod) / BullMQ + Redis (dev) / devLog (test); shared handler. See ADR-0007.

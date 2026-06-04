@@ -242,17 +242,22 @@ Documents (private store) work the same shape — `fileRouter.mintDocumentUpload
 
 **Shared library, not per-owner**: every signed-in user sees all non-deleted document rows via `fileRouter.listDocuments` (joins `file` with `user` to surface the uploader's name). Only the owner or an admin can delete (`fileRouter.deleteDocument` → `fileService.softDelete` enforces it). Download is a 302-redirect route (`/api/files/download/$id`) that mints a 60-second signed URL via `storage.getReadUrl` after the session check — `<a href={...}>` lets the browser handle the file fetch natively.
 
-### Image Optimization — deferred
+### Image Optimization — deferred, then wired via a passthrough transformer
 
-The original plan called for `/_vercel/image?url=...&w=...&q=80` to deliver resized avatars. We dropped this during implementation:
+> **Amended 2026-06-04.** Image Optimization is now wired (it was deferred at first authoring). The two original blockers were solved by a tiny **environment-aware transformer** rather than dropping the feature: `src/lib/image/transformer.ts` (an `unpic` `URLTransformer` for the `vercel` provider), consumed by `src/components/ui/avatar.tsx` via `@unpic/react`. Behaviour:
+> - **Dev** (`import.meta.env.DEV`): returns the source URL unchanged — the browser fetches raw bytes straight from Blob, so `/_vercel/image` not existing on the Vite dev server is a non-issue.
+> - **Prod, public-blob hosts** (`*.public.blob.vercel-storage.com`): routes through `unpic`'s `transform()`, which builds the `/_vercel/image?url=…` URL.
+> - **Any other host** (e.g. static passkey provider icons not on `remotePatterns`): returns the source URL unchanged.
+>
+> So the "no `/_vercel/image` indirection" statements elsewhere in this ADR (Decisions row, Avatars bullet, Rendering note) are now historical — read them as "raw URL in dev / non-blob, optimized URL in prod for blob avatars". The grep check below was updated accordingly.
 
-- `/_vercel/image` is a Vercel-platform endpoint. **It doesn't exist on the Vite dev server** — the URL falls through to the SPA fallback and renders broken.
-- Production needs `remotePatterns` allowlisting our Blob hostnames (`*.public.blob.vercel-storage.com`) in a Build Output API `images` config, which we don't maintain. Without that, the endpoint refuses to optimize our URLs.
-- Avatars are small (≤ 5 MB, mostly < 500 KB) and rendered at 20–160 px. Browsers downscale fine; the byte-savings from server-side resize wouldn't pay for the platform-integration work at our scale.
+The original plan called for `/_vercel/image?url=...&w=...&q=80` to deliver resized avatars. We *deferred* it during the initial implementation for these reasons (since resolved by the transformer above):
 
-We render `<AvatarImage src={user.image}>` directly against the raw Vercel Blob CDN URL. Works identically in local dev and on Vercel, no config.
+- `/_vercel/image` is a Vercel-platform endpoint. **It doesn't exist on the Vite dev server** — the URL falls through to the SPA fallback and renders broken. (Solved: the transformer passes through in dev.)
+- Production needs `remotePatterns` allowlisting our Blob hostnames (`*.public.blob.vercel-storage.com`). (Solved: configured; the transformer only routes those hosts and passes others through.)
+- Avatars are small (≤ 5 MB, mostly < 500 KB) and rendered at 20–160 px. Browsers downscale fine — but the transformer is near-zero-cost and gives correct responsive sizing for free, so it earned its place.
 
-**Future option** (out of scope today): client-side resize before upload — a `canvas` / `createImageBitmap` step in `AvatarUpload.handleFile` that downscales to e.g. 256×256 WebP before `put()`. Bounds stored byte size at the source, no platform integration needed.
+**Future option** (still open): client-side resize before upload — a `canvas` / `createImageBitmap` step in `AvatarUpload.handleFile` that downscales to e.g. 256×256 WebP before `put()`. Bounds stored byte size at the source.
 
 ### Why this is a deep module (in the architecture-skill's terms)
 
@@ -298,7 +303,7 @@ A reader can confirm the architecture is being followed without running anything
 - `grep -rn "from '@vercel/blob" src/` — server SDK (`@vercel/blob`) imported only by `src/lib/effects/storage/adapters/vercelBlob.ts`. Browser SDK (`@vercel/blob/client`) imported only by the two upload components (`AvatarUpload.tsx`, `DocumentUpload.tsx`) — they're the only places that call `put`. Anywhere else is a violation.
 - `grep -rn "BLOB_PUBLIC_READ_WRITE_TOKEN\|BLOB_PRIVATE_READ_WRITE_TOKEN" src/` — should match only `adapters/vercelBlob.ts`. The tokens aren't read elsewhere.
 - `grep -rn "handleUpload\|handleUploadUrl\|onUploadCompleted" src/` — zero hits. We don't use Vercel's webhook helper.
-- `grep -rn "imageOptUrl\|/_vercel/image\|lib/imageOpt" src/` — zero hits. Image Optimization isn't wired.
+- `grep -rn "/_vercel/image" src/` — only a comment in `src/lib/image/transformer.ts`. The URL is never hand-built; `unpic` produces it inside that transformer (prod, public-blob hosts only). `grep -rln "lib/image/transformer" src/` finds the transformer's consumers (`src/components/ui/avatar.tsx`, `src/components/passkey/PasskeyRow.tsx`).
 - `grep -rn "db\.\(select\|insert\|update\|delete\)" src/lib/effects/storage/` — zero hits. Storage adapters don't touch the DB; metadata writes are the `file` service's job (ADR-0002).
 - `grep -rn "console\." src/lib/effects/storage/` — zero hits. Logging via `~/lib/logger` (ADR-0003).
 - The `file` service's tests cover invariants without instantiating any storage adapter — the schema-per-test harness (`test/setup.ts`) is enough; storage calls are exercised against the `devLog` adapter via `STORAGE_ADAPTER=devLog`.
@@ -348,7 +353,7 @@ Manual smoke tests:
 
 **Not wired** (called out so future readers know it was considered, then dropped):
 - ~~`src/routes/api/files/upload.ts`~~ — the `handleUploadUrl` route from the original plan. Replaced by `image.{mint,confirm}AvatarUpload` + `file.{mint,confirm}DocumentUpload` oRPC procedures.
-- ~~`src/lib/imageOpt.ts`~~ — `imageOptUrl(src, w, q)` helper. Removed (see Image Optimization — deferred).
+- ~~`src/lib/imageOpt.ts`~~ — the original `imageOptUrl(src, w, q)` helper was removed; Image Optimization was later re-wired via `src/lib/image/transformer.ts` (`unpic`) instead — see Image Optimization above.
 
 ---
 

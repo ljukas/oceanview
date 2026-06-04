@@ -1,14 +1,15 @@
 import { useQuery } from '@tanstack/react-query'
 import { blurhashToCssGradientString } from '@unpic/placeholder'
-import { FileIcon, FileTextIcon } from 'lucide-react'
 import { useMemo } from 'react'
 import { SHARP_DECODABLE_MIME_SET } from '~/lib/image/blurhash'
 import { orpc } from '~/lib/orpc/client'
 import { cn } from '~/lib/utils'
+import { fileTypeAppearance } from './documentHelpers'
 
 type Props = {
   id: string
   mime: string
+  extension?: string | null
   blurhash: string | null
   className?: string
 }
@@ -27,7 +28,7 @@ const PREVIEW_STALE_MS = 50 * 60 * 1000
  * Rendered WebP thumbnails are deferred (ADR-0010); when that worker lands the
  * `previewUrl` procedure can prefer the public thumbnail with no change here.
  */
-export function DocumentThumbnail({ id, mime, blurhash, className }: Props) {
+export function DocumentThumbnail({ id, mime, extension, blurhash, className }: Props) {
   const isImage = SHARP_DECODABLE_MIME_SET.has(mime)
   const gradient = useMemo(
     () => (blurhash ? blurhashToCssGradientString(blurhash) : null),
@@ -41,15 +42,10 @@ export function DocumentThumbnail({ id, mime, blurhash, className }: Props) {
   })
 
   if (!isImage) {
-    const Icon = mime === 'application/pdf' ? FileTextIcon : FileIcon
+    const { Icon, className: iconClass } = fileTypeAppearance({ mime, extension })
     return (
-      <div
-        className={cn(
-          'flex items-center justify-center rounded-md bg-muted text-muted-foreground',
-          className,
-        )}
-      >
-        <Icon aria-hidden="true" className="size-1/3" />
+      <div className={cn('flex items-center justify-center rounded-md bg-muted', className)}>
+        <Icon aria-hidden="true" className={cn('size-1/2', iconClass)} />
       </div>
     )
   }

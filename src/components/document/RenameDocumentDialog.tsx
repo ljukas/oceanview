@@ -12,13 +12,14 @@ import {
 } from '~/components/ui/dialog'
 import { useAppForm } from '~/hooks/form'
 import { orpc } from '~/lib/orpc/client'
+import { optimisticPatch } from '~/lib/orpc/optimistic'
 
 const schema = z.object({ name: z.string().min(1, 'Ange ett namn').max(255) })
 
 type Props = {
   open: boolean
   onOpenChange: (open: boolean) => void
-  document: { id: string; name: string; extension: string | null }
+  document: { id: string; name: string; extension: string | null; folderId: string | null }
 }
 
 export function RenameDocumentDialog({ open, onOpenChange, document }: Props) {
@@ -26,12 +27,20 @@ export function RenameDocumentDialog({ open, onOpenChange, document }: Props) {
 
   const renameMutation = useMutation(
     orpc.document.renameDocument.mutationOptions({
-      onSuccess: async () => {
-        await queryClient.invalidateQueries({ queryKey: orpc.document.key() })
+      // Patch the new name into the row's scoped list cache before the round-trip.
+      onMutate: ({ name }) =>
+        optimisticPatch(
+          queryClient,
+          orpc.document.listDocuments.queryKey({ input: { folderId: document.folderId } }),
+          (d) => d.id === document.id,
+          (d) => ({ ...d, name }),
+        ),
+      onSuccess: () => {
         toast.success('Dokumentet bytte namn')
         onOpenChange(false)
       },
       onError: (err) => toast.error(err.message || 'Kunde inte byta namn'),
+      onSettled: () => queryClient.invalidateQueries({ queryKey: orpc.document.key() }),
     }),
   )
 

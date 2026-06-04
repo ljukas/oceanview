@@ -121,28 +121,30 @@ export const documentRouter = {
       return { id: inserted.document.id }
     }),
 
-  listDocuments: protectedProcedure.handler(async () => {
-    const rows = await documentService.listAllDocuments()
-    // Flatten for the current UI contract; the Phase 4 UI rewrite moves to the
-    // structured { document, file, ownerName } shape directly. No preview URLs
-    // here — the grid renders immediately (blurhash placeholder) and resolves
-    // each image tile's signed URL lazily via `previewUrl` below.
-    return rows.map((row) => ({
-      id: row.document.id,
-      ownerId: row.file.ownerId,
-      name: row.document.name,
-      extension: row.document.extension,
-      folderId: row.document.folderId,
-      mime: row.file.mime,
-      sizeBytes: row.file.sizeBytes,
-      blurhash: row.file.blurhash,
-      // null = not attempted, '' = render failed (sentinel), else logical path
-      // in the public store; resolve to a URL via getReadUrl('public', …).
-      thumbnailPathname: row.document.thumbnailPathname,
-      uploadedAt: row.file.uploadedAt,
-      ownerName: row.ownerName,
-    }))
-  }),
+  listDocuments: protectedProcedure
+    .input(z.object({ folderId: z.uuid().nullable() }))
+    .handler(async ({ input }) => {
+      const rows = await documentService.listDocumentsByFolderId(input.folderId)
+      // Flatten for the current UI contract; the Phase 4 UI rewrite moves to the
+      // structured { document, file, ownerName } shape directly. No preview URLs
+      // here — the grid renders immediately (blurhash placeholder) and resolves
+      // each image tile's signed URL lazily via `previewUrl` below.
+      return rows.map((row) => ({
+        id: row.document.id,
+        ownerId: row.file.ownerId,
+        name: row.document.name,
+        extension: row.document.extension,
+        folderId: row.document.folderId,
+        mime: row.file.mime,
+        sizeBytes: row.file.sizeBytes,
+        blurhash: row.file.blurhash,
+        // null = not attempted, '' = render failed (sentinel), else logical path
+        // in the public store; resolve to a URL via getReadUrl('public', …).
+        thumbnailPathname: row.document.thumbnailPathname,
+        uploadedAt: row.file.uploadedAt,
+        ownerName: row.ownerName,
+      }))
+    }),
 
   // Lazy, per-tile signed read URL for an image preview. The grid fetches this
   // only after render (and only for image mimes), so the document list stays

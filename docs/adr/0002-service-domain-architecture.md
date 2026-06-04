@@ -215,8 +215,8 @@ This is also why test files for the user service can build minimal admins and me
 
 The instant the first invariant lands. Until then:
 
-- `season/`, `share/` — no `errors.ts`. Raw CRUD; no rules to enforce.
-- `user/` — has `errors.ts`. Four invariants and counting.
+- `season/` — no `errors.ts`. Raw CRUD; no rules to enforce (the week-21 default is a soft fallback, not a guard — see [ADR-0009](./0009-organization-rules.md)).
+- `user/`, `share/`, `document/`, `file/`, `folder/` — each has `errors.ts`. `share/` started rule-free and grew invariants later (the whole-share rule from [ADR-0009](./0009-organization-rules.md) and date/ownership guards), which is exactly when its `errors.ts` appeared.
 
 The pattern is symmetric: a service without invariants has no need to differentiate failures beyond "couldn't find it" (return `null`) and "DB-level error" (re-thrown unchanged). The moment you write a guard — `if (something) throw new XDomainError('...')` — you also add `errors.ts` and one barrel re-export. Don't add an empty errors file in anticipation.
 
@@ -256,7 +256,9 @@ Manual smoke test:
 - `src/lib/services/user/index.ts` — canonical barrel.
 - `src/lib/orpc/procedures/user.ts` — canonical `rethrowAsORPC` helper + service+side-effect ordering.
 - `test/setup.ts` — schema-per-test harness that makes services testable in isolation.
-- `src/lib/services/season/`, `src/lib/services/share/` — services without invariants → no `errors.ts`.
+- `src/lib/services/season/` — service without invariants → no `errors.ts`. (`share/`, `document/`, `file/`, `folder/` each grew an `errors.ts` once their first invariant landed.)
+
+> See [ADR-0009 — Organization rules](./0009-organization-rules.md) for the index of social invariants and which ones encode as hard `<Entity>DomainError` codes vs soft defaults; this ADR owns the *mechanism*, ADR-0009 owns the *catalogue of rules*.
 
 ---
 

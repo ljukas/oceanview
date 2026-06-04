@@ -2,7 +2,15 @@ import { sql } from 'drizzle-orm'
 import { db } from '~/lib/db'
 
 export type SearchHit =
-  | { kind: 'document'; id: string; name: string; path: string | null; score: number }
+  | {
+      kind: 'document'
+      id: string
+      name: string
+      path: string | null
+      mime: string
+      extension: string | null
+      score: number
+    }
   | { kind: 'folder'; id: string; name: string; path: string; score: number }
 
 // pg_trgm word_similarity is computed against an already-lowercased haystack
@@ -25,6 +33,8 @@ type DocumentSearchRow = {
   id: string
   name: string
   folder_path: string | null
+  mime: string
+  extension: string | null
   score: number
 }
 
@@ -44,8 +54,11 @@ export async function search(rawQuery: string): Promise<Array<SearchHit>> {
       SELECT d.id,
              d.name || case when d.extension is null then '' else '.' || d.extension end AS name,
              f.path AS folder_path,
+             d.extension AS extension,
+             fi.mime AS mime,
              word_similarity(${q}, d.search_haystack) AS score
       FROM document d
+      JOIN file fi ON fi.id = d.file_id
       LEFT JOIN folder f ON f.id = d.folder_id
       WHERE d.deleted_at IS NULL
         AND word_similarity(${q}, d.search_haystack) > ${SCORE_THRESHOLD}
@@ -68,6 +81,8 @@ export async function search(rawQuery: string): Promise<Array<SearchHit>> {
     id: row.id,
     name: row.name,
     path: row.folder_path,
+    mime: row.mime,
+    extension: row.extension,
     score: Number(row.score),
   }))
   const folderHits: Array<SearchHit> = (folderRows as Array<FolderSearchRow>).map((row) => ({

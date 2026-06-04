@@ -523,7 +523,7 @@ export async function listBin(): Promise<Array<BinEntry>> {
       id: row.id,
       name: row.name,
       path: row.path,
-      // `!` safe: WHERE clause guarantees deletedAt is non-null.
+      // biome-ignore lint/style/noNonNullAssertion: WHERE clause guarantees deletedAt is non-null
       deletedAt: row.deletedAt!,
       correlationId: folderCorrelationById.get(row.id) ?? null,
     })),
@@ -532,6 +532,7 @@ export async function listBin(): Promise<Array<BinEntry>> {
       id: row.id,
       name: joinFilename(row),
       path: null,
+      // biome-ignore lint/style/noNonNullAssertion: WHERE clause guarantees deletedAt is non-null
       deletedAt: row.deletedAt!,
       correlationId: documentCorrelationById.get(row.id) ?? null,
     })),

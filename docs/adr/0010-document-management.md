@@ -531,9 +531,9 @@ confirmDocumentUpload  ──► file row inserted (tx)
                        ──► document_event { kind: 'upload', toValue: { name, folderId } }
                        ──► realtime.publish('document.changed', [documentId])
                        ──► dispatch by mime:
-                              startsWith 'image/'   → queue.publish('image_thumbnail', { documentId })
-                              === 'application/pdf' → queue.publish('pdf_thumbnail',   { documentId })
-                              else                  → no enqueue; UI renders mime-type icon
+                              mime ∈ SHARP_DECODABLE_MIME_SET → queue.publish('image_thumbnail', { documentId })
+                              === 'application/pdf'           → queue.publish('pdf_thumbnail', …)  [reserved, see note]
+                              else                            → no enqueue; UI renders mime-type icon
 
 worker (shared handler dispatch on topic):
   ['image_thumbnail']  documentService.findActiveById(documentId) → load original via file.pathname (private store)
@@ -548,6 +548,8 @@ worker (shared handler dispatch on topic):
 
 Thumbnail generation is **best-effort**. Failure logs (`context.log.warn`) and surfaces the document without a thumbnail in the UI; no retry beyond the queue's built-in backoff. Hard failure (e.g. PDF cannot be rendered, SVG not decodable by sharp) writes a sentinel `thumbnail_pathname = ''` to avoid re-enqueuing on every list query.
 
+> **Note (implementation, 2026-06-04).** The "by mime prefix" framing above (and in the upload-flow diagram earlier) is the *intent*; the **actual gate is stricter**. `src/lib/orpc/procedures/document.ts` enqueues `image_thumbnail` only when the mime is in `SHARP_DECODABLE_MIME_SET` = `['image/png','image/jpeg','image/jpg','image/webp','image/avif']` — the formats the prebuilt `sharp` binary can decode — not for every `image/*` (HEIC, SVG, etc. fall through to the icon, which is what we want anyway). And `pdf_thumbnail` is **reserved, not wired**: no producer publishes it and no handler consumes it yet (PDFs render a mime-type icon) — see [ADR-0007](./0007-background-job-queue-architecture.md). So today only `image_thumbnail` actually fires.
+
 Existing `blurhash` topic is **unchanged**. Blurhash is the inline placeholder hash that ships in the JSON payload (lives on `file`); the thumbnail is the rendered preview asset served from the public store (lives on `document`). Both can coexist — blurhash is the loading skeleton; the thumbnail replaces it once loaded.
 
 The blurhash queue handler's `'document'` branch becomes: take `{ documentId, kind: 'document' }`, call `documentService.findActiveById(documentId)` to get the joined `{ document, file }`, generate the hash, call `fileService.setBlurhash({ fileId: row.file.id, blurhash })`. The `'avatar'` branch is unchanged.
@@ -555,7 +557,8 @@ The blurhash queue handler's `'document'` branch becomes: take `{ documentId, ki
 ### UI surface
 
 ```
-src/routes/_authenticated/documents.tsx       EDIT — tree-aware: query param ?folder=<id>
+src/routes/_authenticated/documents.index.tsx EDIT — root view (no folder)        [see Amendment 1]
+src/routes/_authenticated/documents.$.tsx     NEW  — splat: /documents/<path>      [see Amendment 1]
 src/routes/_authenticated/documents.bin.tsx   NEW  — admin-only bin
 src/components/document/
   DocumentTree.tsx          NEW   — left rail; folder hierarchy
@@ -691,3 +694,22 @@ Manual smoke tests:
 - **Avatar history during migration** — `file.name` for avatars (e.g. `IMG_1234.jpg`) is dropped by 0007. It's not rendered anywhere, but if any logging path includes it, the log line goes blank. Audit `grep -rn 'file.name\|name:' src/lib/orpc/procedures/image.ts src/lib/services/file/` during execution.
 - **Mime blacklist** — should specific mimes be rejected (e.g. `application/x-msdownload`, `application/x-sh`)? Not required for the trusted internal user base, but easy to add when concrete examples surface. Track but don't implement v1.
 - **Thumbnail backfill / re-run** — if the worker fails repeatedly (bad input, sharp/pdfjs rejection) the document permanently lacks a thumbnail. The `thumbnail_pathname = ''` sentinel prevents re-enqueue churn; a manual admin-only re-run endpoint is a natural follow-up.
+
+---
+
+## Amendments
+
+### Amendment 1 — Path-based folder URLs (2026-06-04)
+
+The original design routed folders with an opaque query param: `/documents?folder=<uuid>`. This **supersedes the URL shape only** — readable, hierarchical URLs:
+
+- Root: `/documents` — `documents.index.tsx`.
+- Folder: `/documents/Manuals/Engine` — `documents.$.tsx`, a TanStack splat route.
+
+**Why.** The UUID is opaque and ugly in the address bar. It was never a security boundary either — access is gated by the `_authenticated` layout and per-folder service rules, not URL secrecy — so the only thing the UUID bought was unreadability.
+
+**How — zero server/schema change.** This rides entirely on the existing denormalized `folder.path` column (the same column this ADR introduced for subtree queries). The splat (`params._splat`, already URI-decoded) is matched against `folder.path` in the already-cached `folder.tree` — no new query, service, procedure, or migration. Resolution lives in the route **component** (`resolveFolderBySplat` in `documentHelpers.ts`), not the loader, so a realtime tree refetch after a rename/move re-resolves automatically. Links are built with `folderPathToSplat(folder.path)`; the router percent-encodes each segment (spaces, å/ä/ö). Comparison is NFC-normalized on both ends — `encodeURIComponent`/`decodeURIComponent` are byte-faithful and won't reconcile precomposed vs decomposed diacritics.
+
+**Tradeoff (accepted).** A folder's URL is derived from its path, so renaming/moving a folder changes its URL. A stale URL (bookmark, old tab) no longer matches any `path` → the splat route redirects to root (`/documents`) rather than 404 — the document library's natural empty state. For a single-boat-club user base this is fine; if stable cross-rename links are ever needed, add a short stable id column and resolve on that instead (the splat plumbing stays).
+
+This does **not** reopen the ltree rejection (§ "Tree model — ltree (rejected)"): that was about *internal label storage*, and the internal `path` denormalization is unchanged.

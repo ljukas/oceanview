@@ -6,7 +6,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '~/components/ui/avatar'
 import { Button } from '~/components/ui/button'
 import { Progress } from '~/components/ui/progress'
 import { Spinner } from '~/components/ui/spinner'
-import { type UploadProgress, uploadFileToStorage } from '~/lib/effects/storage/clientUpload'
+import { runUploadFlow, type UploadProgress } from '~/lib/effects/storage/clientUpload'
 import { orpc } from '~/lib/orpc/client'
 import { initials } from '~/lib/utils'
 
@@ -84,22 +84,18 @@ export function AvatarUpload() {
       }
 
       setProgress({ loaded: 0, total: file.size, percentage: 0 })
-      const mint = await mintMutation.mutateAsync({
-        contentType,
-        sizeBytes: file.size,
-        name: file.name,
-      })
-
-      await uploadFileToStorage(file, mint, {
+      await runUploadFlow(file, {
         access: 'public',
         contentType,
+        mint: () =>
+          mintMutation.mutateAsync({ contentType, sizeBytes: file.size, name: file.name }),
+        confirm: (mint) =>
+          confirmMutation.mutateAsync({
+            pathname: mint.pathname,
+            name: file.name,
+            sizeBytes: file.size,
+          }),
         onProgress: (e) => setProgress(e),
-      })
-
-      await confirmMutation.mutateAsync({
-        pathname: mint.pathname,
-        name: file.name,
-        sizeBytes: file.size,
       })
 
       await Promise.all([

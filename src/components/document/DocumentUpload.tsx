@@ -1,15 +1,14 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { forwardRef, type ReactNode, useCallback, useImperativeHandle, useState } from 'react'
+import { forwardRef, type ReactNode, useCallback, useImperativeHandle } from 'react'
 import { useDropzone } from 'react-dropzone'
 import { toast } from 'sonner'
 import { Progress } from '~/components/ui/progress'
-import { uploadFileToStorage } from '~/lib/effects/storage/clientUpload'
+import { useUploadQueue } from '~/hooks/useUploadQueue'
+import { runUploadFlow } from '~/lib/effects/storage/clientUpload'
 import { client, orpc } from '~/lib/orpc/client'
 import { cn } from '~/lib/utils'
 
 const MAX_BYTES = 100_000_000
-
-type UploadState = { id: string; name: string; pct: number; status: 'uploading' | 'error' }
 
 type Props = {
   folderId: string | null
@@ -30,7 +29,7 @@ export const DocumentUpload = forwardRef<DocumentUploadHandle, Props>(function D
   ref,
 ) {
   const queryClient = useQueryClient()
-  const [uploads, setUploads] = useState<Array<UploadState>>([])
+  const { uploads, run } = useUploadQueue()
 
   const handleFiles = useCallback(
     async (files: Array<File>) => {
@@ -43,59 +42,43 @@ export const DocumentUpload = forwardRef<DocumentUploadHandle, Props>(function D
       })
       if (accepted.length === 0) return
 
-      const entries = accepted.map((f) => ({
-        id: crypto.randomUUID(),
-        name: f.name,
-        pct: 0,
-        status: 'uploading' as const,
-      }))
-      setUploads((prev) => [...prev, ...entries])
-
-      const patch = (id: string, next: Partial<UploadState>) =>
-        setUploads((prev) => prev.map((u) => (u.id === id ? { ...u, ...next } : u)))
-      const remove = (id: string) => setUploads((prev) => prev.filter((u) => u.id !== id))
-
-      const results = await Promise.all(
-        accepted.map(async (file, i) => {
-          const entry = entries[i]
-          try {
-            const mint = await client.document.mintDocumentUpload({
-              contentType: file.type || 'application/octet-stream',
-              sizeBytes: file.size,
-              name: file.name,
-            })
-            await uploadFileToStorage(file, mint, {
-              access: 'private',
-              contentType: file.type || 'application/octet-stream',
-              onProgress: (p) => patch(entry.id, { pct: p.percentage }),
-            })
-            await client.document.confirmDocumentUpload({
-              pathname: mint.pathname,
-              name: file.name,
-              sizeBytes: file.size,
-              folderId,
-            })
-            remove(entry.id)
-            return true
-          } catch (err) {
-            patch(entry.id, { status: 'error' })
-            toast.error(
-              `Kunde inte ladda upp "${file.name}": ${err instanceof Error ? err.message : 'okänt fel'}`,
-            )
-            return false
-          }
-        }),
-      )
+      const { ok } = await run(accepted, async (file, onProgress) => {
+        try {
+          const contentType = file.type || 'application/octet-stream'
+          await runUploadFlow(file, {
+            access: 'private',
+            contentType,
+            mint: () =>
+              client.document.mintDocumentUpload({
+                contentType,
+                sizeBytes: file.size,
+                name: file.name,
+              }),
+            confirm: (mint) =>
+              client.document.confirmDocumentUpload({
+                pathname: mint.pathname,
+                name: file.name,
+                sizeBytes: file.size,
+                folderId,
+              }),
+            onProgress,
+          })
+        } catch (err) {
+          toast.error(
+            `Kunde inte ladda upp "${file.name}": ${err instanceof Error ? err.message : 'okänt fel'}`,
+          )
+          throw err
+        }
+      })
 
       await queryClient.invalidateQueries({ queryKey: orpc.document.key() })
       // Announce completion via a toast (sonner is a live region) rather than
       // re-announcing every progress tick.
-      const ok = results.filter(Boolean).length
       if (ok > 0) {
         toast.success(`${ok} ${ok === 1 ? 'dokument uppladdat' : 'dokument uppladdade'}`)
       }
     },
-    [folderId, queryClient],
+    [folderId, queryClient, run],
   )
 
   const { getRootProps, getInputProps, isDragActive, open } = useDropzone({

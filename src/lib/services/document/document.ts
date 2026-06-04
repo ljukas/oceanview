@@ -140,7 +140,14 @@ export async function confirmUpload(
   })
 }
 
-export async function listAllDocuments(): Promise<Array<DocumentListRow>> {
+/**
+ * Active documents in a single folder, newest first. `folderId === null` lists
+ * the virtual root (documents with no folder). Served by `document_folder_id_idx`
+ * with a heap recheck of the `deleted_at IS NULL` predicate.
+ */
+export async function listDocumentsByFolderId(
+  folderId: string | null,
+): Promise<Array<DocumentListRow>> {
   const rows = await db
     .select({
       document: documentColumns,
@@ -150,7 +157,12 @@ export async function listAllDocuments(): Promise<Array<DocumentListRow>> {
     .from(document)
     .innerJoin(file, eq(document.fileId, file.id))
     .innerJoin(user, eq(file.ownerId, user.id))
-    .where(isNull(document.deletedAt))
+    .where(
+      and(
+        folderId === null ? isNull(document.folderId) : eq(document.folderId, folderId),
+        isNull(document.deletedAt),
+      ),
+    )
     .orderBy(desc(file.uploadedAt))
   return rows
 }

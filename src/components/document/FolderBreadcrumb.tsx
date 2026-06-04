@@ -10,7 +10,13 @@ import {
   BreadcrumbSeparator,
 } from '~/components/ui/breadcrumb'
 import { cn } from '~/lib/utils'
-import { type FolderRow, folderDropId, folderTrail, ROOT_DROP_ID } from './documentHelpers'
+import {
+  type FolderRow,
+  folderDropId,
+  folderPathToSplat,
+  folderTrail,
+  ROOT_DROP_ID,
+} from './documentHelpers'
 
 type Props = {
   folders: Array<FolderRow>
@@ -25,13 +31,11 @@ export function FolderBreadcrumb({ folders, activeFolderId }: Props) {
       <BreadcrumbList>
         <BreadcrumbItem>
           {trail.length === 0 ? (
-            <BreadcrumbPage>Alla dokument</BreadcrumbPage>
+            <BreadcrumbPage>Hem</BreadcrumbPage>
           ) : (
             <CrumbDrop dropId={ROOT_DROP_ID}>
               <BreadcrumbLink asChild>
-                <Link to="/documents" search={{ folder: undefined }}>
-                  Alla dokument
-                </Link>
+                <Link to="/documents">Hem</Link>
               </BreadcrumbLink>
             </CrumbDrop>
           )}
@@ -49,8 +53,8 @@ export function FolderBreadcrumb({ folders, activeFolderId }: Props) {
                   <CrumbDrop dropId={folderDropId(folder.id)}>
                     <BreadcrumbLink asChild>
                       <Link
-                        to="/documents"
-                        search={{ folder: folder.id }}
+                        to="/documents/$"
+                        params={{ _splat: folderPathToSplat(folder.path) }}
                         className="max-w-[12rem] truncate"
                       >
                         {folder.name}

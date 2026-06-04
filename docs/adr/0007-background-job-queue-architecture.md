@@ -78,18 +78,22 @@ One interface, typed per topic via a discriminated payload map:
 
 ```ts
 // src/lib/effects/queue/queue.ts
-export type QueueTopic = 'blurhash'
+export type QueueTopic = 'blurhash' | 'image_thumbnail' | 'pdf_thumbnail'
 
 export type QueuePayloadMap = {
   blurhash:
     | { fileId: string; kind: 'avatar'; userId: string }
     | { fileId: string; kind: 'document' }
+  image_thumbnail: { documentId: string }
+  pdf_thumbnail: { documentId: string } // reserved; not yet produced or consumed
 }
 
 export interface QueueEffects {
   publish<T extends QueueTopic>(topic: T, payload: QueuePayloadMap[T]): Promise<void>
 }
 ```
+
+> **Amended 2026-06-04.** `blurhash` is the canonical example throughout this ADR, but it is no longer the only live topic. **`image_thumbnail`** landed as the second real topic for [ADR-0010 — Document Management](./0010-document-management.md): handler `src/lib/queue/handlers/imageThumbnail.ts` (reads the private original, renders a WebP, writes it to the *public* store at `thumbnails/{documentId}.webp`, publishes `document.changed`), produced from `src/lib/orpc/procedures/document.ts`, registered in `vite.config.ts` triggers and the `vercel:queue` plugin switch, and consumed by a second BullMQ `Worker` in `scripts/devQueueWorker.ts`. It is the working proof of the *How to add a new topic* recipe below. **`pdf_thumbnail`** is forward-declared in the union only — no producer publishes it and no handler consumes it yet (PDFs render a mime-type icon); it stays reserved until the renderer's serverless-dependency story is proven. See ADR-0010.
 
 Adapter selection happens on first `publish()` via dynamic import, cached for the rest of the process:
 
@@ -273,7 +277,8 @@ After this ADR's pattern lands or is touched:
 
 - `grep -rn "@vercel/queue" src/` — only `src/lib/effects/queue/adapters/vercelQueue.ts` should match.
 - `grep -rn "from 'bullmq'" src/ scripts/` — only `src/lib/effects/queue/adapters/bullmqQueue.ts` and `scripts/devQueueWorker.ts` should match.
-- `grep -rn "publish('blurhash" src/` — every producer-side hit must be an oRPC procedure file (currently `src/lib/orpc/procedures/image.ts`, `src/lib/orpc/procedures/file.ts`); test files in `src/lib/effects/queue/` are also expected. No service, no auth hook, no React file.
+- `grep -rn "publish('blurhash" src/` — every producer-side hit must be an oRPC procedure file (currently `src/lib/orpc/procedures/image.ts` for avatars, `src/lib/orpc/procedures/document.ts` for documents); test files in `src/lib/effects/queue/` are also expected. No service, no auth hook, no React file.
+- `grep -rn "publish('image_thumbnail" src/` — only `src/lib/orpc/procedures/document.ts` (plus the queue test). Its handler is `src/lib/queue/handlers/imageThumbnail.ts`.
 - `grep -rn "vercel:queue" server/` — only `server/plugins/queueConsumer.ts` should match (no other hook subscribers).
 - `pnpm test` — `src/lib/effects/queue/queue.test.ts` passes; selects the `devLog` adapter regardless of `REDIS_URL`.
 - Manual smoke (dev, `REDIS_URL` unset + no worker): upload an avatar → 200; log shows `queue publish (devLog)`; avatar renders without a placeholder.
@@ -290,7 +295,8 @@ After this ADR's pattern lands or is touched:
 - `src/lib/effects/queue/adapters/devLog.ts` — no-op adapter (tests + offline dev).
 - `src/lib/effects/queue/queue.test.ts` — contract test.
 - `src/lib/effects/index.ts` — re-exports `queue` alongside `email`, `storage`, `realtime`.
-- `src/lib/queue/handlers/blurhash.ts` — shared consumer handler.
+- `src/lib/queue/handlers/blurhash.ts` — shared consumer handler (`blurhash` topic).
+- `src/lib/queue/handlers/imageThumbnail.ts` — shared consumer handler (`image_thumbnail` topic; ADR-0010).
 - `server/plugins/queueConsumer.ts` — Vercel Queues consumer (Nitro `vercel:queue` hook).
 - `scripts/devQueueWorker.ts` — local BullMQ consumer; run via `pnpm dev:worker`.
 - `compose.yaml` — `queue` and `queue-studio` services.

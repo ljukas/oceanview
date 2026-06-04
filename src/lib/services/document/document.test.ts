@@ -8,7 +8,7 @@ import {
   findActiveById,
   findById,
   hardDeleteDocument,
-  listAllDocuments,
+  listDocumentsByFolderId,
   moveDocument,
   renameDocument,
   restoreDocument,
@@ -86,13 +86,13 @@ test('findById returns soft-deleted rows too', async () => {
   expect(fetched?.document.deletedAt).not.toBeNull()
 })
 
-test('listAllDocuments returns non-deleted documents with owner name, newest first', async () => {
+test('listDocumentsByFolderId(null) returns root documents with owner name, newest first', async () => {
   const aliceId = await insertMember('alice@test.oceanview.local', 'Alice')
   const bobId = await insertMember('bob@test.oceanview.local', 'Bob')
   await confirmUpload(docInput(aliceId, { name: 'alice.pdf' }))
   await confirmUpload(docInput(bobId, { name: 'bob.pdf' }))
 
-  const docs = await listAllDocuments()
+  const docs = await listDocumentsByFolderId(null)
   // Stored base names (extension lives in its own column).
   expect(docs.map((d) => d.document.name).sort()).toEqual(['alice', 'bob'])
   const alice = docs.find((d) => d.document.name === 'alice')
@@ -100,7 +100,20 @@ test('listAllDocuments returns non-deleted documents with owner name, newest fir
   expect(alice?.ownerName).toBe('Alice')
 })
 
-test('listAllDocuments excludes avatars (files without a document row)', async () => {
+test('listDocumentsByFolderId scopes to a single folder', async () => {
+  const ownerId = await insertMember('anna@test.oceanview.local', 'Anna')
+  const folderId = (await insertFolder('Manuals', ownerId)).id
+  await confirmUpload(docInput(ownerId, { name: 'root.pdf' }))
+  await confirmUpload(docInput(ownerId, { name: 'inside.pdf', folderId }))
+
+  const inFolder = await listDocumentsByFolderId(folderId)
+  expect(inFolder.map((d) => d.document.name)).toEqual(['inside'])
+
+  const atRoot = await listDocumentsByFolderId(null)
+  expect(atRoot.map((d) => d.document.name)).toEqual(['root'])
+})
+
+test('listDocumentsByFolderId excludes avatars (files without a document row)', async () => {
   const ownerId = await insertMember('anna@test.oceanview.local', 'Anna')
   await db.insert(file).values({
     ownerId,
@@ -111,18 +124,18 @@ test('listAllDocuments excludes avatars (files without a document row)', async (
   })
   await confirmUpload(docInput(ownerId, { name: 'doc.pdf' }))
 
-  const docs = await listAllDocuments()
+  const docs = await listDocumentsByFolderId(null)
   expect(docs.map((d) => d.document.name)).toEqual(['doc'])
 })
 
-test('listAllDocuments hides soft-deleted documents', async () => {
+test('listDocumentsByFolderId hides soft-deleted documents', async () => {
   const ownerId = await insertMember('anna@test.oceanview.local', 'Anna')
   const inserted = await confirmUpload(docInput(ownerId, { name: 'old.pdf' }))
   await db
     .update(document)
     .set({ deletedAt: new Date() })
     .where(eq(document.id, inserted.document.id))
-  expect(await listAllDocuments()).toEqual([])
+  expect(await listDocumentsByFolderId(null)).toEqual([])
 })
 
 test('softDelete by the owner marks deleted_at on the document but not the file', async () => {

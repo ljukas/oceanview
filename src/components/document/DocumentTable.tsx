@@ -24,7 +24,6 @@ import {
   PencilIcon,
   Trash2Icon,
 } from 'lucide-react'
-import { useState } from 'react'
 import { toast } from 'sonner'
 import { Button } from '~/components/ui/button'
 import {
@@ -52,7 +51,9 @@ import {
   TableHeader,
   TableRow,
 } from '~/components/ui/table'
+import { useDialogState } from '~/hooks/useDialogState'
 import { orpc } from '~/lib/orpc/client'
+import { optimisticRemove } from '~/lib/orpc/optimistic'
 import { cn } from '~/lib/utils'
 import { DocumentHistory } from './DocumentHistory'
 import { DocumentThumbnail } from './DocumentThumbnail'
@@ -272,8 +273,6 @@ function SortableHead({
   )
 }
 
-type OpenDialog = 'rename' | 'move' | 'history' | null
-
 function DocumentTableRow({
   row,
   currentUser,
@@ -283,32 +282,32 @@ function DocumentTableRow({
 }) {
   const doc = row.original
   const queryClient = useQueryClient()
-  const [dialog, setDialog] = useState<OpenDialog>(null)
+  const dialog = useDialogState<'rename' | 'move' | 'history'>()
   const canEdit = doc.ownerId === currentUser.id || currentUser.role === 'admin'
 
-  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: documentDragId(doc.id),
     data: { documentId: doc.id },
   })
 
   const deleteMutation = useMutation(
     orpc.document.deleteDocument.mutationOptions({
-      onSuccess: async () => {
-        await queryClient.invalidateQueries({ queryKey: orpc.document.key() })
-        toast.success('Dokumentet togs bort (kan återställas av admin)')
-      },
+      // The row lives in this folder's scoped list cache; drop it immediately.
+      onMutate: () =>
+        optimisticRemove(
+          queryClient,
+          orpc.document.listDocuments.queryKey({ input: { folderId: doc.folderId } }),
+          (d) => d.id === doc.id,
+        ),
+      onSuccess: () => toast.success('Dokumentet togs bort (kan återställas av admin)'),
       onError: (err) => toast.error(err.message || 'Kunde inte ta bort dokumentet'),
+      // Reconcile both outcomes (and roll a failed patch back) from the server.
+      onSettled: () => queryClient.invalidateQueries({ queryKey: orpc.document.key() }),
     }),
   )
 
   return (
-    <TableRow
-      ref={setNodeRef}
-      style={
-        transform ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)` } : undefined
-      }
-      className={cn(isDragging && 'select-none opacity-50')}
-    >
+    <TableRow ref={setNodeRef} className={cn(isDragging && 'select-none opacity-50')}>
       <TableCell className="pr-0">
         <button
           type="button"
@@ -323,12 +322,21 @@ function DocumentTableRow({
 
       <TableCell>
         <div className="flex min-w-0 items-center gap-3">
-          <DocumentThumbnail
-            id={doc.id}
-            mime={doc.mime}
-            blurhash={doc.blurhash}
-            className="size-9 shrink-0"
-          />
+          <a
+            href={`/api/files/view/${doc.id}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label={`Öppna ${documentDisplayName(doc)}`}
+            className="shrink-0 rounded-md outline-none ring-1 ring-transparent transition-all duration-200 hover:shadow-md hover:ring-ring/50 focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <DocumentThumbnail
+              id={doc.id}
+              mime={doc.mime}
+              extension={doc.extension}
+              blurhash={doc.blurhash}
+              className="size-9"
+            />
+          </a>
           <div className="flex min-w-0 flex-col">
             <span className="truncate font-medium" title={documentDisplayName(doc)}>
               {documentDisplayName(doc)}
@@ -365,7 +373,7 @@ function DocumentTableRow({
                   Ladda ner
                 </a>
               </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => setDialog('history')}>
+              <DropdownMenuItem onSelect={() => dialog.show('history')}>
                 <HistoryIcon data-icon="inline-start" />
                 Historik
               </DropdownMenuItem>
@@ -374,11 +382,11 @@ function DocumentTableRow({
               <>
                 <DropdownMenuSeparator />
                 <DropdownMenuGroup>
-                  <DropdownMenuItem onSelect={() => setDialog('rename')}>
+                  <DropdownMenuItem onSelect={() => dialog.show('rename')}>
                     <PencilIcon data-icon="inline-start" />
                     Byt namn
                   </DropdownMenuItem>
-                  <DropdownMenuItem onSelect={() => setDialog('move')}>
+                  <DropdownMenuItem onSelect={() => dialog.show('move')}>
                     <FolderInputIcon data-icon="inline-start" />
                     Flytta till…
                   </DropdownMenuItem>
@@ -398,24 +406,34 @@ function DocumentTableRow({
 
         {/* Mounted only while open so the dialogs' queries (MoveDialog's folder
             tree, DocumentHistory's events) don't subscribe behind every row. */}
-        {dialog === 'rename' ? (
+        {dialog.active === 'rename' ? (
           <RenameDocumentDialog
             open
-            onOpenChange={() => setDialog(null)}
-            document={{ id: doc.id, name: doc.name, extension: doc.extension }}
+            onOpenChange={dialog.close}
+            document={{
+              id: doc.id,
+              name: doc.name,
+              extension: doc.extension,
+              folderId: doc.folderId,
+            }}
           />
         ) : null}
-        {dialog === 'move' ? (
+        {dialog.active === 'move' ? (
           <MoveDialog
             open
-            onOpenChange={() => setDialog(null)}
-            target={{ kind: 'document', id: doc.id, name: documentDisplayName(doc) }}
+            onOpenChange={dialog.close}
+            target={{
+              kind: 'document',
+              id: doc.id,
+              name: documentDisplayName(doc),
+              folderId: doc.folderId,
+            }}
           />
         ) : null}
-        {dialog === 'history' ? (
+        {dialog.active === 'history' ? (
           <DocumentHistory
             open
-            onOpenChange={() => setDialog(null)}
+            onOpenChange={dialog.close}
             documentId={doc.id}
             documentName={documentDisplayName(doc)}
           />

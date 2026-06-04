@@ -209,9 +209,13 @@ function Sidebar({
       <div
         data-slot="sidebar-gap"
         className={cn(
+          // Spacer that reserves the sidebar's width in flow; animates on collapse/expand
           'relative w-(--sidebar-width) bg-transparent transition-[width] duration-200 ease-linear',
+          // Off-canvas: collapse the gap to zero (sidebar slides out of view)
           'group-data-[collapsible=offcanvas]:w-0',
+          // Mirror the gap for a right-anchored sidebar
           'group-data-[side=right]:rotate-180',
+          // Icon-collapsed width: floating/inset add extra padding around the rail; plain sidebar is exactly the icon width
           variant === 'floating' || variant === 'inset'
             ? 'group-data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)+(--spacing(4)))]'
             : 'group-data-[collapsible=icon]:w-(--sidebar-width-icon)',
@@ -221,11 +225,18 @@ function Sidebar({
         data-slot="sidebar-container"
         data-side={side}
         className={cn(
-          'fixed inset-y-0 z-10 hidden h-svh w-(--sidebar-width) transition-[left,right,width] duration-200 ease-linear data-[side=right]:right-0 data-[side=left]:left-0 data-[side=right]:group-data-[collapsible=offcanvas]:right-[calc(var(--sidebar-width)*-1)] data-[side=left]:group-data-[collapsible=offcanvas]:left-[calc(var(--sidebar-width)*-1)] md:flex',
+          // Fixed full-height panel; animates left/right/width on collapse/expand
+          'fixed inset-y-0 z-10 hidden h-svh w-(--sidebar-width) transition-[left,right,width] duration-200 ease-linear md:flex',
+          // Anchor to the chosen edge
+          'data-[side=right]:right-0 data-[side=left]:left-0',
+          // Off-canvas collapse: push fully off-screen by one full sidebar width on the relevant edge
+          'data-[side=right]:group-data-[collapsible=offcanvas]:right-[calc(var(--sidebar-width)*-1)] data-[side=left]:group-data-[collapsible=offcanvas]:left-[calc(var(--sidebar-width)*-1)]',
           // Adjust the padding for floating and inset variants.
           variant === 'floating' || variant === 'inset'
-            ? 'p-2 group-data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)+(--spacing(4))+2px)]'
-            : 'group-data-[collapsible=icon]:w-(--sidebar-width-icon) group-data-[side=left]:border-r group-data-[side=right]:border-l',
+            ? // Floating/inset: inner padding + icon-collapsed width includes rail padding and 2px border
+              'p-2 group-data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)+(--spacing(4))+2px)]'
+            : // Plain sidebar: icon-collapsed width + edge border on the anchored side
+              'group-data-[collapsible=icon]:w-(--sidebar-width-icon) group-data-[side=left]:border-r group-data-[side=right]:border-l',
           className,
         )}
         {...props}
@@ -233,7 +244,12 @@ function Sidebar({
         <div
           data-sidebar="sidebar"
           data-slot="sidebar-inner"
-          className="flex size-full flex-col bg-sidebar group-data-[variant=floating]:rounded-lg group-data-[variant=floating]:shadow-sm group-data-[variant=floating]:ring-1 group-data-[variant=floating]:ring-sidebar-border"
+          className={cn(
+            // Panel surface filling the container
+            'flex size-full flex-col bg-sidebar',
+            // Floating variant: rounded card with subtle shadow + border ring
+            'group-data-[variant=floating]:rounded-lg group-data-[variant=floating]:shadow-sm group-data-[variant=floating]:ring-1 group-data-[variant=floating]:ring-sidebar-border',
+          )}
         >
           {children}
         </div>
@@ -276,10 +292,19 @@ function SidebarRail({ className, ...props }: React.ComponentProps<'button'>) {
       onClick={toggleSidebar}
       title="Toggle Sidebar"
       className={cn(
-        'absolute inset-y-0 z-20 hidden w-4 transition-all ease-linear after:absolute after:inset-y-0 after:start-1/2 after:w-[2px] hover:after:bg-sidebar-border group-data-[side=left]:-right-4 group-data-[side=right]:left-0 sm:flex ltr:-translate-x-1/2 rtl:-translate-x-1/2',
+        // Invisible 4px-wide drag/click strip running the full height; centered on the sidebar edge
+        'absolute inset-y-0 z-20 hidden w-4 transition-all ease-linear sm:flex ltr:-translate-x-1/2 rtl:-translate-x-1/2',
+        // The visible 2px hairline shown on hover, centered within the strip
+        'after:absolute after:inset-y-0 after:start-1/2 after:w-[2px] hover:after:bg-sidebar-border',
+        // Position the strip just outside the anchored edge
+        'group-data-[side=left]:-right-4 group-data-[side=right]:left-0',
+        // Resize cursor depends on side: hovering the rail hints which way it collapses
         'in-data-[side=left]:cursor-w-resize in-data-[side=right]:cursor-e-resize',
+        // Resize cursor when already collapsed: flips to hint the expand direction (side + collapsed state)
         '[[data-side=left][data-state=collapsed]_&]:cursor-e-resize [[data-side=right][data-state=collapsed]_&]:cursor-w-resize',
+        // Off-canvas mode: reset transform, fill on hover, push the hairline to the strip's far edge
         'group-data-[collapsible=offcanvas]:translate-x-0 hover:group-data-[collapsible=offcanvas]:bg-sidebar group-data-[collapsible=offcanvas]:after:left-full',
+        // Off-canvas nudge so the rail stays grabbable just inside the screen edge (per side)
         '[[data-side=left][data-collapsible=offcanvas]_&]:-right-2',
         '[[data-side=right][data-collapsible=offcanvas]_&]:-left-2',
         className,
@@ -294,7 +319,10 @@ function SidebarInset({ className, ...props }: React.ComponentProps<'main'>) {
     <main
       data-slot="sidebar-inset"
       className={cn(
-        'relative flex w-full flex-1 flex-col bg-background md:peer-data-[variant=inset]:peer-data-[state=collapsed]:ml-2 md:peer-data-[variant=inset]:m-2 md:peer-data-[variant=inset]:ml-0 md:peer-data-[variant=inset]:rounded-xl md:peer-data-[variant=inset]:shadow-sm',
+        // Main content area filling the remaining space
+        'relative flex w-full flex-1 flex-col bg-background',
+        // Inset variant (desktop): margin gap + rounded card; drop the left margin while expanded, restore it when the sidebar collapses
+        'md:peer-data-[variant=inset]:peer-data-[state=collapsed]:ml-2 md:peer-data-[variant=inset]:m-2 md:peer-data-[variant=inset]:ml-0 md:peer-data-[variant=inset]:rounded-xl md:peer-data-[variant=inset]:shadow-sm',
         className,
       )}
       {...props}
@@ -352,7 +380,10 @@ function SidebarContent({ className, ...props }: React.ComponentProps<'div'>) {
       data-slot="sidebar-content"
       data-sidebar="content"
       className={cn(
-        'no-scrollbar flex min-h-0 flex-1 flex-col gap-0 overflow-auto group-data-[collapsible=icon]:overflow-hidden',
+        // Scrollable middle region between header and footer
+        'no-scrollbar flex min-h-0 flex-1 flex-col gap-0 overflow-auto',
+        // Icon-collapsed: clip overflow so nothing leaks past the narrow rail
+        'group-data-[collapsible=icon]:overflow-hidden',
         className,
       )}
       {...props}
@@ -383,7 +414,12 @@ function SidebarGroupLabel({
       data-slot="sidebar-group-label"
       data-sidebar="group-label"
       className={cn(
-        'flex h-8 shrink-0 items-center rounded-md px-2 font-medium text-sidebar-foreground/70 text-xs outline-hidden ring-sidebar-ring transition-[margin,opacity] duration-200 ease-linear focus-visible:ring-2 group-data-[collapsible=icon]:-mt-8 group-data-[collapsible=icon]:opacity-0 [&>svg]:size-4 [&>svg]:shrink-0',
+        // Small muted section heading; animates margin/opacity on collapse
+        'flex h-8 shrink-0 items-center rounded-md px-2 font-medium text-sidebar-foreground/70 text-xs outline-hidden ring-sidebar-ring transition-[margin,opacity] duration-200 ease-linear focus-visible:ring-2',
+        // Icon-collapsed: fade out and slide up out of the way
+        'group-data-[collapsible=icon]:-mt-8 group-data-[collapsible=icon]:opacity-0',
+        // Leading icon sizing
+        '[&>svg]:size-4 [&>svg]:shrink-0',
         className,
       )}
       {...props}
@@ -403,7 +439,14 @@ function SidebarGroupAction({
       data-slot="sidebar-group-action"
       data-sidebar="group-action"
       className={cn(
-        'absolute top-3.5 right-3 flex aspect-square w-5 items-center justify-center rounded-md p-0 text-sidebar-foreground outline-hidden ring-sidebar-ring transition-transform after:absolute after:-inset-2 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 group-data-[collapsible=icon]:hidden md:after:hidden [&>svg]:size-4 [&>svg]:shrink-0',
+        // Square icon button pinned to the group's top-right corner
+        'absolute top-3.5 right-3 flex aspect-square w-5 items-center justify-center rounded-md p-0 text-sidebar-foreground outline-hidden ring-sidebar-ring transition-transform hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2',
+        // Enlarged invisible hit area for easier tapping (dropped on desktop where the cursor is precise)
+        'after:absolute after:-inset-2 md:after:hidden',
+        // No room for it when icon-collapsed
+        'group-data-[collapsible=icon]:hidden',
+        // Icon sizing
+        '[&>svg]:size-4 [&>svg]:shrink-0',
         className,
       )}
       {...props}
@@ -445,7 +488,24 @@ function SidebarMenuItem({ className, ...props }: React.ComponentProps<'li'>) {
 }
 
 const sidebarMenuButtonVariants = cva(
-  'peer/menu-button group/menu-button flex w-full items-center gap-2 overflow-hidden rounded-md p-2 text-left text-sm outline-hidden ring-sidebar-ring transition-[width,height,padding] hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 group-has-data-[sidebar=menu-action]/menu-item:pr-8 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-active:bg-sidebar-accent data-active:font-medium data-active:text-sidebar-accent-foreground data-open:hover:bg-sidebar-accent data-open:hover:text-sidebar-accent-foreground group-data-[collapsible=icon]:size-8! group-data-[collapsible=icon]:p-2! [&>span:last-child]:truncate [&_svg]:size-4 [&_svg]:shrink-0',
+  cn(
+    // Acts as peer + group so siblings (action/badge) and descendants can react to its state/size; animates size/padding on collapse
+    'peer/menu-button group/menu-button flex w-full items-center gap-2 overflow-hidden rounded-md p-2 text-left text-sm outline-hidden ring-sidebar-ring transition-[width,height,padding]',
+    // Hover / focus / active interaction states
+    'hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground',
+    // Disabled states (native + aria)
+    'disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50',
+    // Reserve trailing space when the item also holds a menu-action
+    'group-has-data-[sidebar=menu-action]/menu-item:pr-8',
+    // Active item highlight (current route)
+    'data-active:bg-sidebar-accent data-active:font-medium data-active:text-sidebar-accent-foreground',
+    // Open (e.g. expanded submenu trigger): keep the accent on hover
+    'data-open:hover:bg-sidebar-accent data-open:hover:text-sidebar-accent-foreground',
+    // Icon-collapsed: force a square 8-unit button with fixed padding (overrides size variants)
+    'group-data-[collapsible=icon]:size-8! group-data-[collapsible=icon]:p-2!',
+    // Truncate the label; fixed icon sizing
+    '[&>span:last-child]:truncate [&_svg]:size-4 [&_svg]:shrink-0',
+  ),
   {
     variants: {
       variant: {
@@ -532,7 +592,19 @@ function SidebarMenuAction({
       data-slot="sidebar-menu-action"
       data-sidebar="menu-action"
       className={cn(
-        'absolute top-1.5 right-1 flex aspect-square w-5 items-center justify-center rounded-md p-0 text-sidebar-foreground outline-hidden ring-sidebar-ring transition-transform after:absolute after:-inset-2 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 peer-hover/menu-button:text-sidebar-accent-foreground group-data-[collapsible=icon]:hidden peer-data-[size=default]/menu-button:top-1.5 peer-data-[size=lg]/menu-button:top-2.5 peer-data-[size=sm]/menu-button:top-1 md:after:hidden [&>svg]:size-4 [&>svg]:shrink-0',
+        // Square icon button pinned to the menu item's top-right
+        'absolute top-1.5 right-1 flex aspect-square w-5 items-center justify-center rounded-md p-0 text-sidebar-foreground outline-hidden ring-sidebar-ring transition-transform hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2',
+        // Pick up the accent color when the sibling menu-button is hovered
+        'peer-hover/menu-button:text-sidebar-accent-foreground',
+        // Enlarged invisible hit area for touch (dropped on desktop)
+        'after:absolute after:-inset-2 md:after:hidden',
+        // Vertical alignment tracks the sibling menu-button's size (peer-data-[size=…]/menu-button)
+        'peer-data-[size=default]/menu-button:top-1.5 peer-data-[size=lg]/menu-button:top-2.5 peer-data-[size=sm]/menu-button:top-1',
+        // No room for it when icon-collapsed
+        'group-data-[collapsible=icon]:hidden',
+        // Icon sizing
+        '[&>svg]:size-4 [&>svg]:shrink-0',
+        // Show-on-hover mode: hidden on desktop by default, revealed on item hover/focus, when expanded, or when the active button is hovered
         showOnHover &&
           'group-focus-within/menu-item:opacity-100 group-hover/menu-item:opacity-100 aria-expanded:opacity-100 peer-data-active/menu-button:text-sidebar-accent-foreground md:opacity-0',
         className,
@@ -548,7 +620,14 @@ function SidebarMenuBadge({ className, ...props }: React.ComponentProps<'div'>) 
       data-slot="sidebar-menu-badge"
       data-sidebar="menu-badge"
       className={cn(
-        'pointer-events-none absolute right-1 flex h-5 min-w-5 select-none items-center justify-center rounded-md px-1 font-medium text-sidebar-foreground text-xs tabular-nums peer-hover/menu-button:text-sidebar-accent-foreground group-data-[collapsible=icon]:hidden peer-data-[size=default]/menu-button:top-1.5 peer-data-[size=lg]/menu-button:top-2.5 peer-data-[size=sm]/menu-button:top-1 peer-data-active/menu-button:text-sidebar-accent-foreground',
+        // Non-interactive count pill pinned to the menu item's right edge
+        'pointer-events-none absolute right-1 flex h-5 min-w-5 select-none items-center justify-center rounded-md px-1 font-medium text-sidebar-foreground text-xs tabular-nums',
+        // Pick up the accent color when the sibling menu-button is hovered or active
+        'peer-hover/menu-button:text-sidebar-accent-foreground peer-data-active/menu-button:text-sidebar-accent-foreground',
+        // Vertical alignment tracks the sibling menu-button's size (peer-data-[size=…]/menu-button)
+        'peer-data-[size=default]/menu-button:top-1.5 peer-data-[size=lg]/menu-button:top-2.5 peer-data-[size=sm]/menu-button:top-1',
+        // No room for it when icon-collapsed
+        'group-data-[collapsible=icon]:hidden',
         className,
       )}
       {...props}
@@ -595,7 +674,10 @@ function SidebarMenuSub({ className, ...props }: React.ComponentProps<'ul'>) {
       data-slot="sidebar-menu-sub"
       data-sidebar="menu-sub"
       className={cn(
-        'mx-3.5 flex min-w-0 translate-x-px flex-col gap-1 border-sidebar-border border-l px-2.5 py-0.5 group-data-[collapsible=icon]:hidden',
+        // Indented nested list with a left guide line marking the sub-level
+        'mx-3.5 flex min-w-0 translate-x-px flex-col gap-1 border-sidebar-border border-l px-2.5 py-0.5',
+        // Hidden entirely when icon-collapsed (no room to nest)
+        'group-data-[collapsible=icon]:hidden',
         className,
       )}
       {...props}
@@ -634,7 +716,20 @@ function SidebarMenuSubButton({
       data-size={size}
       data-active={isActive}
       className={cn(
-        'flex h-7 min-w-0 -translate-x-px items-center gap-2 overflow-hidden rounded-md px-2 text-sidebar-foreground outline-hidden ring-sidebar-ring hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-active:bg-sidebar-accent data-[size=md]:text-sm data-[size=sm]:text-xs data-active:text-sidebar-accent-foreground group-data-[collapsible=icon]:hidden [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0 [&>svg]:text-sidebar-accent-foreground',
+        // Sub-item row, slightly back-shifted to align with the parent list's guide line
+        'flex h-7 min-w-0 -translate-x-px items-center gap-2 overflow-hidden rounded-md px-2 text-sidebar-foreground outline-hidden ring-sidebar-ring',
+        // Hover / focus / active interaction states
+        'hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground',
+        // Disabled states (native + aria)
+        'disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50',
+        // Active item highlight (current route)
+        'data-active:bg-sidebar-accent data-active:text-sidebar-accent-foreground',
+        // Font size driven by the size prop (data-[size=…])
+        'data-[size=md]:text-sm data-[size=sm]:text-xs',
+        // Hidden when icon-collapsed (sub-items only show expanded)
+        'group-data-[collapsible=icon]:hidden',
+        // Truncate label; fixed accent-colored icon sizing
+        '[&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0 [&>svg]:text-sidebar-accent-foreground',
         className,
       )}
       {...props}

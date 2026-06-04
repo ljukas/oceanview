@@ -97,6 +97,16 @@ test('search finds a document via name with mild typo', async () => {
   expect(docHit?.name).toBe('bottenmalning-2024.pdf')
 })
 
+test('document hits carry mime and extension for type-specific icons', async () => {
+  const { docs } = await seed()
+  const hits = await search('bottnmalning')
+  const docHit = hits.find((h) => h.kind === 'document')
+  expect(docHit?.id).toBe(docs.bottom.document.id)
+  if (docHit?.kind !== 'document') throw new Error('expected a document hit')
+  expect(docHit.mime).toBe('application/pdf')
+  expect(docHit.extension).toBe('pdf')
+})
+
 test('search matches on the file extension (haystack includes it)', async () => {
   const { docs } = await seed()
   const hits = await search('IMG_001 jpg')

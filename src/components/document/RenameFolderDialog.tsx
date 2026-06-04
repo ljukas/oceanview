@@ -12,6 +12,7 @@ import {
 } from '~/components/ui/dialog'
 import { useAppForm } from '~/hooks/form'
 import { orpc } from '~/lib/orpc/client'
+import { optimisticPatch } from '~/lib/orpc/optimistic'
 
 const schema = z.object({ name: z.string().min(1, 'Ange ett namn').max(255) })
 
@@ -26,15 +27,26 @@ export function RenameFolderDialog({ open, onOpenChange, folder }: Props) {
 
   const renameMutation = useMutation(
     orpc.folder.renameFolder.mutationOptions({
-      onSuccess: async () => {
-        await Promise.all([
-          queryClient.invalidateQueries({ queryKey: orpc.folder.key() }),
-          queryClient.invalidateQueries({ queryKey: orpc.document.key() }),
-        ])
+      // Patch the visible name into the folder tree before the round-trip. The
+      // rename also rewrites this folder's `path` and its descendants' paths
+      // server-side; those path-derived views reconcile on the settle refetch.
+      onMutate: ({ name }) =>
+        optimisticPatch(
+          queryClient,
+          orpc.folder.tree.queryKey(),
+          (f) => f.id === folder.id,
+          (f) => ({ ...f, name }),
+        ),
+      onSuccess: () => {
         toast.success('Mappen bytte namn')
         onOpenChange(false)
       },
       onError: (err) => toast.error(err.message || 'Kunde inte byta namn på mappen'),
+      onSettled: () =>
+        Promise.all([
+          queryClient.invalidateQueries({ queryKey: orpc.folder.key() }),
+          queryClient.invalidateQueries({ queryKey: orpc.document.key() }),
+        ]),
     }),
   )
 

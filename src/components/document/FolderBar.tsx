@@ -2,7 +2,7 @@ import { useDroppable } from '@dnd-kit/core'
 import { Link } from '@tanstack/react-router'
 import { FolderIcon } from 'lucide-react'
 import { cn } from '~/lib/utils'
-import { type FolderRow, folderDropId } from './documentHelpers'
+import { type FolderRow, folderDropId, folderPathToSplat } from './documentHelpers'
 import { FolderActions } from './FolderActions'
 
 type Props = {
@@ -41,19 +41,24 @@ function FolderChip({ folder, isAdmin }: { folder: FolderRow; isAdmin: boolean }
     <li
       ref={setNodeRef}
       className={cn(
-        'flex items-center gap-0.5 rounded-lg border bg-card pr-1',
+        'flex items-center overflow-hidden rounded-lg border bg-card',
         isOver && 'bg-accent ring-2 ring-ring',
       )}
     >
       <Link
-        to="/documents"
-        search={{ folder: folder.id }}
-        className="flex min-w-0 items-center gap-2 rounded-lg py-2 pr-1 pl-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        to="/documents/$"
+        params={{ _splat: folderPathToSplat(folder.path) }}
+        className="flex min-w-0 items-center gap-2 border-r py-2 pr-2.5 pl-3 text-sm outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
       >
         <FolderIcon aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
         <span className="max-w-[12rem] truncate font-medium">{folder.name}</span>
       </Link>
-      <FolderActions folderId={folder.id} folderName={folder.name} isAdmin={isAdmin} />
+      <FolderActions
+        folderId={folder.id}
+        folderName={folder.name}
+        isAdmin={isAdmin}
+        triggerClassName="h-full w-9 rounded-none focus-visible:border-transparent focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+      />
     </li>
   )
 }

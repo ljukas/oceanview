@@ -58,18 +58,28 @@ function CommandInput({
   ...props
 }: React.ComponentProps<typeof CommandPrimitive.Input>) {
   return (
-    <div data-slot="command-input-wrapper" className="p-1 pb-0">
-      <InputGroup className="h-8! rounded-lg! border-input/30 bg-input/30 shadow-none! *:data-[slot=input-group-addon]:pl-2!">
+    <div data-slot="command-input-wrapper" className="p-1">
+      <InputGroup
+        className={cn(
+          // default field chrome: short height, rounded, subtle border/bg, no shadow
+          'h-8! rounded-lg! border-input/30 bg-input/30 shadow-none! *:data-[slot=input-group-addon]:pl-2!',
+          // larger sizing when shown inside the command dialog
+          'in-data-[slot=dialog-content]:h-11!',
+        )}
+      >
         <CommandPrimitive.Input
           data-slot="command-input"
           className={cn(
+            // full-width borderless text input
             'w-full text-sm outline-hidden disabled:cursor-not-allowed disabled:opacity-50',
+            // larger text when shown inside the command dialog
+            'in-data-[slot=dialog-content]:text-base',
             className,
           )}
           {...props}
         />
         <InputGroupAddon>
-          <SearchIcon className="size-4 shrink-0 opacity-50" />
+          <SearchIcon className="in-data-[slot=dialog-content]:size-5 size-4 shrink-0 opacity-50" />
         </InputGroupAddon>
       </InputGroup>
     </div>
@@ -81,7 +91,10 @@ function CommandList({ className, ...props }: React.ComponentProps<typeof Comman
     <CommandPrimitive.List
       data-slot="command-list"
       className={cn(
+        // scrollable list region: hidden scrollbar, capped height, vertical scroll
         'no-scrollbar max-h-72 scroll-py-1 overflow-y-auto overflow-x-hidden outline-none',
+        // taller cap when shown inside the command dialog
+        'in-data-[slot=dialog-content]:max-h-96',
         className,
       )}
       {...props}
@@ -96,7 +109,13 @@ function CommandEmpty({
   return (
     <CommandPrimitive.Empty
       data-slot="command-empty"
-      className={cn('py-6 text-center text-sm', className)}
+      className={cn(
+        // centered empty-state text
+        'py-6 text-center text-sm',
+        // larger text when shown inside the command dialog
+        'in-data-[slot=dialog-content]:text-base',
+        className,
+      )}
       {...props}
     />
   )
@@ -110,7 +129,12 @@ function CommandGroup({
     <CommandPrimitive.Group
       data-slot="command-group"
       className={cn(
-        'overflow-hidden p-1 text-foreground **:[[cmdk-group-heading]]:px-2 **:[[cmdk-group-heading]]:py-1.5 **:[[cmdk-group-heading]]:font-medium **:[[cmdk-group-heading]]:text-muted-foreground **:[[cmdk-group-heading]]:text-xs',
+        // group container
+        'overflow-hidden p-1 text-foreground',
+        // style cmdk's internal group heading element (all depths)
+        '**:[[cmdk-group-heading]]:px-2 **:[[cmdk-group-heading]]:py-1.5 **:[[cmdk-group-heading]]:font-medium **:[[cmdk-group-heading]]:text-muted-foreground **:[[cmdk-group-heading]]:text-xs',
+        // larger heading text when shown inside the command dialog
+        'in-data-[slot=dialog-content]:**:[[cmdk-group-heading]]:text-sm',
         className,
       )}
       {...props}
@@ -136,11 +160,24 @@ function CommandItem({
   children,
   ...props
 }: React.ComponentProps<typeof CommandPrimitive.Item>) {
+  // We intentionally omit shadcn's default `data-selected:[&_svg]:text-foreground`
+  // override. Lucide icons stroke with `currentColor`, so an uncolored icon already
+  // follows the item's `data-selected:text-foreground` via inheritance — the override
+  // was redundant for those and only clobbered icons that set their own color (e.g.
+  // the file-type icons in DocumentSearch). Leaving it out lets colored icons keep
+  // their color when selected, with no extra rule.
   return (
     <CommandPrimitive.Item
       data-slot="command-item"
       className={cn(
-        "group/command-item relative flex cursor-default select-none items-center gap-2 in-data-[slot=dialog-content]:rounded-lg! rounded-sm px-2 py-1.5 text-sm outline-hidden data-[disabled=true]:pointer-events-none data-selected:bg-muted data-selected:text-foreground data-[disabled=true]:opacity-50 [&_svg:not([class*='size-'])]:size-4 [&_svg]:pointer-events-none [&_svg]:shrink-0 data-selected:*:[svg]:text-foreground",
+        // default layout: row, centered, non-selectable, default cursor
+        'group/command-item relative flex cursor-default select-none items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-hidden',
+        // selected/disabled states
+        'data-[disabled=true]:pointer-events-none data-selected:bg-muted data-selected:text-foreground data-[disabled=true]:opacity-50',
+        // icons: non-interactive, never shrink, default size unless icon sets its own
+        "[&_svg:not([class*='size-'])]:size-4 [&_svg]:pointer-events-none [&_svg]:shrink-0",
+        // larger sizing/spacing when shown inside the command dialog
+        "in-data-[slot=dialog-content]:gap-3 in-data-[slot=dialog-content]:rounded-lg! in-data-[slot=dialog-content]:px-3 in-data-[slot=dialog-content]:py-2.5 in-data-[slot=dialog-content]:text-base in-data-[slot=dialog-content]:[&_svg:not([class*='size-'])]:size-5",
         className,
       )}
       {...props}

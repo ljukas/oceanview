@@ -28,7 +28,10 @@ function DialogOverlay({
     <DialogPrimitive.Overlay
       data-slot="dialog-overlay"
       className={cn(
-        'data-open:fade-in-0 data-closed:fade-out-0 fixed inset-0 isolate z-50 bg-black/10 duration-100 data-closed:animate-out data-open:animate-in supports-backdrop-filter:backdrop-blur-xs',
+        // fade in/out with open state
+        'data-open:fade-in-0 data-closed:fade-out-0 duration-100 data-closed:animate-out data-open:animate-in',
+        // full-screen scrim, blur backdrop where supported
+        'fixed inset-0 isolate z-50 bg-black/10 supports-backdrop-filter:backdrop-blur-xs',
         className,
       )}
       {...props}
@@ -50,7 +53,14 @@ function DialogContent({
       <DialogPrimitive.Content
         data-slot="dialog-content"
         className={cn(
-          'data-open:fade-in-0 data-open:zoom-in-95 data-closed:fade-out-0 data-closed:zoom-out-95 fixed top-1/2 left-1/2 z-50 grid w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 gap-4 rounded-xl bg-popover p-4 text-popover-foreground text-sm outline-none ring-1 ring-foreground/10 duration-100 data-closed:animate-out data-open:animate-in sm:max-w-sm',
+          // enter/exit: fade + zoom with open state
+          'data-open:fade-in-0 data-open:zoom-in-95 data-closed:fade-out-0 data-closed:zoom-out-95 duration-100 data-closed:animate-out data-open:animate-in',
+          // centered fixed positioning
+          'fixed top-1/2 left-1/2 z-50 -translate-x-1/2 -translate-y-1/2',
+          // box styling
+          'grid w-full gap-4 rounded-xl bg-popover p-4 text-popover-foreground text-sm outline-none ring-1 ring-foreground/10',
+          // responsive max-width
+          'max-w-[calc(100%-2rem)] sm:max-w-sm',
           className,
         )}
         {...props}
@@ -120,7 +130,9 @@ function DialogDescription({
     <DialogPrimitive.Description
       data-slot="dialog-description"
       className={cn(
-        'text-muted-foreground text-sm *:[a]:underline *:[a]:underline-offset-3 *:[a]:hover:text-foreground',
+        'text-muted-foreground text-sm',
+        // underline child links, brighten on hover
+        '*:[a]:underline *:[a]:underline-offset-3 *:[a]:hover:text-foreground',
         className,
       )}
       {...props}
