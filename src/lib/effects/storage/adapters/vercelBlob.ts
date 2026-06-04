@@ -1,4 +1,4 @@
-import { BlobNotFoundError, del, head, issueSignedToken, presignUrl } from '@vercel/blob'
+import { BlobNotFoundError, del, head, issueSignedToken, presignUrl, put } from '@vercel/blob'
 import { generateClientTokenFromReadWriteToken } from '@vercel/blob/client'
 import type { StorageEffects } from '../storage'
 
@@ -66,6 +66,18 @@ export const vercelBlob: StorageEffects = {
 
   async delete(access, pathname) {
     await del(fullPath(pathname), { token: tokenFor(access) })
+  },
+
+  async put(access, pathname, bytes, contentType) {
+    // allowOverwrite so a re-run of the (idempotent) worker replaces the
+    // existing derived asset rather than throwing on the same pathname.
+    await put(fullPath(pathname), bytes, {
+      access,
+      token: tokenFor(access),
+      contentType,
+      addRandomSuffix: false,
+      allowOverwrite: true,
+    })
   },
 
   async getReadUrl(access, pathname, ttlSeconds) {

@@ -14,3 +14,7 @@ test('repeated publishes do not throw', async () => {
     queue.publish('blurhash', { fileId: 'three', kind: 'document' }),
   ).resolves.toBeUndefined()
 })
+
+test('image_thumbnail publish resolves', async () => {
+  await expect(queue.publish('image_thumbnail', { documentId: 'doc-1' })).resolves.toBeUndefined()
+})

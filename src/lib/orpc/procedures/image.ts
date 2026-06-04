@@ -54,7 +54,6 @@ export const imageRouter = {
         userId: context.user.id,
         newRow: {
           pathname: input.pathname,
-          name: input.name,
           mime: blob.contentType,
           sizeBytes: input.sizeBytes,
         },

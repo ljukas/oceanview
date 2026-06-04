@@ -106,6 +106,17 @@ export const s3: StorageEffects = {
     await client.send(new DeleteObjectCommand({ Bucket: bucketFor(access), Key: pathname }))
   },
 
+  async put(access, pathname, bytes, contentType) {
+    await client.send(
+      new PutObjectCommand({
+        Bucket: bucketFor(access),
+        Key: pathname,
+        Body: bytes,
+        ContentType: contentType,
+      }),
+    )
+  },
+
   async getReadUrl(access, pathname, ttlSeconds) {
     if (access === 'public') {
       return publicReadUrl(bucketFor(access), pathname)

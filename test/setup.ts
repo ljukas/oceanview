@@ -49,8 +49,12 @@ export function setupDatabase() {
     counter += 1
     const schema = `${SCHEMA_PREFIX}${counter}`
     currentSchema = schema
+    // `public` stays on the search_path so pg_trgm (pinned to public — see
+    // drizzle/0011_document_management.sql) resolves `gin_trgm_ops` and
+    // `word_similarity` without each per-test schema reinstalling the
+    // extension. Per-test tables/types take priority via the leading entry.
     await sql.unsafe(
-      `CREATE SCHEMA "${schema}";\nSET search_path TO "${schema}";\n${MIGRATIONS_SQL}`,
+      `CREATE SCHEMA "${schema}";\nSET search_path TO "${schema}", public;\n${MIGRATIONS_SQL}`,
     )
   })
 

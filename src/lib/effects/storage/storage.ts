@@ -49,6 +49,20 @@ export interface StorageEffects {
   delete(access: 'public' | 'private', pathname: string): Promise<void>
 
   /**
+   * Write bytes directly from a server-side context (background workers, not
+   * the oRPC upload path — browsers still upload via `mintUploadToken`). Used
+   * by the thumbnail worker to store a derived WebP in the public store.
+   * `pathname` is the logical path; the adapter env-prefixes it the same way
+   * `mintUploadToken` does, so a later `getReadUrl(access, pathname)` resolves.
+   */
+  put(
+    access: 'public' | 'private',
+    pathname: string,
+    bytes: Buffer,
+    contentType: string,
+  ): Promise<void>
+
+  /**
    * Download URL for a stored object. For `private`, returns a signed,
    * time-limited URL. For `public`, returns either the canonical public URL
    * (Vercel Blob) or a longer-lived presigned URL (S3 dev) — `ttlSeconds`
@@ -91,6 +105,10 @@ export const storage: StorageEffects = {
   async delete(access, pathname) {
     const adapter = await getAdapter()
     return adapter.delete(access, pathname)
+  },
+  async put(access, pathname, bytes, contentType) {
+    const adapter = await getAdapter()
+    return adapter.put(access, pathname, bytes, contentType)
   },
   async getReadUrl(access, pathname, ttlSeconds) {
     const adapter = await getAdapter()

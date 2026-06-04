@@ -22,6 +22,7 @@ import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 import { Route as AuthenticatedAdminUsersRouteImport } from './routes/_authenticated/admin/users'
 import { Route as AuthenticatedAdminSharesRouteImport } from './routes/_authenticated/admin/shares'
 import { Route as ApiFilesDownloadIdRouteImport } from './routes/api/files/download.$id'
+import { Route as AuthenticatedAdminDocumentsBinRouteImport } from './routes/_authenticated/admin/documents.bin'
 
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
@@ -88,6 +89,12 @@ const ApiFilesDownloadIdRoute = ApiFilesDownloadIdRouteImport.update({
   path: '/api/files/download/$id',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AuthenticatedAdminDocumentsBinRoute =
+  AuthenticatedAdminDocumentsBinRouteImport.update({
+    id: '/documents/bin',
+    path: '/documents/bin',
+    getParentRoute: () => AuthenticatedAdminRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AuthenticatedIndexRoute
@@ -101,6 +108,7 @@ export interface FileRoutesByFullPath {
   '/admin/users': typeof AuthenticatedAdminUsersRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/rpc/$': typeof ApiRpcSplatRoute
+  '/admin/documents/bin': typeof AuthenticatedAdminDocumentsBinRoute
   '/api/files/download/$id': typeof ApiFilesDownloadIdRoute
 }
 export interface FileRoutesByTo {
@@ -115,6 +123,7 @@ export interface FileRoutesByTo {
   '/admin/users': typeof AuthenticatedAdminUsersRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/rpc/$': typeof ApiRpcSplatRoute
+  '/admin/documents/bin': typeof AuthenticatedAdminDocumentsBinRoute
   '/api/files/download/$id': typeof ApiFilesDownloadIdRoute
 }
 export interface FileRoutesById {
@@ -131,6 +140,7 @@ export interface FileRoutesById {
   '/_authenticated/admin/users': typeof AuthenticatedAdminUsersRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/rpc/$': typeof ApiRpcSplatRoute
+  '/_authenticated/admin/documents/bin': typeof AuthenticatedAdminDocumentsBinRoute
   '/api/files/download/$id': typeof ApiFilesDownloadIdRoute
 }
 export interface FileRouteTypes {
@@ -147,6 +157,7 @@ export interface FileRouteTypes {
     | '/admin/users'
     | '/api/auth/$'
     | '/api/rpc/$'
+    | '/admin/documents/bin'
     | '/api/files/download/$id'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -161,6 +172,7 @@ export interface FileRouteTypes {
     | '/admin/users'
     | '/api/auth/$'
     | '/api/rpc/$'
+    | '/admin/documents/bin'
     | '/api/files/download/$id'
   id:
     | '__root__'
@@ -176,6 +188,7 @@ export interface FileRouteTypes {
     | '/_authenticated/admin/users'
     | '/api/auth/$'
     | '/api/rpc/$'
+    | '/_authenticated/admin/documents/bin'
     | '/api/files/download/$id'
   fileRoutesById: FileRoutesById
 }
@@ -281,17 +294,26 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiFilesDownloadIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_authenticated/admin/documents/bin': {
+      id: '/_authenticated/admin/documents/bin'
+      path: '/documents/bin'
+      fullPath: '/admin/documents/bin'
+      preLoaderRoute: typeof AuthenticatedAdminDocumentsBinRouteImport
+      parentRoute: typeof AuthenticatedAdminRoute
+    }
   }
 }
 
 interface AuthenticatedAdminRouteChildren {
   AuthenticatedAdminSharesRoute: typeof AuthenticatedAdminSharesRoute
   AuthenticatedAdminUsersRoute: typeof AuthenticatedAdminUsersRoute
+  AuthenticatedAdminDocumentsBinRoute: typeof AuthenticatedAdminDocumentsBinRoute
 }
 
 const AuthenticatedAdminRouteChildren: AuthenticatedAdminRouteChildren = {
   AuthenticatedAdminSharesRoute: AuthenticatedAdminSharesRoute,
   AuthenticatedAdminUsersRoute: AuthenticatedAdminUsersRoute,
+  AuthenticatedAdminDocumentsBinRoute: AuthenticatedAdminDocumentsBinRoute,
 }
 
 const AuthenticatedAdminRouteWithChildren =

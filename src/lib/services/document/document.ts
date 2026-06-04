@@ -1,0 +1,407 @@
+import { and, desc, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm'
+import { db } from '~/lib/db'
+import { document, documentEvent, file, folder, user } from '~/lib/db/schema'
+import type { FileRow } from '~/lib/services/file'
+import { DocumentDomainError } from './errors'
+
+/**
+ * Drizzle's tx handle exposes the same query API as the root `db`; the union
+ * keeps services composable so a caller can run a sequence of writes (e.g.
+ * folder rename + document haystack recompute) inside one transaction.
+ */
+type DbOrTx = typeof db | Parameters<Parameters<typeof db.transaction>[0]>[0]
+
+export type DocumentRow = {
+  id: string
+  fileId: string
+  name: string
+  folderId: string | null
+  thumbnailPathname: string | null
+  searchHaystack: string
+  deletedAt: Date | null
+}
+
+export type DocumentWithFile = {
+  document: DocumentRow
+  file: FileRow
+}
+
+export type DocumentListRow = DocumentWithFile & { ownerName: string }
+
+export type ConfirmDocumentUploadInput = {
+  ownerId: string
+  pathname: string
+  name: string
+  mime: string
+  sizeBytes: number
+  folderId?: string | null
+}
+
+const documentColumns = {
+  id: document.id,
+  fileId: document.fileId,
+  name: document.name,
+  folderId: document.folderId,
+  thumbnailPathname: document.thumbnailPathname,
+  searchHaystack: document.searchHaystack,
+  deletedAt: document.deletedAt,
+}
+
+const fileColumns = {
+  id: file.id,
+  ownerId: file.ownerId,
+  pathname: file.pathname,
+  mime: file.mime,
+  sizeBytes: file.sizeBytes,
+  access: file.access,
+  blurhash: file.blurhash,
+  uploadedAt: file.uploadedAt,
+  deletedAt: file.deletedAt,
+}
+
+// Haystack is stored lowercased so pg_trgm's case-sensitive trigrams hit
+// case-insensitively when the search service also lowercases the query. Don't
+// strip diacritics — Phase 2 leaves that to pg_trgm's own behaviour.
+function computeHaystack(folderPath: string | null, name: string): string {
+  return (folderPath ? `${folderPath} ${name}` : name).toLowerCase()
+}
+
+async function loadActiveFolderPath(tx: DbOrTx, folderId: string): Promise<string> {
+  const [row] = await tx
+    .select({ path: folder.path, deletedAt: folder.deletedAt })
+    .from(folder)
+    .where(eq(folder.id, folderId))
+    .limit(1)
+  if (!row) throw new DocumentDomainError('FOLDER_NOT_FOUND')
+  if (row.deletedAt) throw new DocumentDomainError('FOLDER_DELETED')
+  return row.path
+}
+
+export async function findById(id: string): Promise<DocumentWithFile | null> {
+  const [row] = await db
+    .select({ document: documentColumns, file: fileColumns })
+    .from(document)
+    .innerJoin(file, eq(document.fileId, file.id))
+    .where(eq(document.id, id))
+    .limit(1)
+  return row ?? null
+}
+
+export async function findActiveById(id: string): Promise<DocumentWithFile | null> {
+  const row = await findById(id)
+  if (!row || row.document.deletedAt) return null
+  return row
+}
+
+export async function confirmUpload(
+  input: ConfirmDocumentUploadInput & { actorId?: string },
+): Promise<DocumentWithFile> {
+  return db.transaction(async (tx) => {
+    const folderPath = input.folderId ? await loadActiveFolderPath(tx, input.folderId) : null
+
+    const [fileRow] = await tx
+      .insert(file)
+      .values({
+        ownerId: input.ownerId,
+        pathname: input.pathname,
+        mime: input.mime,
+        sizeBytes: input.sizeBytes,
+        access: 'private',
+      })
+      .returning(fileColumns)
+
+    const [documentRow] = await tx
+      .insert(document)
+      .values({
+        fileId: fileRow.id,
+        name: input.name,
+        folderId: input.folderId ?? null,
+        searchHaystack: computeHaystack(folderPath, input.name),
+      })
+      .returning(documentColumns)
+
+    await tx.insert(documentEvent).values({
+      documentId: documentRow.id,
+      actorId: input.actorId ?? input.ownerId,
+      kind: 'upload',
+      toValue: { name: input.name, folderId: input.folderId ?? null },
+    })
+
+    return { document: documentRow, file: fileRow }
+  })
+}
+
+export async function listAllDocuments(): Promise<Array<DocumentListRow>> {
+  const rows = await db
+    .select({
+      document: documentColumns,
+      file: fileColumns,
+      ownerName: user.name,
+    })
+    .from(document)
+    .innerJoin(file, eq(document.fileId, file.id))
+    .innerJoin(user, eq(file.ownerId, user.id))
+    .where(isNull(document.deletedAt))
+    .orderBy(desc(file.uploadedAt))
+  return rows
+}
+
+export async function renameDocument(input: {
+  id: string
+  newName: string
+  actorId: string
+  actorRole: string | null
+}): Promise<DocumentWithFile> {
+  return db.transaction(async (tx) => {
+    const target = await loadActiveForEdit(tx, input.id, input.actorId, input.actorRole)
+    const folderPath = target.document.folderId
+      ? await loadActiveFolderPath(tx, target.document.folderId)
+      : null
+    const [updated] = await tx
+      .update(document)
+      .set({
+        name: input.newName,
+        searchHaystack: computeHaystack(folderPath, input.newName),
+      })
+      .where(eq(document.id, input.id))
+      .returning(documentColumns)
+    await tx.insert(documentEvent).values({
+      documentId: input.id,
+      actorId: input.actorId,
+      kind: 'rename',
+      fromValue: { name: target.document.name },
+      toValue: { name: input.newName },
+    })
+    return { document: updated, file: target.file }
+  })
+}
+
+export async function moveDocument(input: {
+  id: string
+  newFolderId: string | null
+  actorId: string
+  actorRole: string | null
+}): Promise<DocumentWithFile> {
+  return db.transaction(async (tx) => {
+    const target = await loadActiveForEdit(tx, input.id, input.actorId, input.actorRole)
+    const folderPath = input.newFolderId ? await loadActiveFolderPath(tx, input.newFolderId) : null
+    const [updated] = await tx
+      .update(document)
+      .set({
+        folderId: input.newFolderId,
+        searchHaystack: computeHaystack(folderPath, target.document.name),
+      })
+      .where(eq(document.id, input.id))
+      .returning(documentColumns)
+    await tx.insert(documentEvent).values({
+      documentId: input.id,
+      actorId: input.actorId,
+      kind: 'move',
+      fromValue: { folderId: target.document.folderId },
+      toValue: { folderId: input.newFolderId },
+    })
+    return { document: updated, file: target.file }
+  })
+}
+
+export async function softDelete(input: {
+  id: string
+  actingUserId: string
+  actingUserRole: string | null
+}): Promise<DocumentWithFile> {
+  return db.transaction(async (tx) => {
+    const target = await loadById(tx, input.id)
+    if (!target) throw new DocumentDomainError('NOT_FOUND')
+    // Authorize before the idempotent short-circuit: otherwise a non-owner
+    // could probe an already-deleted document and receive its file metadata.
+    if (input.actingUserRole !== 'admin' && target.file.ownerId !== input.actingUserId) {
+      throw new DocumentDomainError('CANNOT_DELETE_OTHERS_DOCUMENT')
+    }
+    if (target.document.deletedAt) return target
+    const [row] = await tx
+      .update(document)
+      .set({ deletedAt: new Date() })
+      .where(eq(document.id, input.id))
+      .returning(documentColumns)
+    await tx.insert(documentEvent).values({
+      documentId: input.id,
+      actorId: input.actingUserId,
+      kind: 'soft_delete',
+      toValue: { name: target.document.name },
+    })
+    return { document: row, file: target.file }
+  })
+}
+
+export async function restoreDocument(input: {
+  id: string
+  actorId: string
+  actorRole: string | null
+}): Promise<DocumentWithFile> {
+  if (input.actorRole !== 'admin') throw new DocumentDomainError('NOT_ADMIN')
+  return db.transaction(async (tx) => {
+    const target = await loadById(tx, input.id)
+    if (!target) throw new DocumentDomainError('NOT_FOUND')
+    if (!target.document.deletedAt) throw new DocumentDomainError('NOT_DELETED')
+    const [row] = await tx
+      .update(document)
+      .set({ deletedAt: null })
+      .where(eq(document.id, input.id))
+      .returning(documentColumns)
+    await tx.insert(documentEvent).values({
+      documentId: input.id,
+      actorId: input.actorId,
+      kind: 'restore',
+    })
+    return { document: row, file: target.file }
+  })
+}
+
+export async function hardDeleteDocument(input: {
+  id: string
+  actorId: string
+  actorRole: string | null
+}): Promise<{ pathname: string; thumbnailPathname: string | null }> {
+  if (input.actorRole !== 'admin') throw new DocumentDomainError('NOT_ADMIN')
+  return db.transaction(async (tx) => {
+    const target = await loadById(tx, input.id)
+    if (!target) throw new DocumentDomainError('NOT_FOUND')
+    // Hard-delete is a bin-only operation: the document must already be
+    // soft-deleted. Guards the soft-delete → bin → hard-delete workflow so an
+    // admin can't permanently destroy a live document in one step.
+    if (!target.document.deletedAt) throw new DocumentDomainError('NOT_DELETED')
+    // Write the audit row BEFORE the delete: the FK `ON DELETE SET NULL`
+    // nulls the document_id, but the toValue payload preserves identity.
+    await tx.insert(documentEvent).values({
+      documentId: input.id,
+      actorId: input.actorId,
+      kind: 'hard_delete',
+      toValue: { name: target.document.name, pathname: target.file.pathname },
+    })
+    // Delete the file; cascade removes the document row.
+    await tx.delete(file).where(eq(file.id, target.file.id))
+    return {
+      pathname: target.file.pathname,
+      thumbnailPathname: target.document.thumbnailPathname,
+    }
+  })
+}
+
+/**
+ * Bulk-rewrite the denormalized `search_haystack` for every active document
+ * whose folder belongs to the given subtree. Used by folderService after a
+ * rename/move that changed folder paths. Accepts a tx handle so it runs inside
+ * the caller's transaction — folder bookkeeping + document haystacks must
+ * commit together to preserve the haystack invariant.
+ */
+export async function recomputeSearchHaystack(
+  input: { folderIds: string[] },
+  tx: DbOrTx = db,
+): Promise<void> {
+  if (input.folderIds.length === 0) return
+  await tx
+    .update(document)
+    .set({
+      // Mirrors computeHaystack: lower(path || ' ' || name). Keeping the
+      // SQL form here so the bulk join doesn't pull rows into JS.
+      searchHaystack: sql`lower(${folder.path} || ' ' || ${document.name})`,
+    })
+    .from(folder)
+    .where(
+      and(
+        eq(document.folderId, folder.id),
+        inArray(folder.id, input.folderIds),
+        isNull(document.deletedAt),
+      ),
+    )
+}
+
+/**
+ * Mark a set of documents as soft-deleted inside an existing transaction.
+ * Used by folderService cascade soft-delete. Each affected document gets a
+ * `soft_delete` event row sharing the caller's correlationId.
+ */
+export async function cascadeSoftDelete(
+  input: { documentIds: string[]; actorId: string; correlationId: string },
+  tx: DbOrTx,
+): Promise<Array<{ id: string; name: string }>> {
+  if (input.documentIds.length === 0) return []
+  const affected = await tx
+    .update(document)
+    .set({ deletedAt: new Date() })
+    .where(and(inArray(document.id, input.documentIds), isNull(document.deletedAt)))
+    .returning({ id: document.id, name: document.name })
+  if (affected.length === 0) return []
+  await tx.insert(documentEvent).values(
+    affected.map((row) => ({
+      documentId: row.id,
+      actorId: input.actorId,
+      kind: 'soft_delete' as const,
+      toValue: { name: row.name },
+      correlationId: input.correlationId,
+    })),
+  )
+  return affected
+}
+
+/**
+ * Inverse of cascadeSoftDelete; clears deletedAt for the given documents and
+ * emits restore events sharing the caller's new correlationId.
+ */
+export async function cascadeRestore(
+  input: { documentIds: string[]; actorId: string; correlationId: string },
+  tx: DbOrTx,
+): Promise<Array<{ id: string }>> {
+  if (input.documentIds.length === 0) return []
+  // Symmetric with cascadeSoftDelete's isNull guard: only flip currently-deleted
+  // rows so a repeated restore is a no-op and doesn't emit phantom events.
+  const affected = await tx
+    .update(document)
+    .set({ deletedAt: null })
+    .where(and(inArray(document.id, input.documentIds), isNotNull(document.deletedAt)))
+    .returning({ id: document.id })
+  if (affected.length === 0) return []
+  await tx.insert(documentEvent).values(
+    affected.map((row) => ({
+      documentId: row.id,
+      actorId: input.actorId,
+      kind: 'restore' as const,
+      correlationId: input.correlationId,
+    })),
+  )
+  return affected
+}
+
+export async function setThumbnailPathname(input: {
+  documentId: string
+  pathname: string
+}): Promise<void> {
+  await db
+    .update(document)
+    .set({ thumbnailPathname: input.pathname })
+    .where(and(eq(document.id, input.documentId), isNull(document.deletedAt)))
+}
+
+async function loadById(tx: DbOrTx, id: string): Promise<DocumentWithFile | null> {
+  const [row] = await tx
+    .select({ document: documentColumns, file: fileColumns })
+    .from(document)
+    .innerJoin(file, eq(document.fileId, file.id))
+    .where(eq(document.id, id))
+    .limit(1)
+  return row ?? null
+}
+
+async function loadActiveForEdit(
+  tx: DbOrTx,
+  id: string,
+  actorId: string,
+  actorRole: string | null,
+): Promise<DocumentWithFile> {
+  const target = await loadById(tx, id)
+  if (!target || target.document.deletedAt) throw new DocumentDomainError('NOT_FOUND')
+  if (actorRole !== 'admin' && target.file.ownerId !== actorId) {
+    throw new DocumentDomainError('CANNOT_EDIT_OTHERS_DOCUMENT')
+  }
+  return target
+}

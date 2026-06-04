@@ -1,3 +1,7 @@
 export * from './betterAuth'
+export * from './document'
+export * from './documentEvent'
 export * from './file'
+export * from './folder'
+export * from './folderEvent'
 export * from './ownership'

@@ -26,6 +26,10 @@ export const devLog: StorageEffects = {
     logger.info('storage delete (devLog)', { access, pathname })
   },
 
+  async put(access, pathname, bytes, contentType) {
+    logger.info('storage put (devLog)', { access, pathname, contentType, size: bytes.byteLength })
+  },
+
   async getReadUrl(access, pathname, ttlSeconds) {
     logger.info('storage getReadUrl (devLog)', { access, pathname, ttlSeconds })
     return `https://devlog.local/${pathname}?ttl=${ttlSeconds}`
