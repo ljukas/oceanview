@@ -1,7 +1,8 @@
+import { formatForDisplay, useHotkey } from '@tanstack/react-hotkeys'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { FileIcon, FolderIcon, SearchIcon } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Button } from '~/components/ui/button'
 import {
   Command,
@@ -24,6 +25,9 @@ export function DocumentSearch() {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [debounced, setDebounced] = useState('')
+  // formatForDisplay reads navigator, so resolve the label after mount to avoid
+  // an SSR/client hydration mismatch (empty until then → kbd hint not rendered).
+  const [hotkeyLabel, setHotkeyLabel] = useState('')
 
   useEffect(() => {
     const t = setTimeout(() => setDebounced(query.trim()), 250)
@@ -31,15 +35,13 @@ export function DocumentSearch() {
   }, [query])
 
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
-        e.preventDefault()
-        setOpen((o) => !o)
-      }
-    }
-    document.addEventListener('keydown', onKey)
-    return () => document.removeEventListener('keydown', onKey)
+    setHotkeyLabel(formatForDisplay('Mod+K'))
   }, [])
+
+  // Cmd/Ctrl+K is the universal command-palette default. `Mod` resolves to ⌘ on
+  // macOS, Ctrl elsewhere, and preventDefault is on by default.
+  const toggle = useCallback(() => setOpen((o) => !o), [])
+  useHotkey('Mod+K', toggle)
 
   const { data: hits = [], isFetching } = useQuery({
     ...orpc.documentSearch.search.queryOptions({ input: { q: debounced } }),
@@ -53,12 +55,17 @@ export function DocumentSearch() {
     <>
       <Button
         variant="outline"
-        className="text-muted-foreground"
+        className="w-full justify-start gap-2 text-muted-foreground sm:w-72"
         onClick={() => setOpen(true)}
         aria-label="Sök dokument"
       >
         <SearchIcon data-icon="inline-start" />
-        Sök…
+        <span className="flex-1 text-left">Sök…</span>
+        {hotkeyLabel ? (
+          <kbd className="pointer-events-none hidden h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] text-muted-foreground sm:inline-flex">
+            {hotkeyLabel}
+          </kbd>
+        ) : null}
       </Button>
       <CommandDialog
         open={open}

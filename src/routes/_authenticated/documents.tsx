@@ -8,19 +8,18 @@ import {
 } from '@dnd-kit/core'
 import { useMutation, useQueryClient, useSuspenseQuery } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
-import { FolderTreeIcon } from 'lucide-react'
+import { FolderPlusIcon, UploadIcon } from 'lucide-react'
+import { useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { z } from 'zod'
-import { DocumentGrid } from '~/components/document/DocumentGrid'
+import { CreateFolderDialog } from '~/components/document/CreateFolderDialog'
 import { DocumentSearch } from '~/components/document/DocumentSearch'
-import { DocumentTree } from '~/components/document/DocumentTree'
-import { DocumentUpload } from '~/components/document/DocumentUpload'
+import { DocumentTable } from '~/components/document/DocumentTable'
+import { DocumentUpload, type DocumentUploadHandle } from '~/components/document/DocumentUpload'
 import { parseFolderDropId } from '~/components/document/documentHelpers'
+import { FolderBar } from '~/components/document/FolderBar'
 import { FolderBreadcrumb } from '~/components/document/FolderBreadcrumb'
 import { Button } from '~/components/ui/button'
-import { ScrollArea } from '~/components/ui/scroll-area'
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '~/components/ui/sheet'
-import { useIsMobile } from '~/hooks/useMobile'
 import { orpc } from '~/lib/orpc/client'
 import { seo } from '~/utils/seo'
 
@@ -53,6 +52,9 @@ function Documents() {
   const { data: documents } = useSuspenseQuery(orpc.document.listDocuments.queryOptions())
   const visibleDocuments = documents.filter((d) => d.folderId === activeFolderId)
 
+  const uploadRef = useRef<DocumentUploadHandle>(null)
+  const [createOpen, setCreateOpen] = useState(false)
+
   const moveMutation = useMutation(
     orpc.document.moveDocument.mutationOptions({
       onSuccess: async () => {
@@ -78,11 +80,6 @@ function Documents() {
     moveMutation.mutate({ id: documentId, folderId: target })
   }
 
-  // Render the tree in exactly one place — a second (CSS-hidden) instance would
-  // register every folder's droppable id twice in this DndContext.
-  const isMobile = useIsMobile()
-  const tree = <DocumentTree folders={folders} activeFolderId={activeFolderId} isAdmin={isAdmin} />
-
   return (
     <DndContext sensors={sensors} onDragEnd={onDragEnd}>
       <div className="flex flex-col gap-4 p-4 md:p-8">
@@ -96,41 +93,35 @@ function Documents() {
           <DocumentSearch />
         </header>
 
-        <div className="grid gap-6 lg:grid-cols-[16rem_1fr]">
-          {/* Tree: inline rail on desktop, drawer on mobile — mounted once. */}
-          {!isMobile ? (
-            <aside>
-              <ScrollArea className="h-[calc(100vh-12rem)] pr-2">{tree}</ScrollArea>
-            </aside>
-          ) : null}
-
-          <div className="flex min-w-0 flex-col gap-4">
-            <div className="flex items-center gap-2">
-              {isMobile ? (
-                <Sheet>
-                  <SheetTrigger asChild>
-                    <Button variant="outline" size="sm">
-                      <FolderTreeIcon data-icon="inline-start" />
-                      Mappar
-                    </Button>
-                  </SheetTrigger>
-                  <SheetContent side="left" className="w-72">
-                    <SheetHeader>
-                      <SheetTitle>Mappar</SheetTitle>
-                    </SheetHeader>
-                    <ScrollArea className="h-full px-4 pb-4">{tree}</ScrollArea>
-                  </SheetContent>
-                </Sheet>
-              ) : null}
-              <FolderBreadcrumb folders={folders} activeFolderId={activeFolderId} />
-            </div>
-
-            <DocumentUpload folderId={activeFolderId}>
-              <DocumentGrid documents={visibleDocuments} currentUser={user} />
-            </DocumentUpload>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <FolderBreadcrumb folders={folders} activeFolderId={activeFolderId} />
+          <div className="flex items-center gap-2">
+            <Button variant="outline" onClick={() => setCreateOpen(true)}>
+              <FolderPlusIcon data-icon="inline-start" />
+              Ny mapp
+            </Button>
+            <Button onClick={() => uploadRef.current?.open()}>
+              <UploadIcon data-icon="inline-start" />
+              Ladda upp dokument
+            </Button>
           </div>
         </div>
+
+        <DocumentUpload ref={uploadRef} folderId={activeFolderId}>
+          <div className="flex flex-col gap-4">
+            <FolderBar folders={folders} activeFolderId={activeFolderId} isAdmin={isAdmin} />
+            <DocumentTable documents={visibleDocuments} currentUser={user} />
+          </div>
+        </DocumentUpload>
       </div>
+
+      {createOpen ? (
+        <CreateFolderDialog
+          open
+          onOpenChange={() => setCreateOpen(false)}
+          parentId={activeFolderId}
+        />
+      ) : null}
     </DndContext>
   )
 }

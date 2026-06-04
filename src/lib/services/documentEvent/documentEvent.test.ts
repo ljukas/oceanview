@@ -21,9 +21,11 @@ test('listForDocument returns events newest-first with the actor name joined', a
     mime: 'application/pdf',
     sizeBytes: 100,
   })
+  // newName is the base only; the '.pdf' extension is immutable. The event
+  // records the human-readable display name (base + extension).
   await documentService.renameDocument({
     id: inserted.document.id,
-    newName: 'minutes.pdf',
+    newName: 'minutes',
     actorId: ownerId,
     actorRole: 'user',
   })

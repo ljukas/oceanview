@@ -1,9 +1,7 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { UploadIcon } from 'lucide-react'
-import { type ReactNode, useCallback, useState } from 'react'
+import { forwardRef, type ReactNode, useCallback, useImperativeHandle, useState } from 'react'
 import { useDropzone } from 'react-dropzone'
 import { toast } from 'sonner'
-import { Button } from '~/components/ui/button'
 import { Progress } from '~/components/ui/progress'
 import { uploadFileToStorage } from '~/lib/effects/storage/clientUpload'
 import { client, orpc } from '~/lib/orpc/client'
@@ -18,12 +16,19 @@ type Props = {
   children: ReactNode
 }
 
+export type DocumentUploadHandle = { open: () => void }
+
 /**
- * Drop zone wrapping the document grid. Dragging OS files anywhere over the
- * grid (or the "Ladda upp" button) runs the three-step upload flow per file in
- * parallel, into the current folder. Progress is announced via aria-live.
+ * Drop zone wrapping the document list. Dragging OS files anywhere over the
+ * list runs the three-step upload flow per file in parallel, into the current
+ * folder. Progress is announced via aria-live. The file picker is opened via
+ * the imperative `open()` handle (the trigger button lives in the page
+ * toolbar).
  */
-export function DocumentUpload({ folderId, children }: Props) {
+export const DocumentUpload = forwardRef<DocumentUploadHandle, Props>(function DocumentUpload(
+  { folderId, children },
+  ref,
+) {
   const queryClient = useQueryClient()
   const [uploads, setUploads] = useState<Array<UploadState>>([])
 
@@ -99,15 +104,10 @@ export function DocumentUpload({ folderId, children }: Props) {
     noKeyboard: true,
   })
 
+  useImperativeHandle(ref, () => ({ open }), [open])
+
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex items-center justify-between gap-2">
-        <Button onClick={open}>
-          <UploadIcon data-icon="inline-start" />
-          Ladda upp dokument
-        </Button>
-      </div>
-
       <div
         {...getRootProps()}
         className={cn(
@@ -143,4 +143,4 @@ export function DocumentUpload({ folderId, children }: Props) {
       ) : null}
     </div>
   )
-}
+})

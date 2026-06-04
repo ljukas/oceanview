@@ -274,10 +274,11 @@ export const document = pgTable(
   {
     id: uuid('id').primaryKey().defaultRandom(),
     fileId: uuid('file_id').notNull().unique().references(() => file.id, { onDelete: 'cascade' }),
-    name: text('name').notNull(),
+    name: text('name').notNull(),                                                        // base filename, no extension
+    extension: text('extension'),                                                        // null = none; immutable on rename
     folderId: uuid('folder_id').references(() => folder.id, { onDelete: 'restrict' }),  // null = root
     thumbnailPathname: text('thumbnail_pathname'),                                       // null until worker writes
-    searchHaystack: text('search_haystack').notNull(),                                   // denormalized: folder.path || ' ' || name
+    searchHaystack: text('search_haystack').notNull(),                                   // denormalized: folder.path || ' ' || name + '.' + extension
     deletedAt: timestamp('deleted_at', { withTimezone: true }),
   },
   (table) => [
@@ -288,6 +289,10 @@ export const document = pgTable(
 ```
 
 `onDelete: 'restrict'` on `folder_id` is intentional — a folder soft-delete cascades through the service, not through the FK. Hard-deleting a non-empty folder fails at the DB level, surfacing as a programming error rather than silent data loss. The `file_id` unique constraint enforces the 1:1 invariant.
+
+The extension is split into its own column (migration `0012_add_document_extension.sql`) so it stays **immutable on rename**: `confirmUpload` runs `splitExtension(filename)` (`src/utils/filename.ts`), `renameDocument` only touches the base `name`, and the display name is rejoined via `joinFilename` everywhere a document is shown. The full display name (base + extension) is what feeds `search_haystack`, so a search for the extension still matches. The download route passes the display name as `getReadUrl(..., { downloadFilename })`; the S3 dev adapter honors it via `ResponseContentDisposition` (exact UTF-8 name).
+
+**Renaming the stored byte.** Vercel Blob (prod) ignores per-read `downloadFilename` and serves `Content-Disposition: attachment; filename="<pathname basename>"` (basic ASCII form only — no `filename*=UTF-8''`). So that prod downloads track a rename, `renameDocument`'s procedure also **renames the storage object**: it `storage.copy`s the byte to a new basename = `safeFilename(displayName)` (same `{uuid}` dir, so no collision and the extension stays intact), repoints `file.pathname` via `fileService.updatePathname`, then deletes the old object. `safeFilename` transliterates Swedish characters (å→a, ä→a, ö→o) before stripping, so the prod name is readable ASCII. The copy → repoint → delete ordering keeps `file.pathname` pointing at a live object throughout; a storage failure is logged and swallowed (the name rename stays committed, download still works under the old basename) and may leave an orphaned blob — tolerated, as with avatar/hard-delete cleanup. `storage.copy` is storage-to-storage, so bytes never transit a Function (ADR-0006).
 
 **New: `folder`**
 

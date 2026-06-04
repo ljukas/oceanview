@@ -7,6 +7,8 @@ import { adminProcedure, protectedProcedure } from '~/lib/orpc/context'
 import * as documentService from '~/lib/services/document'
 import { DocumentDomainError } from '~/lib/services/document'
 import * as documentEventService from '~/lib/services/documentEvent'
+import * as fileService from '~/lib/services/file'
+import { joinFilename, replacePathnameBasename, safeFilename } from '~/utils/filename'
 
 // No mime whitelist (ADR-0010 §M): any contentType is accepted; the grid renders
 // a mime icon for types without a thumbnail worker. 100 MB cap at the boundary.
@@ -39,12 +41,6 @@ function rethrowAsORPC(err: unknown): never {
     case 'FOLDER_DELETED':
       throw new ORPCError('BAD_REQUEST', { message: 'Mappen är borttagen' })
   }
-}
-
-// Replace any character that isn't [A-Za-z0-9._-] with `-`. Used to keep
-// document pathnames safe for URLs without losing the original filename.
-function safeFilename(name: string): string {
-  return name.replace(/[^A-Za-z0-9._-]+/g, '-').slice(0, 200)
 }
 
 export const documentRouter = {
@@ -135,6 +131,7 @@ export const documentRouter = {
       id: row.document.id,
       ownerId: row.file.ownerId,
       name: row.document.name,
+      extension: row.document.extension,
       folderId: row.document.folderId,
       mime: row.file.mime,
       sizeBytes: row.file.sizeBytes,
@@ -176,6 +173,35 @@ export const documentRouter = {
         })
       } catch (err) {
         rethrowAsORPC(err)
+      }
+      // Rename the stored byte so its basename — the prod (Vercel Blob) download
+      // filename — tracks the new display name. Copy → repoint file.pathname →
+      // delete old keeps the pathname pointing at an existing object at every
+      // step. A storage failure leaves the (already committed) name rename
+      // intact: the download still works under the old basename, so we log and
+      // swallow rather than fail the user's rename. Orphaned blobs on partial
+      // failure are tolerated (same posture as avatar/hard-delete cleanup).
+      const oldPathname = updated.file.pathname
+      const newBasename = safeFilename(
+        joinFilename({ name: updated.document.name, extension: updated.document.extension }),
+      )
+      const newPathname = replacePathnameBasename(oldPathname, newBasename)
+      if (newPathname !== oldPathname) {
+        try {
+          await storage.copy('private', oldPathname, newPathname, updated.file.mime)
+          await fileService.updatePathname({ fileId: updated.file.id, pathname: newPathname })
+          await storage.delete('private', oldPathname).catch((error) =>
+            context.log.warn('failed to delete old document blob after rename', {
+              fileId: updated.file.id,
+              error,
+            }),
+          )
+        } catch (error) {
+          context.log.warn('failed to rename document blob; pathname unchanged', {
+            documentId: updated.document.id,
+            error,
+          })
+        }
       }
       await realtime.publish({ kind: 'document.changed', ids: [updated.document.id] })
       return { id: updated.document.id }

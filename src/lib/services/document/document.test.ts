@@ -44,6 +44,10 @@ test('confirmUpload writes a file row + a document row in one transaction', asyn
   expect(row.document.fileId).toBe(row.file.id)
   expect(row.file.access).toBe('private')
   expect(row.file.ownerId).toBe(ownerId)
+  // The uploaded filename is split: base in `name`, extension in `extension`.
+  expect(row.document.name).toBe('manual')
+  expect(row.document.extension).toBe('pdf')
+  // The haystack keeps the full display name (so a search for "pdf" matches).
   expect(row.document.searchHaystack).toBe('manual.pdf')
 
   const fileCount = await db.select({ id: file.id }).from(file).where(eq(file.id, row.file.id))
@@ -89,8 +93,10 @@ test('listAllDocuments returns non-deleted documents with owner name, newest fir
   await confirmUpload(docInput(bobId, { name: 'bob.pdf' }))
 
   const docs = await listAllDocuments()
-  expect(docs.map((d) => d.document.name).sort()).toEqual(['alice.pdf', 'bob.pdf'])
-  const alice = docs.find((d) => d.document.name === 'alice.pdf')
+  // Stored base names (extension lives in its own column).
+  expect(docs.map((d) => d.document.name).sort()).toEqual(['alice', 'bob'])
+  const alice = docs.find((d) => d.document.name === 'alice')
+  expect(alice?.document.extension).toBe('pdf')
   expect(alice?.ownerName).toBe('Alice')
 })
 
@@ -106,7 +112,7 @@ test('listAllDocuments excludes avatars (files without a document row)', async (
   await confirmUpload(docInput(ownerId, { name: 'doc.pdf' }))
 
   const docs = await listAllDocuments()
-  expect(docs.map((d) => d.document.name)).toEqual(['doc.pdf'])
+  expect(docs.map((d) => d.document.name)).toEqual(['doc'])
 })
 
 test('listAllDocuments hides soft-deleted documents', async () => {
@@ -279,21 +285,54 @@ test('confirmUpload with a non-existent folderId raises FOLDER_NOT_FOUND', async
   ).rejects.toMatchObject({ name: 'DocumentDomainError', code: 'FOLDER_NOT_FOUND' })
 })
 
-test('renameDocument by owner updates name + search_haystack + emits rename event', async () => {
+test('renameDocument by owner updates the base name (extension is immutable) + search_haystack + emits rename event', async () => {
   const ownerId = await insertMember('anna@test.oceanview.local', 'Anna')
   const inserted = await confirmUpload(docInput(ownerId, { name: 'old.pdf' }))
+  // newName is the base only; the extension must not change.
   const renamed = await renameDocument({
     id: inserted.document.id,
-    newName: 'new.pdf',
+    newName: 'new',
     actorId: ownerId,
     actorRole: 'user',
   })
-  expect(renamed.document.name).toBe('new.pdf')
+  expect(renamed.document.name).toBe('new')
+  expect(renamed.document.extension).toBe('pdf')
   expect(renamed.document.searchHaystack).toBe('new.pdf')
   const event = await latestEvent(inserted.document.id)
   expect(event.kind).toBe('rename')
+  // Events store the human-readable display name (base + extension).
   expect(event.fromValue).toEqual({ name: 'old.pdf' })
   expect(event.toValue).toEqual({ name: 'new.pdf' })
+})
+
+test('renameDocument cannot alter the extension even if the base contains dots', async () => {
+  const ownerId = await insertMember('anna@test.oceanview.local', 'Anna')
+  const inserted = await confirmUpload(docInput(ownerId, { name: 'report.pdf' }))
+  // A base containing a dot is kept verbatim; the stored extension is untouched.
+  const renamed = await renameDocument({
+    id: inserted.document.id,
+    newName: 'report.final',
+    actorId: ownerId,
+    actorRole: 'user',
+  })
+  expect(renamed.document.name).toBe('report.final')
+  expect(renamed.document.extension).toBe('pdf')
+  expect(renamed.document.searchHaystack).toBe('report.final.pdf')
+})
+
+test('confirmUpload of an extension-less file stores a null extension', async () => {
+  const ownerId = await insertMember('anna@test.oceanview.local', 'Anna')
+  const inserted = await confirmUpload(docInput(ownerId, { name: 'README' }))
+  expect(inserted.document.name).toBe('README')
+  expect(inserted.document.extension).toBeNull()
+  expect(inserted.document.searchHaystack).toBe('readme')
+})
+
+test('confirmUpload of a multi-dot filename splits only the last segment', async () => {
+  const ownerId = await insertMember('anna@test.oceanview.local', 'Anna')
+  const inserted = await confirmUpload(docInput(ownerId, { name: 'archive.tar.gz' }))
+  expect(inserted.document.name).toBe('archive.tar')
+  expect(inserted.document.extension).toBe('gz')
 })
 
 test('renameDocument by non-owner non-admin raises CANNOT_EDIT_OTHERS_DOCUMENT', async () => {

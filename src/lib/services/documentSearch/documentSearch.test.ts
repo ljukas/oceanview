@@ -93,6 +93,14 @@ test('search finds a document via name with mild typo', async () => {
   const hits = await search('bottnmalning')
   const docHit = hits.find((h) => h.kind === 'document')
   expect(docHit?.id).toBe(docs.bottom.document.id)
+  // The hit's name is the joined display name (base + extension).
+  expect(docHit?.name).toBe('bottenmalning-2024.pdf')
+})
+
+test('search matches on the file extension (haystack includes it)', async () => {
+  const { docs } = await seed()
+  const hits = await search('IMG_001 jpg')
+  expect(hits.find((h) => h.id === docs.photo.document.id)).toBeDefined()
 })
 
 test('search is case-insensitive', async () => {

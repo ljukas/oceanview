@@ -3,6 +3,7 @@ import { and, desc, eq, inArray, isNotNull, isNull, like, ne, sql } from 'drizzl
 import { db } from '~/lib/db'
 import { document, documentEvent, folder, folderEvent } from '~/lib/db/schema'
 import * as documentService from '~/lib/services/document'
+import { joinFilename } from '~/utils/filename'
 import { FolderDomainError } from './errors'
 
 type DbOrTx = typeof db | Parameters<Parameters<typeof db.transaction>[0]>[0]
@@ -467,6 +468,7 @@ export async function listBin(): Promise<Array<BinEntry>> {
     .select({
       id: document.id,
       name: document.name,
+      extension: document.extension,
       deletedAt: document.deletedAt,
     })
     .from(document)
@@ -528,7 +530,7 @@ export async function listBin(): Promise<Array<BinEntry>> {
     ...documents.map((row) => ({
       kind: 'document' as const,
       id: row.id,
-      name: row.name,
+      name: joinFilename(row),
       path: null,
       deletedAt: row.deletedAt!,
       correlationId: documentCorrelationById.get(row.id) ?? null,

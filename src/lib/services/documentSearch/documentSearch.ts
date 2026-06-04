@@ -41,7 +41,9 @@ export async function search(rawQuery: string): Promise<Array<SearchHit>> {
 
   const [docRows, folderRows] = await Promise.all([
     db.execute<DocumentSearchRow>(sql`
-      SELECT d.id, d.name, f.path AS folder_path,
+      SELECT d.id,
+             d.name || case when d.extension is null then '' else '.' || d.extension end AS name,
+             f.path AS folder_path,
              word_similarity(${q}, d.search_haystack) AS score
       FROM document d
       LEFT JOIN folder f ON f.id = d.folder_id

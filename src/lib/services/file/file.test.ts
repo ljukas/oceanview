@@ -4,7 +4,14 @@ import { db } from '~/lib/db'
 import { file, user } from '~/lib/db/schema'
 import { setupDatabase } from '~test/setup'
 import { FileDomainError } from './errors'
-import { findActiveById, findById, replaceAvatarForUser, setBlurhash, softDelete } from './file'
+import {
+  findActiveById,
+  findById,
+  replaceAvatarForUser,
+  setBlurhash,
+  softDelete,
+  updatePathname,
+} from './file'
 
 setupDatabase()
 
@@ -74,6 +81,14 @@ test('softDelete is idempotent', async () => {
 
 test('softDelete on a missing file raises NOT_FOUND', async () => {
   await expect(softDelete('00000000-0000-0000-0000-000000000000')).rejects.toThrow(FileDomainError)
+})
+
+test('updatePathname repoints the file row at a new pathname', async () => {
+  const ownerId = await insertMember('anna@test.oceanview.local', 'Anna')
+  const row = await insertPrivateFile(ownerId, 'dev/documents/uuid/Batmanual.pdf')
+  await updatePathname({ fileId: row.id, pathname: 'dev/documents/uuid/Motormanual.pdf' })
+  const after = await findById(row.id)
+  expect(after?.pathname).toBe('dev/documents/uuid/Motormanual.pdf')
 })
 
 test('setBlurhash writes the hash to an active row', async () => {

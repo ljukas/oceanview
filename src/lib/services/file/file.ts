@@ -46,6 +46,15 @@ export async function findActiveById(id: string): Promise<FileRow | null> {
   return row
 }
 
+/**
+ * Repoint a file row at a new storage pathname after the byte has been moved
+ * (e.g. a document rename, which copies the blob to a basename matching the new
+ * display name). Identity stays on `file.id`; only the storage path changes.
+ */
+export async function updatePathname(input: { fileId: string; pathname: string }): Promise<void> {
+  await db.update(file).set({ pathname: input.pathname }).where(eq(file.id, input.fileId))
+}
+
 export async function setBlurhash(input: { fileId: string; blurhash: string }): Promise<void> {
   await db
     .update(file)

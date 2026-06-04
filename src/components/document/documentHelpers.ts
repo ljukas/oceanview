@@ -1,8 +1,18 @@
 import type { RouterOutputs } from '~/lib/orpc/client'
+import { joinFilename } from '~/utils/filename'
 
 // Row shapes derived from the router — no hand-maintained duplicates.
 export type DocumentRow = RouterOutputs['document']['listDocuments'][number]
 export type FolderRow = RouterOutputs['folder']['tree'][number]
+
+/**
+ * Full filename for display: the stored base `name` plus its `.extension`.
+ * The two are stored separately so the extension can't be renamed; rejoin
+ * them everywhere a document name is shown.
+ */
+export function documentDisplayName(doc: { name: string; extension?: string | null }): string {
+  return joinFilename(doc)
+}
 
 export type CurrentUser = { id: string; role?: string | null }
 
@@ -16,27 +26,6 @@ export function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} kB`
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-}
-
-export type FolderNode = FolderRow & { children: Array<FolderNode> }
-
-/**
- * Build the folder forest from the flat `folder.tree` list (already ordered by
- * `path`). Roots are folders with `parentId === null`. One pass: index by id,
- * then link children to parents.
- */
-export function buildFolderTree(folders: Array<FolderRow>): Array<FolderNode> {
-  const byId = new Map<string, FolderNode>()
-  for (const f of folders) byId.set(f.id, { ...f, children: [] })
-  const roots: Array<FolderNode> = []
-  for (const node of byId.values()) {
-    if (node.parentId && byId.has(node.parentId)) {
-      byId.get(node.parentId)?.children.push(node)
-    } else {
-      roots.push(node)
-    }
-  }
-  return roots
 }
 
 /**

@@ -3,6 +3,7 @@ import { auth } from '~/lib/auth'
 import { storage } from '~/lib/effects'
 import { createRequestLogger } from '~/lib/logger/server'
 import * as documentService from '~/lib/services/document'
+import { joinFilename } from '~/utils/filename'
 
 export const Route = createFileRoute('/api/files/download/$id')({
   server: {
@@ -19,7 +20,11 @@ export const Route = createFileRoute('/api/files/download/$id')({
           return new Response('Not Found', { status: 404 })
         }
 
-        const url = await storage.getReadUrl(row.file.access, row.file.pathname, 60)
+        // Download under the document's current display name (base + extension)
+        // rather than the immutable storage pathname.
+        const url = await storage.getReadUrl(row.file.access, row.file.pathname, 60, {
+          downloadFilename: joinFilename(row.document),
+        })
         log.info('document download', {
           documentId: row.document.id,
           fileId: row.file.id,

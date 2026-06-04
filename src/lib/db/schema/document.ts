@@ -12,6 +12,9 @@ export const document = pgTable(
       .unique()
       .references(() => file.id, { onDelete: 'cascade' }),
     name: text('name').notNull(),
+    // Extension split into its own column (no leading dot, null = none) so it
+    // stays immutable on rename — the stored byte's format must not drift.
+    extension: text('extension'),
     folderId: uuid('folder_id').references(() => folder.id, { onDelete: 'restrict' }),
     thumbnailPathname: text('thumbnail_pathname'),
     searchHaystack: text('search_haystack').notNull(),

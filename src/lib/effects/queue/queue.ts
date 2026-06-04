@@ -1,3 +1,5 @@
+import { lazy } from '../lazy'
+
 /**
  * Background-job queue interface. Producers (oRPC procedures) call
  * `publish('<topic>', payload)` after the synchronous service call lands.
@@ -37,28 +39,22 @@ export interface QueueEffects {
   publish<T extends QueueTopic>(topic: T, payload: QueuePayloadMap[T]): Promise<void>
 }
 
-let cached: Promise<QueueEffects> | null = null
-
-async function getAdapter(): Promise<QueueEffects> {
-  if (cached) return cached
-  cached = (async () => {
-    if (process.env.VITEST === 'true') {
-      return (await import('./adapters/devLog')).devLog
-    }
-    // Local dev: when REDIS_URL is set we route through BullMQ so a real
-    // worker (`scripts/devQueueWorker.ts`) can consume the queue out of
-    // band. Mirrors the prod topology in shape (durable broker, separate
-    // consumer process, retries) without depending on a Vercel runtime.
-    if (process.env.REDIS_URL) {
-      return (await import('./adapters/bullmqQueue')).bullmqQueue
-    }
-    if (!process.env.VERCEL) {
-      return (await import('./adapters/devLog')).devLog
-    }
-    return (await import('./adapters/vercelQueue')).vercelQueue
-  })()
-  return cached
-}
+const getAdapter = lazy(async (): Promise<QueueEffects> => {
+  if (process.env.VITEST === 'true') {
+    return (await import('./adapters/devLog')).devLog
+  }
+  // Local dev: when REDIS_URL is set we route through BullMQ so a real
+  // worker (`scripts/devQueueWorker.ts`) can consume the queue out of
+  // band. Mirrors the prod topology in shape (durable broker, separate
+  // consumer process, retries) without depending on a Vercel runtime.
+  if (process.env.REDIS_URL) {
+    return (await import('./adapters/bullmqQueue')).bullmqQueue
+  }
+  if (!process.env.VERCEL) {
+    return (await import('./adapters/devLog')).devLog
+  }
+  return (await import('./adapters/vercelQueue')).vercelQueue
+})
 
 export const queue: QueueEffects = {
   async publish(topic, payload) {

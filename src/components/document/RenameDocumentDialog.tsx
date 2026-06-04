@@ -18,7 +18,7 @@ const schema = z.object({ name: z.string().min(1, 'Ange ett namn').max(255) })
 type Props = {
   open: boolean
   onOpenChange: (open: boolean) => void
-  document: { id: string; name: string }
+  document: { id: string; name: string; extension: string | null }
 }
 
 export function RenameDocumentDialog({ open, onOpenChange, document }: Props) {
@@ -48,7 +48,11 @@ export function RenameDocumentDialog({ open, onOpenChange, document }: Props) {
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Byt namn på dokument</DialogTitle>
-          <DialogDescription>Ändra det visade filnamnet.</DialogDescription>
+          <DialogDescription>
+            {document.extension
+              ? 'Ändra namnet. Filändelsen kan inte ändras.'
+              : 'Ändra det visade filnamnet.'}
+          </DialogDescription>
         </DialogHeader>
         <form
           onSubmit={(e) => {
@@ -57,7 +61,14 @@ export function RenameDocumentDialog({ open, onOpenChange, document }: Props) {
           }}
         >
           <form.AppField name="name">
-            {(field) => <field.TextField label="Namn" autoComplete="off" autoFocus />}
+            {(field) => (
+              <field.TextField
+                label="Namn"
+                autoComplete="off"
+                autoFocus
+                suffix={document.extension ? `.${document.extension}` : undefined}
+              />
+            )}
           </form.AppField>
 
           <DialogFooter className="mt-6">

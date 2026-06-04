@@ -1,4 +1,12 @@
-import { BlobNotFoundError, del, head, issueSignedToken, presignUrl, put } from '@vercel/blob'
+import {
+  BlobNotFoundError,
+  copy as blobCopy,
+  del,
+  head,
+  issueSignedToken,
+  presignUrl,
+  put,
+} from '@vercel/blob'
 import { generateClientTokenFromReadWriteToken } from '@vercel/blob/client'
 import type { StorageEffects } from '../storage'
 
@@ -80,12 +88,31 @@ export const vercelBlob: StorageEffects = {
     })
   },
 
-  async getReadUrl(access, pathname, ttlSeconds) {
+  async copy(access, fromPathname, toPathname, contentType) {
+    // `copy` does not carry the source content type over, so we re-pass the
+    // file's stored mime. `addRandomSuffix: false` keeps the destination
+    // pathname exactly as computed (its basename is the prod download name).
+    await blobCopy(fullPath(fromPathname), fullPath(toPathname), {
+      access,
+      token: tokenFor(access),
+      contentType,
+      addRandomSuffix: false,
+    })
+  },
+
+  async getReadUrl(access, pathname, ttlSeconds, _opts) {
     const prefixed = fullPath(pathname)
     if (access === 'public') {
       const result = await head(prefixed, { token: tokenFor('public') })
       return result.url
     }
+    // `_opts.downloadFilename` is intentionally ignored here: the @vercel/blob
+    // private presigned GET URL only honors `validUntil` (PresignGetUrlOptions
+    // rejects per-read Content-Disposition at the type level). The browser
+    // still saves the file under the immutable storage pathname, which keeps
+    // the correct extension — only the renamed base name isn't reflected in
+    // prod downloads. The S3 (dev) adapter honors it fully via
+    // ResponseContentDisposition. Revisit if the SDK adds read-time disposition.
     const validUntil = Date.now() + ttlSeconds * 1000
     const signedToken = await issueSignedToken({
       token: tokenFor('private'),

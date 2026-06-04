@@ -1,3 +1,5 @@
+import { lazy } from '../lazy'
+
 /**
  * Email interface backed by one of three adapters:
  *   - `smtp` — nodemailer SMTP transport. Selected when `SMTP_HOST` is set;
@@ -25,19 +27,13 @@ export interface EmailEffects {
   sendMagicLink(input: { to: string; url: string }): Promise<void>
 }
 
-let cached: Promise<EmailEffects> | null = null
-
-async function getAdapter(): Promise<EmailEffects> {
-  if (cached) return cached
-  cached = (async () => {
-    if (process.env.VITEST === 'true') return (await import('./adapters/devLog')).devLog
-    if (process.env.EMAIL_ADAPTER === 'devLog') return (await import('./adapters/devLog')).devLog
-    if (process.env.SMTP_HOST) return (await import('./adapters/smtp')).smtp
-    if (process.env.RESEND_API_KEY) return (await import('./adapters/resend')).resend
-    return (await import('./adapters/devLog')).devLog
-  })()
-  return cached
-}
+const getAdapter = lazy(async (): Promise<EmailEffects> => {
+  if (process.env.VITEST === 'true') return (await import('./adapters/devLog')).devLog
+  if (process.env.EMAIL_ADAPTER === 'devLog') return (await import('./adapters/devLog')).devLog
+  if (process.env.SMTP_HOST) return (await import('./adapters/smtp')).smtp
+  if (process.env.RESEND_API_KEY) return (await import('./adapters/resend')).resend
+  return (await import('./adapters/devLog')).devLog
+})
 
 export const email: EmailEffects = {
   async sendMagicLink(input) {

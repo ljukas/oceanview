@@ -2,6 +2,7 @@ import { and, desc, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm'
 import { db } from '~/lib/db'
 import { document, documentEvent, file, folder, user } from '~/lib/db/schema'
 import type { FileRow } from '~/lib/services/file'
+import { joinFilename, splitExtension } from '~/utils/filename'
 import { DocumentDomainError } from './errors'
 
 /**
@@ -15,6 +16,7 @@ export type DocumentRow = {
   id: string
   fileId: string
   name: string
+  extension: string | null
   folderId: string | null
   thumbnailPathname: string | null
   searchHaystack: string
@@ -41,6 +43,7 @@ const documentColumns = {
   id: document.id,
   fileId: document.fileId,
   name: document.name,
+  extension: document.extension,
   folderId: document.folderId,
   thumbnailPathname: document.thumbnailPathname,
   searchHaystack: document.searchHaystack,
@@ -62,8 +65,10 @@ const fileColumns = {
 // Haystack is stored lowercased so pg_trgm's case-sensitive trigrams hit
 // case-insensitively when the search service also lowercases the query. Don't
 // strip diacritics — Phase 2 leaves that to pg_trgm's own behaviour.
-function computeHaystack(folderPath: string | null, name: string): string {
-  return (folderPath ? `${folderPath} ${name}` : name).toLowerCase()
+// `displayName` is the full filename (base + extension) so a search for the
+// extension (e.g. "pdf") still matches.
+function computeHaystack(folderPath: string | null, displayName: string): string {
+  return (folderPath ? `${folderPath} ${displayName}` : displayName).toLowerCase()
 }
 
 async function loadActiveFolderPath(tx: DbOrTx, folderId: string): Promise<string> {
@@ -98,6 +103,9 @@ export async function confirmUpload(
 ): Promise<DocumentWithFile> {
   return db.transaction(async (tx) => {
     const folderPath = input.folderId ? await loadActiveFolderPath(tx, input.folderId) : null
+    // Split the uploaded filename so the extension lives in its own column and
+    // can't be altered by a later rename. `input.name` is the full filename.
+    const { base, extension } = splitExtension(input.name)
 
     const [fileRow] = await tx
       .insert(file)
@@ -114,7 +122,8 @@ export async function confirmUpload(
       .insert(document)
       .values({
         fileId: fileRow.id,
-        name: input.name,
+        name: base,
+        extension,
         folderId: input.folderId ?? null,
         searchHaystack: computeHaystack(folderPath, input.name),
       })
@@ -157,11 +166,17 @@ export async function renameDocument(input: {
     const folderPath = target.document.folderId
       ? await loadActiveFolderPath(tx, target.document.folderId)
       : null
+    // The extension is immutable: rename only touches the base name. The
+    // display name (base + existing extension) feeds the haystack and events.
+    const extension = target.document.extension
+    const newName = input.newName.trim()
+    const fromDisplay = joinFilename(target.document)
+    const toDisplay = joinFilename({ name: newName, extension })
     const [updated] = await tx
       .update(document)
       .set({
-        name: input.newName,
-        searchHaystack: computeHaystack(folderPath, input.newName),
+        name: newName,
+        searchHaystack: computeHaystack(folderPath, toDisplay),
       })
       .where(eq(document.id, input.id))
       .returning(documentColumns)
@@ -169,8 +184,8 @@ export async function renameDocument(input: {
       documentId: input.id,
       actorId: input.actorId,
       kind: 'rename',
-      fromValue: { name: target.document.name },
-      toValue: { name: input.newName },
+      fromValue: { name: fromDisplay },
+      toValue: { name: toDisplay },
     })
     return { document: updated, file: target.file }
   })
@@ -189,7 +204,7 @@ export async function moveDocument(input: {
       .update(document)
       .set({
         folderId: input.newFolderId,
-        searchHaystack: computeHaystack(folderPath, target.document.name),
+        searchHaystack: computeHaystack(folderPath, joinFilename(target.document)),
       })
       .where(eq(document.id, input.id))
       .returning(documentColumns)
@@ -227,7 +242,7 @@ export async function softDelete(input: {
       documentId: input.id,
       actorId: input.actingUserId,
       kind: 'soft_delete',
-      toValue: { name: target.document.name },
+      toValue: { name: joinFilename(target.document) },
     })
     return { document: row, file: target.file }
   })
@@ -276,7 +291,7 @@ export async function hardDeleteDocument(input: {
       documentId: input.id,
       actorId: input.actorId,
       kind: 'hard_delete',
-      toValue: { name: target.document.name, pathname: target.file.pathname },
+      toValue: { name: joinFilename(target.document), pathname: target.file.pathname },
     })
     // Delete the file; cascade removes the document row.
     await tx.delete(file).where(eq(file.id, target.file.id))
@@ -302,9 +317,10 @@ export async function recomputeSearchHaystack(
   await tx
     .update(document)
     .set({
-      // Mirrors computeHaystack: lower(path || ' ' || name). Keeping the
-      // SQL form here so the bulk join doesn't pull rows into JS.
-      searchHaystack: sql`lower(${folder.path} || ' ' || ${document.name})`,
+      // Mirrors computeHaystack over the display name: lower(path || ' ' ||
+      // name [|| '.' || extension]). Keeping the SQL form here so the bulk
+      // join doesn't pull rows into JS.
+      searchHaystack: sql`lower(${folder.path} || ' ' || ${document.name} || case when ${document.extension} is null then '' else '.' || ${document.extension} end)`,
     })
     .from(folder)
     .where(
@@ -330,18 +346,18 @@ export async function cascadeSoftDelete(
     .update(document)
     .set({ deletedAt: new Date() })
     .where(and(inArray(document.id, input.documentIds), isNull(document.deletedAt)))
-    .returning({ id: document.id, name: document.name })
+    .returning({ id: document.id, name: document.name, extension: document.extension })
   if (affected.length === 0) return []
   await tx.insert(documentEvent).values(
     affected.map((row) => ({
       documentId: row.id,
       actorId: input.actorId,
       kind: 'soft_delete' as const,
-      toValue: { name: row.name },
+      toValue: { name: joinFilename(row) },
       correlationId: input.correlationId,
     })),
   )
-  return affected
+  return affected.map((row) => ({ id: row.id, name: joinFilename(row) }))
 }
 
 /**
