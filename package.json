@@ -15,7 +15,7 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:studio": "drizzle-kit studio",
-    "auth:schema": "pnpm dlx @better-auth/cli@latest generate --yes --output src/lib/db/schema/betterAuth.ts && node scripts/patchBetterAuthSchema.mjs",
+    "auth:schema": "pnpm dlx @better-auth/cli@1.4.21 generate --yes --output src/lib/db/schema/betterAuth.ts && node scripts/patchBetterAuthSchema.mjs",
     "queue:up": "docker compose up -d --wait queue",
     "queue:down": "docker compose down queue",
     "queue:studio": "docker compose --profile studio up -d queue-studio",
@@ -87,7 +87,7 @@
     "react-email": "^6.3.2",
     "react-phone-number-input": "^3.4.16",
     "resend": "^6.12.3",
-    "shadcn": "^4.7.0",
+    "shadcn": "^4.10.0",
     "sharp": "^0.34.5",
     "sonner": "^2.0.7",
     "tailwind-merge": "^2.6.1",
@@ -97,7 +97,6 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@better-auth/cli": "^1.4.21",
     "@biomejs/biome": "2.4.15",
     "@tailwindcss/vite": "^4.2.2",
     "@tanstack/devtools-vite": "^0.7.0",
