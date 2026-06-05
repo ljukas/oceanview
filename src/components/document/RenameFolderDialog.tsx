@@ -45,7 +45,7 @@ export function RenameFolderDialog({ open, onOpenChange, folder }: Props) {
       onSettled: () =>
         Promise.all([
           queryClient.invalidateQueries({ queryKey: orpc.folder.key() }),
-          queryClient.invalidateQueries({ queryKey: orpc.document.key() }),
+          queryClient.invalidateQueries({ queryKey: orpc.document.listDocuments.key() }),
         ]),
     }),
   )

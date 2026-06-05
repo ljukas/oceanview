@@ -14,10 +14,11 @@ import { joinFilename, replacePathnameBasename, safeFilename } from '~/utils/fil
 // a mime icon for types without a thumbnail worker. 100 MB cap at the boundary.
 const DOCUMENT_MAX_BYTES = 100_000_000
 
-// Image tiles load the original directly from the private store as an <img>
-// (ADR-0006). The signed URL is generated per list call; 1 h comfortably
-// outlasts a session and listDocuments refetches on document/folder changes.
-const PREVIEW_URL_TTL_SECONDS = 3600
+// Image tiles load a rendered WebP thumbnail from the *public* store (ADR-0010).
+// Public read URLs are stable (non-expiring), so the tile never re-downloads and
+// the thumbnail query never needs invalidating. The ttl is a no-op for public
+// URLs but the adapter signature still requires one.
+const THUMBNAIL_URL_TTL_SECONDS = 3600
 
 function rethrowAsORPC(err: unknown): never {
   if (!(err instanceof DocumentDomainError)) throw err
@@ -128,7 +129,7 @@ export const documentRouter = {
       // Flatten for the current UI contract; the Phase 4 UI rewrite moves to the
       // structured { document, file, ownerName } shape directly. No preview URLs
       // here — the grid renders immediately (blurhash placeholder) and resolves
-      // each image tile's signed URL lazily via `previewUrl` below.
+      // each image tile's public thumbnail URL lazily via `thumbnail` below.
       return rows.map((row) => ({
         id: row.document.id,
         ownerId: row.file.ownerId,
@@ -146,18 +147,20 @@ export const documentRouter = {
       }))
     }),
 
-  // Lazy, per-tile signed read URL for an image preview. The grid fetches this
-  // only after render (and only for image mimes), so the document list stays
-  // fast and the URLs never go stale in the list cache. The browser loads the
-  // byte straight from storage — the download route can't serve <img> requests
-  // (Sec-Fetch-Dest: image → 404). See ADR-0006.
-  previewUrl: protectedProcedure.input(z.object({ id: z.uuid() })).handler(async ({ input }) => {
+  // Lazy, per-tile read URL for a document's rendered thumbnail (ADR-0010). The
+  // grid fetches this only after render, and only for documents that already
+  // have a thumbnail (`thumbnailPathname` is a real path). The WebP lives in the
+  // *public* store, so the URL is stable — the tile loads it once and the query
+  // never needs invalidating. A doc without a thumbnail returns `{ url: null }`
+  // and the grid keeps showing its blurhash placeholder.
+  thumbnail: protectedProcedure.input(z.object({ id: z.uuid() })).handler(async ({ input }) => {
     const row = await documentService.findActiveById(input.id)
-    if (!row) throw new ORPCError('NOT_FOUND', { message: 'Dokumentet hittades inte' })
+    // missing doc, or null (never attempted) / '' (render-failed sentinel): no URL.
+    if (!row?.document.thumbnailPathname) return { url: null }
     const url = await storage.getReadUrl(
-      row.file.access,
-      row.file.pathname,
-      PREVIEW_URL_TTL_SECONDS,
+      'public',
+      row.document.thumbnailPathname,
+      THUMBNAIL_URL_TTL_SECONDS,
     )
     return { url }
   }),

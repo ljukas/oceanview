@@ -71,15 +71,32 @@ function computeHaystack(folderPath: string | null, displayName: string): string
   return (folderPath ? `${folderPath} ${displayName}` : displayName).toLowerCase()
 }
 
-async function loadActiveFolderPath(tx: DbOrTx, folderId: string): Promise<string> {
+async function loadActiveFolder(
+  tx: DbOrTx,
+  folderId: string,
+): Promise<{ name: string; path: string }> {
   const [row] = await tx
-    .select({ path: folder.path, deletedAt: folder.deletedAt })
+    .select({ name: folder.name, path: folder.path, deletedAt: folder.deletedAt })
     .from(folder)
     .where(eq(folder.id, folderId))
     .limit(1)
   if (!row) throw new DocumentDomainError('FOLDER_NOT_FOUND')
   if (row.deletedAt) throw new DocumentDomainError('FOLDER_DELETED')
-  return row.path
+  return { name: row.name, path: row.path }
+}
+
+/**
+ * Unguarded folder name lookup for audit labels (move events). Returns null for
+ * a missing folder rather than throwing — the source folder of an active
+ * document is always active, but a label lookup must never block the move.
+ */
+async function loadFolderName(tx: DbOrTx, folderId: string): Promise<string | null> {
+  const [row] = await tx
+    .select({ name: folder.name })
+    .from(folder)
+    .where(eq(folder.id, folderId))
+    .limit(1)
+  return row?.name ?? null
 }
 
 export async function findById(id: string): Promise<DocumentWithFile | null> {
@@ -102,7 +119,7 @@ export async function confirmUpload(
   input: ConfirmDocumentUploadInput & { actorId?: string },
 ): Promise<DocumentWithFile> {
   return db.transaction(async (tx) => {
-    const folderPath = input.folderId ? await loadActiveFolderPath(tx, input.folderId) : null
+    const folderPath = input.folderId ? (await loadActiveFolder(tx, input.folderId)).path : null
     // Split the uploaded filename so the extension lives in its own column and
     // can't be altered by a later rename. `input.name` is the full filename.
     const { base, extension } = splitExtension(input.name)
@@ -176,7 +193,7 @@ export async function renameDocument(input: {
   return db.transaction(async (tx) => {
     const target = await loadActiveForEdit(tx, input.id, input.actorId, input.actorRole)
     const folderPath = target.document.folderId
-      ? await loadActiveFolderPath(tx, target.document.folderId)
+      ? (await loadActiveFolder(tx, target.document.folderId)).path
       : null
     // The extension is immutable: rename only touches the base name. The
     // display name (base + existing extension) feeds the haystack and events.
@@ -211,12 +228,18 @@ export async function moveDocument(input: {
 }): Promise<DocumentWithFile> {
   return db.transaction(async (tx) => {
     const target = await loadActiveForEdit(tx, input.id, input.actorId, input.actorRole)
-    const folderPath = input.newFolderId ? await loadActiveFolderPath(tx, input.newFolderId) : null
+    // Snapshot folder names into the event so history can render "from → to"
+    // even after a folder is later renamed or deleted (mirrors rename's name
+    // snapshot). null name = the virtual root.
+    const fromName = target.document.folderId
+      ? await loadFolderName(tx, target.document.folderId)
+      : null
+    const dest = input.newFolderId ? await loadActiveFolder(tx, input.newFolderId) : null
     const [updated] = await tx
       .update(document)
       .set({
         folderId: input.newFolderId,
-        searchHaystack: computeHaystack(folderPath, joinFilename(target.document)),
+        searchHaystack: computeHaystack(dest?.path ?? null, joinFilename(target.document)),
       })
       .where(eq(document.id, input.id))
       .returning(documentColumns)
@@ -224,8 +247,8 @@ export async function moveDocument(input: {
       documentId: input.id,
       actorId: input.actorId,
       kind: 'move',
-      fromValue: { folderId: target.document.folderId },
-      toValue: { folderId: input.newFolderId },
+      fromValue: { folderId: target.document.folderId, name: fromName },
+      toValue: { folderId: input.newFolderId, name: dest?.name ?? null },
     })
     return { document: updated, file: target.file }
   })

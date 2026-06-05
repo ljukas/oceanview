@@ -6,19 +6,19 @@ import {
   type DropAnimation,
   defaultDropAnimationSideEffects,
   KeyboardSensor,
-  PointerSensor,
+  MouseSensor,
   pointerWithin,
   rectIntersection,
+  TouchSensor,
   useSensor,
   useSensors,
 } from '@dnd-kit/core'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQueryClient } from '@tanstack/react-query'
 import { useCallback, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
-import { parseFolderDropId } from '~/components/document/documentHelpers'
-import type { RouterOutputs } from '~/lib/orpc/client'
-import { orpc } from '~/lib/orpc/client'
-import { optimisticRemove } from '~/lib/orpc/optimistic'
+import { type FolderRow, parseFolderDropId } from '~/components/document/documentHelpers'
+import { client, orpc, type RouterOutputs } from '~/lib/orpc/client'
+import { optimisticPatch, optimisticRemove } from '~/lib/orpc/optimistic'
 
 /** A row as returned by `document.listDocuments` — derived so it can't drift. */
 type DocumentRow = RouterOutputs['document']['listDocuments'][number]
@@ -31,49 +31,55 @@ const transformToCss = (t: { x: number; y: number; scaleX: number; scaleY: numbe
 
 /**
  * Owns the drag-and-drop behaviour of the documents library: the optimistic
- * move mutation, dnd-kit sensors, pointer/keyboard collision detection, the
- * drag handlers, and the fly-into-folder drop animation. `DocumentsView`
- * supplies the URL-resolved folder and the documents in view, and spreads the
- * returned props onto its `<DndContext>` / `<DragOverlay>`.
+ * (group) move, dnd-kit sensors, pointer/keyboard collision detection, the drag
+ * handlers, and the fly-into-folder drop animation. `DocumentsView` supplies the
+ * URL-resolved folder, the documents in view, the current selection, and a
+ * selection-clear callback, and spreads the returned props onto its
+ * `<DndContext>` / `<DragOverlay>`. The whole file row is the drag activator
+ * (the per-row `useDraggable` lives in `DocumentTable`); dragging a row that's
+ * part of the selection moves the whole selection.
  */
+type ActiveDrag = { kind: 'document'; id: string } | { kind: 'folder'; id: string }
+
 export function useDocumentDnd({
   activeFolderId,
   visibleDocuments,
+  folders,
+  selectedIds,
+  clearSelection,
 }: {
   /** Resolved folder id from the URL, or null for the virtual root. */
   activeFolderId: string | null
   visibleDocuments: ReadonlyArray<DocumentRow>
+  /** The flat folder tree — for the folder drag ghost + descendant guard. */
+  folders: ReadonlyArray<FolderRow>
+  /** Ids currently selected (a drag that starts on one of these moves them all). */
+  selectedIds: ReadonlyArray<string>
+  clearSelection: () => void
 }) {
   const queryClient = useQueryClient()
 
-  const [activeId, setActiveId] = useState<string | null>(null)
-  const activeDoc = activeId ? visibleDocuments.find((d) => d.id === activeId) : undefined
+  // A drag carries either a document (with multi-select group semantics) or a
+  // single folder, discriminated by `event.active.data`.
+  const [active, setActive] = useState<ActiveDrag | null>(null)
+  const activeDoc =
+    active?.kind === 'document' ? visibleDocuments.find((d) => d.id === active.id) : undefined
+  const activeFolder =
+    active?.kind === 'folder' ? folders.find((f) => f.id === active.id) : undefined
+  // How many docs the active drag carries: the whole selection when the dragged
+  // row is selected, else just the one (0 for a folder drag).
+  const activeCount =
+    active?.kind === 'document' ? (selectedIds.includes(active.id) ? selectedIds.length : 1) : 0
   // Set on a successful drop so the drop animation flies the ghost into the
   // target folder instead of snapping back to the source row. Null = no move.
   const dropTargetRect = useRef<ClientRect | null>(null)
 
-  const moveMutation = useMutation(
-    orpc.document.moveDocument.mutationOptions({
-      onMutate: async ({ id }) => {
-        // A drop always targets a *different* folder (a child chip or an ancestor
-        // crumb), so the moved doc leaves the current view. Drop it from this
-        // folder's scoped cache immediately, before the server round-trip.
-        await optimisticRemove(
-          queryClient,
-          orpc.document.listDocuments.queryKey({ input: { folderId: activeFolderId } }),
-          (doc) => doc.id === id,
-        )
-      },
-      onSuccess: () => toast.success('Dokumentet flyttades'),
-      onError: (err) => toast.error(err.message || 'Kunde inte flytta dokumentet'),
-      // Reconcile on both outcomes: confirms the move on success, and re-syncs
-      // from the server on error (rolling back the optimistic patch).
-      onSettled: () => queryClient.invalidateQueries({ queryKey: orpc.document.key() }),
-    }),
-  )
-
+  // Mouse drags after a 6px move (so a click selects / a double-click opens
+  // without dragging). Touch needs a 200ms press-hold to start — a quick swipe
+  // under the tolerance scrolls the list instead. Keyboard keeps drag a11y.
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 8 } }),
     useSensor(KeyboardSensor),
   )
 
@@ -88,31 +94,113 @@ export function useDocumentDnd({
     [],
   )
 
+  // No batch endpoint: drop all moved ids from the source list once, fan out
+  // single moves in parallel, then reconcile + toast once (looping a mutation
+  // with its own callbacks would toast and invalidate N times).
+  const runMove = useCallback(
+    async (ids: Array<string>, folderId: string | null) => {
+      const idSet = new Set(ids)
+      await optimisticRemove(
+        queryClient,
+        orpc.document.listDocuments.queryKey({ input: { folderId: activeFolderId } }),
+        (doc) => idSet.has(doc.id),
+      )
+      const results = await Promise.allSettled(
+        ids.map((id) => client.document.moveDocument({ id, folderId })),
+      )
+      await queryClient.invalidateQueries({ queryKey: orpc.document.listDocuments.key() })
+      const failed = results.filter((r) => r.status === 'rejected').length
+      if (failed === 0) {
+        toast.success(
+          ids.length === 1 ? 'Dokumentet flyttades' : `${ids.length} dokument flyttades`,
+        )
+        clearSelection()
+      } else {
+        toast.error(`${failed} av ${ids.length} kunde inte flyttas`)
+      }
+    },
+    [queryClient, activeFolderId, clearSelection],
+  )
+
+  // Folder move reuses the existing admin-only `folder.moveFolder` (which
+  // cascades descendant paths + rebuilds document haystacks server-side).
+  // Optimistically re-parent the folder so it leaves the current view's child
+  // list immediately; the `finally` invalidate reconciles the authoritative
+  // tree (paths, descendants) and reverts on error — so no need to recompute
+  // paths here.
+  const runFolderMove = useCallback(
+    async (id: string, newParentId: string | null) => {
+      await optimisticPatch(
+        queryClient,
+        orpc.folder.tree.queryKey(),
+        (f) => f.id === id,
+        (f) => ({ ...f, parentId: newParentId }),
+      )
+
+      try {
+        await client.folder.moveFolder({ id, newParentId })
+        toast.success('Mappen flyttades')
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : 'Kunde inte flytta mappen')
+      } finally {
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: orpc.folder.key() }),
+          queryClient.invalidateQueries({ queryKey: orpc.document.listDocuments.key() }),
+        ])
+      }
+    },
+    [queryClient],
+  )
+
   const onDragStart = useCallback((event: DragStartEvent) => {
     dropTargetRect.current = null
-    setActiveId((event.active.data.current?.documentId as string | undefined) ?? null)
+    const data = event.active.data.current
+    if (data?.documentId) setActive({ kind: 'document', id: data.documentId as string })
+    else if (data?.folderId) setActive({ kind: 'folder', id: data.folderId as string })
+    else setActive(null)
   }, [])
 
   const onDragEnd = useCallback(
     (event: DragEndEvent) => {
       dropTargetRect.current = null
-      const documentId = event.active.data.current?.documentId as string | undefined
+      const data = event.active.data.current
       const over = event.over
-      if (documentId && over) {
+      if (over) {
         const target = parseFolderDropId(String(over.id))
-        const doc = visibleDocuments.find((d) => d.id === documentId)
-        if (target !== undefined && doc && doc.folderId !== target) {
-          // Real move: fly the ghost into the dropped target rather than snap back.
-          dropTargetRect.current = over.rect
-          moveMutation.mutate({ id: documentId, folderId: target })
+        if (target !== undefined && data?.documentId) {
+          const draggedId = data.documentId as string
+          // A selected row drags the whole selection; an unselected row drags itself.
+          const dragSet = selectedIds.includes(draggedId) ? selectedIds : [draggedId]
+          const ids = dragSet.filter((id) => {
+            const doc = visibleDocuments.find((d) => d.id === id)
+            return doc && doc.folderId !== target
+          })
+          if (ids.length > 0) {
+            // Real move: fly the ghost into the dropped target rather than snap back.
+            dropTargetRect.current = over.rect
+            void runMove(ids, target)
+          }
+        } else if (target !== undefined && data?.folderId) {
+          const draggedId = data.folderId as string
+          const dragged = folders.find((f) => f.id === draggedId)
+          const targetFolder = target === null ? null : folders.find((f) => f.id === target)
+          // Skip no-ops/illegals; the service also rejects subtree moves.
+          const isSelf = target === draggedId
+          const sameParent = (dragged?.parentId ?? null) === target
+          const intoSubtree =
+            !!dragged && !!targetFolder && targetFolder.path.startsWith(dragged.path)
+          if (!isSelf && !sameParent && !intoSubtree) {
+            dropTargetRect.current = over.rect
+            void runFolderMove(draggedId, target)
+          }
         }
       }
-      setActiveId(null)
+      setActive(null)
     },
-    [visibleDocuments, moveMutation],
+    [selectedIds, visibleDocuments, folders, runMove, runFolderMove],
   )
 
-  const onDragCancel = useCallback(() => setActiveId(null), [])
+  const onDragCancel = useCallback(() => setActive(null), [])
 
   const dropAnimation = useMemo<DropAnimation>(
     () => ({
@@ -158,6 +246,10 @@ export function useDocumentDnd({
     dndContextProps: { sensors, collisionDetection, onDragStart, onDragEnd, onDragCancel },
     /** The document under the active drag, for the `<DragOverlay>` ghost (undefined when idle). */
     activeDoc,
+    /** The folder under the active drag, for the `<DragOverlay>` ghost (undefined when idle). */
+    activeFolder,
+    /** How many documents the active drag carries (for the overlay count badge). */
+    activeCount,
     /** Fly-into-folder drop animation config for `<DragOverlay>`. */
     dropAnimation,
   }

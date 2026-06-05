@@ -167,6 +167,28 @@ test('moveFolderAsAdmin from root into another parent updates paths', async () =
   expect((await findActiveFolderById(child.id))?.path).toBe('/Archive/Manuals/Engine/')
 })
 
+test('moveFolderAsAdmin updates descendant document haystacks (files follow the folder)', async () => {
+  const ownerId = await insertMember('anna@test.oceanview.local', 'Anna')
+  const adminId = await insertMember('admin@test.oceanview.local', 'Admin', 'admin')
+  const archive = await createFolder({ parentId: null, name: 'Archive', createdBy: adminId })
+  const manuals = await createFolder({ parentId: null, name: 'Manuals', createdBy: adminId })
+  const engine = await createFolder({ parentId: manuals.id, name: 'Engine', createdBy: adminId })
+  const doc = await insertDocumentInFolder(ownerId, engine.id, 'oil.pdf')
+
+  await moveFolderAsAdmin({
+    id: manuals.id,
+    newParentId: archive.id,
+    actorId: adminId,
+    actorRole: 'admin',
+  })
+
+  // The document's folderId is unchanged (it rode along), but its denormalized
+  // search haystack reflects the new ancestor path.
+  const refreshed = await documentService.findActiveById(doc.document.id)
+  expect(refreshed?.document.folderId).toBe(engine.id)
+  expect(refreshed?.document.searchHaystack).toBe('/archive/manuals/engine/ oil.pdf')
+})
+
 test('moveFolderAsAdmin into own descendant raises CANNOT_MOVE_INTO_DESCENDANT', async () => {
   const adminId = await insertMember('admin@test.oceanview.local', 'Admin', 'admin')
   const f = await createFolder({ parentId: null, name: 'Manuals', createdBy: adminId })

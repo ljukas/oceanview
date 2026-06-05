@@ -11,10 +11,15 @@ import { describe, expect, test } from 'vitest'
 import {
   type BinEntry,
   type FolderRow,
+  fileKindLabel,
   fileTypeAppearance,
+  folderDropId,
   folderPathToSplat,
   folderTrail,
+  folderUpDropId,
+  parseFolderDropId,
   partitionBinEntries,
+  ROOT_DROP_ID,
   resolveFolderBySplat,
 } from './documentHelpers'
 
@@ -94,6 +99,29 @@ describe('folderTrail (unchanged behavior)', () => {
 
   test('returns [] for the virtual root', () => {
     expect(folderTrail(folders, null)).toEqual([])
+  })
+})
+
+describe('folder drop ids', () => {
+  test('parses folder and root ids back to their target', () => {
+    expect(parseFolderDropId(ROOT_DROP_ID)).toBeNull()
+    expect(parseFolderDropId(folderDropId('abc'))).toBe('abc')
+  })
+
+  test('the up-chip id resolves to the same target as the folder/root id', () => {
+    expect(parseFolderDropId(folderUpDropId(null))).toBeNull()
+    expect(parseFolderDropId(folderUpDropId('abc'))).toBe('abc')
+  })
+
+  test('the up-chip id is distinct from the folder/root id for the same target', () => {
+    // dnd-kit requires unique droppable ids; the up-chip and the breadcrumb
+    // crumb point at the same folder but must not register the same id.
+    expect(folderUpDropId('abc')).not.toBe(folderDropId('abc'))
+    expect(folderUpDropId(null)).not.toBe(ROOT_DROP_ID)
+  })
+
+  test('returns undefined for an unrelated id (not a folder drop target)', () => {
+    expect(parseFolderDropId('document:abc')).toBeUndefined()
   })
 })
 
@@ -212,5 +240,61 @@ describe('fileTypeAppearance', () => {
     const { Icon, className } = fileTypeAppearance({ mime: 'application/unknown' })
     expect(Icon).toBe(FileIcon)
     expect(className).toBe('text-muted-foreground')
+  })
+})
+
+describe('fileKindLabel', () => {
+  test('labels the known document families', () => {
+    expect(fileKindLabel({ mime: 'application/pdf' })).toBe('PDF-dokument')
+    expect(
+      fileKindLabel({
+        mime: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      }),
+    ).toBe('Word-dokument')
+    expect(
+      fileKindLabel({
+        mime: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      }),
+    ).toBe('Excel-kalkylblad')
+    expect(fileKindLabel({ mime: 'text/csv' })).toBe('CSV-fil')
+    expect(
+      fileKindLabel({
+        mime: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      }),
+    ).toBe('PowerPoint-presentation')
+    expect(fileKindLabel({ mime: 'text/plain' })).toBe('Textdokument')
+  })
+
+  test('labels images by their mime subtype', () => {
+    expect(fileKindLabel({ mime: 'image/jpeg' })).toBe('JPEG-bild')
+    expect(fileKindLabel({ mime: 'image/png' })).toBe('PNG-bild')
+    expect(fileKindLabel({ mime: 'image/svg+xml' })).toBe('SVG-bild')
+  })
+
+  test('derives an image label from the extension for an unmapped subtype', () => {
+    expect(fileKindLabel({ mime: 'image/x-unknown', extension: 'jxl' })).toBe('JXL-bild')
+  })
+
+  test('falls back to a generic image label with no usable hint', () => {
+    expect(fileKindLabel({ mime: 'image/' })).toBe('Bild')
+  })
+
+  test('derives archive labels from the extension', () => {
+    expect(fileKindLabel({ mime: 'application/zip', extension: 'zip' })).toBe('ZIP-arkiv')
+    expect(fileKindLabel({ mime: 'application/vnd.rar', extension: 'rar' })).toBe('RAR-arkiv')
+  })
+
+  test('falls back to the extension when the mime is generic', () => {
+    expect(fileKindLabel({ mime: 'application/octet-stream', extension: 'pdf' })).toBe(
+      'PDF-dokument',
+    )
+  })
+
+  test('labels an unknown type by its extension', () => {
+    expect(fileKindLabel({ mime: 'application/octet-stream', extension: 'ipa' })).toBe('IPA-fil')
+  })
+
+  test('falls back to a bare label with neither a known mime nor an extension', () => {
+    expect(fileKindLabel({ mime: 'application/octet-stream' })).toBe('Fil')
   })
 })

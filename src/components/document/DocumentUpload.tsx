@@ -71,7 +71,7 @@ export const DocumentUpload = forwardRef<DocumentUploadHandle, Props>(function D
         }
       })
 
-      await queryClient.invalidateQueries({ queryKey: orpc.document.key() })
+      await queryClient.invalidateQueries({ queryKey: orpc.document.listDocuments.key() })
       // Announce completion via a toast (sonner is a live region) rather than
       // re-announcing every progress tick.
       if (ok > 0) {

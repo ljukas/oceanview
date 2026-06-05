@@ -376,7 +376,48 @@ test('moveDocument to a new folder updates folderId + search_haystack', async ()
   expect(moved.document.searchHaystack).toBe('/manuals/ engine.pdf')
   const event = await latestEvent(inserted.document.id)
   expect(event.kind).toBe('move')
-  expect(event.toValue).toEqual({ folderId: target.id })
+  // Events snapshot folder names (null = root) so history renders "from → to".
+  expect(event.fromValue).toEqual({ folderId: null, name: null })
+  expect(event.toValue).toEqual({ folderId: target.id, name: 'Manuals' })
+})
+
+test('moveDocument between two folders snapshots both folder names', async () => {
+  const ownerId = await insertMember('anna@test.oceanview.local', 'Anna')
+  const manuals = await insertFolder('Manuals', ownerId)
+  const archive = await insertFolder('Archive', ownerId)
+  const inserted = await confirmUpload(
+    docInput(ownerId, { name: 'engine.pdf', folderId: manuals.id }),
+  )
+  await moveDocument({
+    id: inserted.document.id,
+    newFolderId: archive.id,
+    actorId: ownerId,
+    actorRole: 'user',
+  })
+  const event = await latestEvent(inserted.document.id)
+  expect(event.kind).toBe('move')
+  expect(event.fromValue).toEqual({ folderId: manuals.id, name: 'Manuals' })
+  expect(event.toValue).toEqual({ folderId: archive.id, name: 'Archive' })
+})
+
+test('moveDocument back to root records a null destination name + drops the haystack prefix', async () => {
+  const ownerId = await insertMember('anna@test.oceanview.local', 'Anna')
+  const manuals = await insertFolder('Manuals', ownerId)
+  const inserted = await confirmUpload(
+    docInput(ownerId, { name: 'engine.pdf', folderId: manuals.id }),
+  )
+  const moved = await moveDocument({
+    id: inserted.document.id,
+    newFolderId: null,
+    actorId: ownerId,
+    actorRole: 'user',
+  })
+  expect(moved.document.folderId).toBeNull()
+  expect(moved.document.searchHaystack).toBe('engine.pdf')
+  const event = await latestEvent(inserted.document.id)
+  expect(event.kind).toBe('move')
+  expect(event.fromValue).toEqual({ folderId: manuals.id, name: 'Manuals' })
+  expect(event.toValue).toEqual({ folderId: null, name: null })
 })
 
 test('moveDocument into a deleted folder raises FOLDER_DELETED', async () => {

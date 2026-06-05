@@ -23,13 +23,21 @@ function dispatch(queryClient: QueryClient, event: RealtimeEvent) {
       void queryClient.invalidateQueries({ queryKey: orpc.user.listContacts.key() })
       return
     case 'document.changed':
-      void queryClient.invalidateQueries({ queryKey: orpc.document.key() })
+      // Invalidate the document *list* and history, never the whole namespace:
+      // `document.thumbnail` is served from a stable public URL and must not be
+      // refetched (it would reload every tile). A newly-rendered thumbnail is
+      // picked up naturally — the list refetch surfaces its `thumbnailPathname`,
+      // which enables the tile's (first) thumbnail fetch.
+      void queryClient.invalidateQueries({ queryKey: orpc.document.listDocuments.key() })
+      void queryClient.invalidateQueries({ queryKey: orpc.document.documentHistory.key() })
       return
     case 'folder.changed':
       // A folder change rewrites descendant paths + document haystacks, so the
-      // document list and search results can shift too.
+      // document list and search results can shift too. Thumbnails are untouched
+      // (same reasoning as document.changed).
       void queryClient.invalidateQueries({ queryKey: orpc.folder.key() })
-      void queryClient.invalidateQueries({ queryKey: orpc.document.key() })
+      void queryClient.invalidateQueries({ queryKey: orpc.document.listDocuments.key() })
+      void queryClient.invalidateQueries({ queryKey: orpc.document.documentHistory.key() })
       void queryClient.invalidateQueries({ queryKey: orpc.documentSearch.key() })
       return
   }

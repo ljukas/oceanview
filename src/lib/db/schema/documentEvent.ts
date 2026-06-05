@@ -11,7 +11,7 @@ import { document } from './document'
 // Payload shape per kind (jsonb; not enforced at the type level):
 //   upload      to_value: { name, folderId }
 //   rename      from_value: { name }              to_value: { name }
-//   move        from_value: { folderId }          to_value: { folderId }
+//   move        from_value: { folderId, name }    to_value: { folderId, name }
 //   soft_delete                                   to_value: { name }
 //   restore     —
 //   hard_delete                                   to_value: { name, pathname }
