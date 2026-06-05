@@ -20,5 +20,6 @@ yarn.lock
 .tanstack
 .claude/settings.local.json
 .claude/worktrees/
+.claude/plans/
 .env*.local
 .neon_local/
