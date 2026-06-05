@@ -27,8 +27,8 @@ The shape of the problem — *fire-and-forget durable work, executed out-of-band
 
 | Environment | Producer adapter | Broker | Consumer |
 |---|---|---|---|
-| Production (Vercel) | `vercelQueue` (`@vercel/queue`) | Vercel Queues | `server/plugins/blurhashQueue.ts` — Nitro `vercel:queue` hook |
-| Local dev with broker (`REDIS_URL` set) | `bullmqQueue` | Redis (docker `compose.yaml` `queue` service) | `scripts/devBlurhashWorker.ts` (`pnpm dev:worker`) |
+| Production (Vercel) | `vercelQueue` (`@vercel/queue`) | Vercel Queues | `server/plugins/queueConsumer.ts` — Nitro `vercel:queue` hook |
+| Local dev with broker (`REDIS_URL` set) | `bullmqQueue` | Redis (docker `compose.yaml` `queue` service) | `scripts/devQueueWorker.ts` (`pnpm dev:worker`) |
 | Local dev without broker | `devLog` (no-op) | — | — (uploads succeed; blurhash skipped) |
 | Tests (`VITEST=true`) | `devLog` | — | — |
 
@@ -78,18 +78,22 @@ One interface, typed per topic via a discriminated payload map:
 
 ```ts
 // src/lib/effects/queue/queue.ts
-export type QueueTopic = 'blurhash'
+export type QueueTopic = 'blurhash' | 'image_thumbnail' | 'pdf_thumbnail'
 
 export type QueuePayloadMap = {
   blurhash:
     | { fileId: string; kind: 'avatar'; userId: string }
     | { fileId: string; kind: 'document' }
+  image_thumbnail: { documentId: string }
+  pdf_thumbnail: { documentId: string } // reserved; not yet produced or consumed
 }
 
 export interface QueueEffects {
   publish<T extends QueueTopic>(topic: T, payload: QueuePayloadMap[T]): Promise<void>
 }
 ```
+
+> **Amended 2026-06-04.** `blurhash` is the canonical example throughout this ADR, but it is no longer the only live topic. **`image_thumbnail`** landed as the second real topic for [ADR-0010 — Document Management](./0010-document-management.md): handler `src/lib/queue/handlers/imageThumbnail.ts` (reads the private original, renders a WebP, writes it to the *public* store at `thumbnails/{documentId}.webp`, publishes `document.changed`), produced from `src/lib/orpc/procedures/document.ts`, registered in `vite.config.ts` triggers and the `vercel:queue` plugin switch, and consumed by a second BullMQ `Worker` in `scripts/devQueueWorker.ts`. It is the working proof of the *How to add a new topic* recipe below. **`pdf_thumbnail`** is forward-declared in the union only — no producer publishes it and no handler consumes it yet (PDFs render a mime-type icon); it stays reserved until the renderer's serverless-dependency story is proven. See ADR-0010.
 
 Adapter selection happens on first `publish()` via dynamic import, cached for the rest of the process:
 
@@ -151,7 +155,7 @@ The Nitro plugin is registered explicitly because TanStack Start manages Nitro's
 ```ts
 // vite.config.ts
 nitro({
-  plugins: ['./server/plugins/blurhashQueue.ts'],
+  plugins: ['./server/plugins/queueConsumer.ts'],
   vercel: {
     config: {
       queues: { triggers: [{ topic: 'blurhash' }] },
@@ -163,7 +167,7 @@ nitro({
 And the plugin itself is a one-liner over the shared handler:
 
 ```ts
-// server/plugins/blurhashQueue.ts
+// server/plugins/queueConsumer.ts
 export default definePlugin((nitro) => {
   nitro.hooks.hook('vercel:queue', async ({ message, metadata }) => {
     if (metadata.topicName !== 'blurhash') return
@@ -200,7 +204,7 @@ queue-studio:
 
 AOF (`appendfsync everysec`) means queued jobs survive `docker compose down`. `queue-studio` is profile-gated so it doesn't auto-start with `pnpm dev:up`; activate via `pnpm queue:studio` and visit `http://localhost:14504`.
 
-**2. The worker** — `scripts/devBlurhashWorker.ts` wraps BullMQ's `Worker` around the same `handleBlurhashMessage` the prod plugin uses:
+**2. The worker** — `scripts/devQueueWorker.ts` wraps BullMQ's `Worker` around the same `handleBlurhashMessage` the prod plugin uses:
 
 ```ts
 const worker = new Worker<QueuePayloadMap['blurhash']>(
@@ -249,7 +253,7 @@ On record because the swap was an explicit design goal: Vercel Queues is in publ
 
 **Producer side is trivial.** The selector checks `REDIS_URL` *before* the `!VERCEL` check, so setting `REDIS_URL` in Vercel env (pointing at a managed Redis — Upstash, Render, etc.) is all it takes for producers to route through `bullmqQueue` in production. No code changes.
 
-**Consumer side is the real work.** Vercel Functions don't host long-lived workers, so a BullMQ worker has to live somewhere persistent — Fly.io, Railway, Render, a small VM — pointing at the same Redis. The Nitro plugin in `server/plugins/blurhashQueue.ts` becomes dead code under this configuration (or stays in place during cutover; it's a few lines).
+**Consumer side is the real work.** Vercel Functions don't host long-lived workers, so a BullMQ worker has to live somewhere persistent — Fly.io, Railway, Render, a small VM — pointing at the same Redis. The Nitro plugin in `server/plugins/queueConsumer.ts` becomes dead code under this configuration (or stays in place during cutover; it's a few lines).
 
 **What to budget when the swap happens:**
 - One managed-Redis account (Upstash has a free tier covering our scale).
@@ -272,9 +276,10 @@ A future durable effect (e.g. "user confirmed deletion → must email them withi
 After this ADR's pattern lands or is touched:
 
 - `grep -rn "@vercel/queue" src/` — only `src/lib/effects/queue/adapters/vercelQueue.ts` should match.
-- `grep -rn "from 'bullmq'" src/ scripts/` — only `src/lib/effects/queue/adapters/bullmqQueue.ts` and `scripts/devBlurhashWorker.ts` should match.
-- `grep -rn "publish('blurhash" src/` — every producer-side hit must be an oRPC procedure file (currently `src/lib/orpc/procedures/image.ts`, `src/lib/orpc/procedures/file.ts`); test files in `src/lib/effects/queue/` are also expected. No service, no auth hook, no React file.
-- `grep -rn "vercel:queue" server/` — only `server/plugins/blurhashQueue.ts` should match (no other hook subscribers).
+- `grep -rn "from 'bullmq'" src/ scripts/` — only `src/lib/effects/queue/adapters/bullmqQueue.ts` and `scripts/devQueueWorker.ts` should match.
+- `grep -rn "publish('blurhash" src/` — every producer-side hit must be an oRPC procedure file (currently `src/lib/orpc/procedures/image.ts` for avatars, `src/lib/orpc/procedures/document.ts` for documents); test files in `src/lib/effects/queue/` are also expected. No service, no auth hook, no React file.
+- `grep -rn "publish('image_thumbnail" src/` — only `src/lib/orpc/procedures/document.ts` (plus the queue test). Its handler is `src/lib/queue/handlers/imageThumbnail.ts`.
+- `grep -rn "vercel:queue" server/` — only `server/plugins/queueConsumer.ts` should match (no other hook subscribers).
 - `pnpm test` — `src/lib/effects/queue/queue.test.ts` passes; selects the `devLog` adapter regardless of `REDIS_URL`.
 - Manual smoke (dev, `REDIS_URL` unset + no worker): upload an avatar → 200; log shows `queue publish (devLog)`; avatar renders without a placeholder.
 - Manual smoke (dev, `REDIS_URL` set + `pnpm dev:worker` running): upload an avatar → 200; within a few seconds the worker logs `blurhash: stored`, the user row gains a `blurhash`, and Bull Studio (`:14504`) lists the completed job.
@@ -290,9 +295,10 @@ After this ADR's pattern lands or is touched:
 - `src/lib/effects/queue/adapters/devLog.ts` — no-op adapter (tests + offline dev).
 - `src/lib/effects/queue/queue.test.ts` — contract test.
 - `src/lib/effects/index.ts` — re-exports `queue` alongside `email`, `storage`, `realtime`.
-- `src/lib/queue/handlers/blurhash.ts` — shared consumer handler.
-- `server/plugins/blurhashQueue.ts` — Vercel Queues consumer (Nitro `vercel:queue` hook).
-- `scripts/devBlurhashWorker.ts` — local BullMQ consumer; run via `pnpm dev:worker`.
+- `src/lib/queue/handlers/blurhash.ts` — shared consumer handler (`blurhash` topic).
+- `src/lib/queue/handlers/imageThumbnail.ts` — shared consumer handler (`image_thumbnail` topic; ADR-0010).
+- `server/plugins/queueConsumer.ts` — Vercel Queues consumer (Nitro `vercel:queue` hook).
+- `scripts/devQueueWorker.ts` — local BullMQ consumer; run via `pnpm dev:worker`.
 - `compose.yaml` — `queue` and `queue-studio` services.
 - `vite.config.ts` — Nitro plugin registration + `vercel.config.queues.triggers`.
 - `.env.example` — `REDIS_URL` with the opt-in semantics described.
@@ -326,7 +332,7 @@ After this ADR's pattern lands or is touched:
 
 1. Extend the `QueueTopic` union in `src/lib/effects/queue/queue.ts` and add the payload shape to `QueuePayloadMap`.
 2. Create `src/lib/queue/handlers/<topic>.ts` exporting `handle<Topic>Message(msg, metadata)`. Keep it idempotent — handler invariants from the blurhash example apply.
-3. Wire the prod consumer: either extend the `metadata.topicName` switch in `server/plugins/blurhashQueue.ts` (cheap) or add a new plugin file and register it in `vite.config.ts`'s `nitro({ plugins: [...] })` and `vercel.config.queues.triggers`.
-4. Wire the dev consumer: add a second `Worker` in `scripts/` or extend `devBlurhashWorker.ts` (rename if it grows beyond blurhash).
+3. Wire the prod consumer: either extend the `metadata.topicName` switch in `server/plugins/queueConsumer.ts` (cheap) or add a new plugin file and register it in `vite.config.ts`'s `nitro({ plugins: [...] })` and `vercel.config.queues.triggers`.
+4. Wire the dev consumer: add a second `Worker` in `scripts/` or extend `devQueueWorker.ts` (rename if it grows beyond blurhash).
 5. Call `queue.publish('<topic>', payload)` from the oRPC procedure, after the service call succeeds, with `.catch()` for the fire-and-forget guarantee.
 6. No producer test is required beyond the existing contract test; add a handler test next to the handler if its logic warrants one.

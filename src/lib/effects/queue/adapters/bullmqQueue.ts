@@ -4,7 +4,7 @@ import type { QueueEffects, QueueTopic } from '../queue'
 /**
  * Local-dev producer adapter backed by BullMQ + Redis. Selected by
  * `pickAdapter()` when `REDIS_URL` is set. The matching consumer is the
- * standalone worker at `scripts/devBlurhashWorker.ts`, which calls the
+ * standalone worker at `scripts/devQueueWorker.ts`, which calls the
  * same handler the Nitro `vercel:queue` plugin uses in production.
  *
  * One Queue instance per topic, lazily created at first publish, kept at

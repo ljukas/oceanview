@@ -106,7 +106,13 @@ src/
       TextField.tsx               text/email/tel/password inputs
       SelectField.tsx             single-select dropdown
       SubmitButton.tsx            submit-gated button with Spinner
+      PhoneField.tsx              phone input (added post-migration)
+      ToggleField.tsx             segmented toggle / switch (added post-migration)
+      DateField.tsx               date picker; local useState for popover open-state only
+      UserSelectField.tsx         user picker (added post-migration)
 ```
+
+> **Added 2026-06-04.** The initial migration shipped three bound components (`TextField`, `SelectField`, `SubmitButton`); the inventory has since grown by four — `PhoneField`, `ToggleField`, `DateField`, `UserSelectField` — all registered in `src/hooks/form.ts` and following the same context-bound pattern. This is exactly the "add a new bound component to `src/components/form/`" path the ADR prescribes (see *How to add a form*), not a deviation. Note `DateField` keeps a local `useState` for popover open/closed — that's **UI** state, not field value, so the "never `useState` for field values" rule is intact.
 
 The plural `components/form/` matches the project's existing entity-folder convention (`user/`, `passkey/`) — the form layer is the entity, the bound components are its surface. The hook lives in `src/hooks/` per project convention; the TanStack-recommended `useAppForm` name is preserved.
 
@@ -124,7 +130,8 @@ export const { fieldContext, formContext, useFieldContext, useFormContext } =
 export const { useAppForm, withForm } = createFormHook({
   fieldContext,
   formContext,
-  fieldComponents: { TextField, SelectField },
+  // grew post-migration: PhoneField, ToggleField, DateField, UserSelectField
+  fieldComponents: { TextField, SelectField, PhoneField, ToggleField, DateField, UserSelectField },
   formComponents: { SubmitButton },
 })
 ```

@@ -32,7 +32,6 @@ export function SharePartCard({ shareCode, part1, part2, onAssign, onUnassign, o
         )}
       >
         <span className="font-semibold text-2xl tracking-tight">{shareCode}</span>
-        {isWhole ? <Badge variant="secondary">Hel andel</Badge> : null}
         {!isWhole && !isUnassigned ? <Badge variant="secondary">Delad</Badge> : null}
       </header>
 
@@ -49,23 +48,32 @@ export function SharePartCard({ shareCode, part1, part2, onAssign, onUnassign, o
         )}
       </div>
 
-      <footer className="flex items-center gap-2 border-t bg-muted/30 px-3 py-2">
-        <Button size="sm" variant="default" onClick={onAssign} className="flex-1">
+      <footer className="flex flex-col gap-2 border-t bg-muted/30 p-3">
+        <Button size="sm" variant="default" onClick={onAssign} className="w-full">
           {isUnassigned ? 'Tilldela' : 'Tilldela om'}
         </Button>
-        {!isUnassigned ? (
+        <div className="flex gap-2">
+          {!isUnassigned ? (
+            <Button
+              size="sm"
+              variant="outline"
+              aria-label="Ta bort tilldelning"
+              onClick={onUnassign}
+              className="flex-1"
+            >
+              <UserMinusIcon />
+            </Button>
+          ) : null}
           <Button
-            size="icon-sm"
+            size="sm"
             variant="outline"
-            aria-label="Ta bort tilldelning"
-            onClick={onUnassign}
+            aria-label="Historik"
+            onClick={onHistory}
+            className="flex-1"
           >
-            <UserMinusIcon />
+            <ClockIcon />
           </Button>
-        ) : null}
-        <Button size="icon-sm" variant="outline" aria-label="Historik" onClick={onHistory}>
-          <ClockIcon />
-        </Button>
+        </div>
       </footer>
     </article>
   )
@@ -75,20 +83,20 @@ type Owner = NonNullable<AdminPartRow['currentOwner']>
 
 function OwnerRow({ owner }: { owner: Owner }) {
   return (
-    <div className="flex items-center gap-3">
-      <Avatar className="size-10">
+    <div className="flex flex-col items-center gap-2 py-2 text-center">
+      <Avatar className="size-12">
         {owner.image ? (
           <AvatarImage
             src={owner.image}
             alt={owner.name}
-            width={40}
-            height={40}
+            width={48}
+            height={48}
             blurhash={owner.imageBlurhash}
           />
         ) : null}
         <AvatarFallback>{initials(owner.name)}</AvatarFallback>
       </Avatar>
-      <span className="truncate font-medium">{owner.name}</span>
+      <span className="break-words font-medium leading-tight">{owner.name}</span>
     </div>
   )
 }
@@ -111,7 +119,7 @@ function SplitRow({ label, owner }: { label: string; owner: Owner | null }) {
             ) : null}
             <AvatarFallback className="text-xs">{initials(owner.name)}</AvatarFallback>
           </Avatar>
-          <span className="truncate text-sm">{owner.name}</span>
+          <span className="break-words text-sm leading-tight">{owner.name}</span>
         </div>
       ) : (
         <span className="text-muted-foreground text-sm">Ej tilldelad</span>

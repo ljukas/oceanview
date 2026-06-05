@@ -51,3 +51,32 @@ export async function uploadFileToStorage(
     }
   }
 }
+
+/**
+ * The full three-step upload sequence shared by every direct-to-storage upload:
+ * mint a token, PUT the bytes (with progress), then confirm server-side. Callers
+ * supply `mint`/`confirm` callbacks so they can close over feature-specific
+ * fields (e.g. a document's `folderId`, an avatar's narrowed mime) and pick
+ * their own oRPC entrypoint (mutation vs. plain client call). `mint` is a thunk
+ * — each call site owns its exact (often literal-typed) request shape. Pure — no
+ * React state — so it's reusable by both the single-file (avatar) and multi-file
+ * (document) flows and unit-testable.
+ */
+export async function runUploadFlow<M extends MintUploadResult>(
+  file: File,
+  opts: {
+    access: 'public' | 'private'
+    contentType: string
+    mint: () => Promise<M>
+    confirm: (minted: M) => Promise<unknown>
+    onProgress?: (progress: UploadProgress) => void
+  },
+): Promise<void> {
+  const minted = await opts.mint()
+  await uploadFileToStorage(file, minted, {
+    access: opts.access,
+    contentType: opts.contentType,
+    onProgress: opts.onProgress,
+  })
+  await opts.confirm(minted)
+}

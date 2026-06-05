@@ -71,6 +71,27 @@
       "when": 1780039936553,
       "tag": "0009_add_rate_limit_table",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1780495654600,
+      "tag": "0010_add_document_table",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1780507073249,
+      "tag": "0011_document_management",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1780571552871,
+      "tag": "0012_add_document_extension",
+      "breakpoints": true
     }
   ]
 }

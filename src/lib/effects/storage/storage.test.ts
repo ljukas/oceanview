@@ -41,6 +41,12 @@ test('delete resolves without throwing', async () => {
   await expect(storage.delete('private', 'documents/test.pdf')).resolves.toBeUndefined()
 })
 
+test('copy resolves without throwing (devLog no-op)', async () => {
+  await expect(
+    storage.copy('private', 'documents/a/old.pdf', 'documents/a/new.pdf', 'application/pdf'),
+  ).resolves.toBeUndefined()
+})
+
 test('getReadUrl returns a string URL for private', async () => {
   const url = await storage.getReadUrl('private', 'documents/test.pdf', 60)
   expect(typeof url).toBe('string')
@@ -49,6 +55,14 @@ test('getReadUrl returns a string URL for private', async () => {
 
 test('getReadUrl returns a string URL for public', async () => {
   const url = await storage.getReadUrl('public', 'avatars/user-1/abc.png', 60)
+  expect(typeof url).toBe('string')
+  expect(url.length).toBeGreaterThan(0)
+})
+
+test('getReadUrl accepts a downloadFilename without throwing (devLog no-op)', async () => {
+  const url = await storage.getReadUrl('private', 'documents/test.pdf', 60, {
+    downloadFilename: 'Motormanual.pdf',
+  })
   expect(typeof url).toBe('string')
   expect(url.length).toBeGreaterThan(0)
 })

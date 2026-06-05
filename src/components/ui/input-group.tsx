@@ -13,7 +13,22 @@ function InputGroup({ className, ...props }: React.ComponentProps<'div'>) {
       data-slot="input-group"
       role="group"
       className={cn(
-        'group/input-group relative flex h-8 w-full min-w-0 items-center rounded-lg border border-input outline-none transition-colors in-data-[slot=combobox-content]:focus-within:border-inherit in-data-[slot=combobox-content]:focus-within:ring-0 has-[>[data-align=block-end]]:h-auto has-[>[data-align=block-start]]:h-auto has-[>textarea]:h-auto has-[>[data-align=block-end]]:flex-col has-[>[data-align=block-start]]:flex-col has-[[data-slot=input-group-control]:focus-visible]:border-ring has-[[data-slot][aria-invalid=true]]:border-destructive has-disabled:bg-input/50 has-disabled:opacity-50 has-[[data-slot=input-group-control]:focus-visible]:ring-3 has-[[data-slot=input-group-control]:focus-visible]:ring-ring/50 has-[[data-slot][aria-invalid=true]]:ring-3 has-[[data-slot][aria-invalid=true]]:ring-destructive/20 dark:bg-input/30 dark:has-disabled:bg-input/80 dark:has-[[data-slot][aria-invalid=true]]:ring-destructive/40 has-[>[data-align=block-end]]:[&>input]:pt-3 has-[>[data-align=inline-end]]:[&>input]:pr-1.5 has-[>[data-align=block-start]]:[&>input]:pb-3 has-[>[data-align=inline-start]]:[&>input]:pl-1.5',
+        // base box: relative flex row, fixed height, full width, rounded border, color transition
+        'group/input-group relative flex h-8 w-full min-w-0 items-center rounded-lg border border-input outline-none transition-colors',
+        // combobox-content context: don't paint our own focus ring/border when nested in a combobox
+        'in-data-[slot=combobox-content]:focus-within:border-inherit in-data-[slot=combobox-content]:focus-within:ring-0',
+        // block alignment / textarea → grow to auto height and stack children in a column
+        'has-[>[data-align=block-end]]:h-auto has-[>[data-align=block-start]]:h-auto has-[>textarea]:h-auto has-[>[data-align=block-end]]:flex-col has-[>[data-align=block-start]]:flex-col',
+        // focus-within ring: when the control child is keyboard-focused, draw ring + border
+        'has-[[data-slot=input-group-control]:focus-visible]:border-ring has-[[data-slot=input-group-control]:focus-visible]:ring-3 has-[[data-slot=input-group-control]:focus-visible]:ring-ring/50',
+        // invalid state: when an aria-invalid child is present, switch border + ring to destructive
+        'has-[[data-slot][aria-invalid=true]]:border-destructive has-[[data-slot][aria-invalid=true]]:ring-3 has-[[data-slot][aria-invalid=true]]:ring-destructive/20 dark:has-[[data-slot][aria-invalid=true]]:ring-destructive/40',
+        // disabled state: dim and tint the box when a disabled child is present
+        'has-disabled:bg-input/50 has-disabled:opacity-50 dark:has-disabled:bg-input/80',
+        // dark mode base background
+        'dark:bg-input/30',
+        // per-align input padding: add inner spacing on the side the addon sits
+        'has-[>[data-align=block-end]]:[&>input]:pt-3 has-[>[data-align=inline-end]]:[&>input]:pr-1.5 has-[>[data-align=block-start]]:[&>input]:pb-3 has-[>[data-align=inline-start]]:[&>input]:pl-1.5',
         className,
       )}
       {...props}
@@ -22,14 +37,27 @@ function InputGroup({ className, ...props }: React.ComponentProps<'div'>) {
 }
 
 const inputGroupAddonVariants = cva(
-  "flex h-auto cursor-text select-none items-center justify-center gap-2 py-1.5 font-medium text-muted-foreground text-sm group-data-[disabled=true]/input-group:opacity-50 [&>kbd]:rounded-[calc(var(--radius)-5px)] [&>svg:not([class*='size-'])]:size-4",
+  [
+    // base: text-styled, non-selecting flex row that focuses its sibling input on click
+    'flex h-auto cursor-text select-none items-center justify-center gap-2 py-1.5 font-medium text-muted-foreground text-sm',
+    // dim alongside a disabled input group
+    'group-data-[disabled=true]/input-group:opacity-50',
+    // match kbd corner radius to the group
+    '[&>kbd]:rounded-[calc(var(--radius)-5px)]',
+    // default icon size for unsized svg children
+    "[&>svg:not([class*='size-'])]:size-4",
+  ],
   {
     variants: {
       align: {
+        // leading inline addon: sit left, pull buttons/kbd slightly into the edge
         'inline-start': 'order-first pl-2 has-[>button]:ml-[-0.3rem] has-[>kbd]:ml-[-0.15rem]',
+        // trailing inline addon: sit right, pull buttons/kbd slightly into the edge
         'inline-end': 'order-last pr-2 has-[>button]:mr-[-0.3rem] has-[>kbd]:mr-[-0.15rem]',
+        // top block addon: full-width row above the input; extra bottom pad when it has a bottom border
         'block-start':
           'order-first w-full justify-start px-2.5 pt-2 group-has-[>input]/input-group:pt-2 [.border-b]:pb-2',
+        // bottom block addon: full-width row below the input; extra top pad when it has a top border
         'block-end':
           'order-last w-full justify-start px-2.5 pb-2 group-has-[>input]/input-group:pb-2 [.border-t]:pt-2',
       },
@@ -63,19 +91,27 @@ function InputGroupAddon({
   )
 }
 
-const inputGroupButtonVariants = cva('flex items-center gap-2 text-sm shadow-none', {
-  variants: {
-    size: {
-      xs: "h-6 gap-1 rounded-[calc(var(--radius)-3px)] px-1.5 [&>svg:not([class*='size-'])]:size-3.5",
-      sm: '',
-      'icon-xs': 'size-6 rounded-[calc(var(--radius)-3px)] p-0 has-[>svg]:p-0',
-      'icon-sm': 'size-8 p-0 has-[>svg]:p-0',
+const inputGroupButtonVariants = cva(
+  // base: flat flex row, small text, no shadow
+  'flex items-center gap-2 text-sm shadow-none',
+  {
+    variants: {
+      size: {
+        // extra-small: short height, tighter gap/padding, smaller icons, slightly tighter corners
+        xs: "h-6 gap-1 rounded-[calc(var(--radius)-3px)] px-1.5 [&>svg:not([class*='size-'])]:size-3.5",
+        // small: inherit Button defaults
+        sm: '',
+        // square extra-small icon button: equal size, no padding, tighter corners
+        'icon-xs': 'size-6 rounded-[calc(var(--radius)-3px)] p-0 has-[>svg]:p-0',
+        // square small icon button: equal size, no padding
+        'icon-sm': 'size-8 p-0 has-[>svg]:p-0',
+      },
+    },
+    defaultVariants: {
+      size: 'xs',
     },
   },
-  defaultVariants: {
-    size: 'xs',
-  },
-})
+)
 
 function InputGroupButton({
   className,

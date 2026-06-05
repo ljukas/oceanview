@@ -22,6 +22,16 @@ function dispatch(queryClient: QueryClient, event: RealtimeEvent) {
       // ContactCard renders owned shares; keep that view in sync.
       void queryClient.invalidateQueries({ queryKey: orpc.user.listContacts.key() })
       return
+    case 'document.changed':
+      void queryClient.invalidateQueries({ queryKey: orpc.document.key() })
+      return
+    case 'folder.changed':
+      // A folder change rewrites descendant paths + document haystacks, so the
+      // document list and search results can shift too.
+      void queryClient.invalidateQueries({ queryKey: orpc.folder.key() })
+      void queryClient.invalidateQueries({ queryKey: orpc.document.key() })
+      void queryClient.invalidateQueries({ queryKey: orpc.documentSearch.key() })
+      return
   }
 }
 

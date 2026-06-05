@@ -1,0 +1,34 @@
+import { createFileRoute } from '@tanstack/react-router'
+import { Suspense } from 'react'
+import { DocumentBin } from '~/components/document/DocumentBin'
+import { orpc } from '~/lib/orpc/client'
+import { seo } from '~/utils/seo'
+
+export const Route = createFileRoute('/_authenticated/admin/documents/bin')({
+  head: () => ({
+    meta: seo({
+      title: 'Papperskorg | Oceanview',
+      description: 'Återställ eller radera borttagna dokument och mappar',
+    }),
+  }),
+  loader: async ({ context: { queryClient } }) => {
+    await queryClient.ensureQueryData(orpc.bin.list.queryOptions())
+  },
+  component: DocumentBinPage,
+})
+
+function DocumentBinPage() {
+  return (
+    <div className="flex flex-col gap-6 p-4 md:p-8">
+      <header className="flex flex-col gap-1">
+        <h1 className="font-semibold text-3xl tracking-tight md:text-4xl">Papperskorg</h1>
+        <p className="text-muted-foreground text-sm">
+          Borttagna mappar och dokument. Återställ dem eller radera dokument permanent.
+        </p>
+      </header>
+      <Suspense fallback={<div className="text-muted-foreground text-sm">Laddar…</div>}>
+        <DocumentBin />
+      </Suspense>
+    </div>
+  )
+}

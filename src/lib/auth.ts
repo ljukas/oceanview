@@ -60,7 +60,7 @@ export const auth = betterAuth({
         input: false,
       },
       // Blurhash of the user's avatar — written by the queue consumer
-      // after avatar upload (see server/plugins/blurhashQueue.ts). The
+      // after avatar upload (see server/plugins/queueConsumer.ts). The
       // client only reads it (input: false) to paint a placeholder
       // gradient under <AvatarImage>.
       imageBlurhash: {

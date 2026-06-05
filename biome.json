@@ -113,16 +113,6 @@
       }
     },
     {
-      "includes": ["**/*.test.ts", "**/*.test.tsx", "test/**"],
-      "linter": {
-        "rules": {
-          "style": {
-            "noRestrictedImports": "off"
-          }
-        }
-      }
-    },
-    {
       "includes": ["scripts/**"],
       "linter": {
         "rules": {
@@ -260,6 +250,16 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    {
+      "includes": ["**/*.test.ts", "**/*.test.tsx", "test/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": "off"
           }
         }
       }

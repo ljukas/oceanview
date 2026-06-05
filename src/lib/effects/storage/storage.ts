@@ -1,3 +1,5 @@
+import { lazy } from '../lazy'
+
 /**
  * Storage interface backed by one of three adapters:
  *   - `vercelBlob` — Vercel Blob in production.
@@ -49,35 +51,73 @@ export interface StorageEffects {
   delete(access: 'public' | 'private', pathname: string): Promise<void>
 
   /**
+   * Write bytes directly from a server-side context (background workers, not
+   * the oRPC upload path — browsers still upload via `mintUploadToken`). Used
+   * by the thumbnail worker to store a derived WebP in the public store.
+   * `pathname` is the logical path; the adapter env-prefixes it the same way
+   * `mintUploadToken` does, so a later `getReadUrl(access, pathname)` resolves.
+   */
+  put(
+    access: 'public' | 'private',
+    pathname: string,
+    bytes: Buffer,
+    contentType: string,
+  ): Promise<void>
+
+  /**
+   * Server-side copy of a stored object to a new logical pathname within the
+   * same access store. Used to "rename" a document's byte when its display name
+   * changes — the prod (Vercel Blob) download filename is the pathname basename,
+   * so the byte must physically move for a renamed document to download under
+   * its new name. Storage-to-storage: the bytes never transit a Function.
+   *
+   * `contentType` is REQUIRED because Vercel Blob's `copy` does not carry the
+   * source content type over (it would otherwise re-derive it from the
+   * destination extension). Pass the file row's stored mime. No-op backends
+   * (devLog) just resolve.
+   */
+  copy(
+    access: 'public' | 'private',
+    fromPathname: string,
+    toPathname: string,
+    contentType: string,
+  ): Promise<void>
+
+  /**
    * Download URL for a stored object. For `private`, returns a signed,
    * time-limited URL. For `public`, returns either the canonical public URL
    * (Vercel Blob) or a longer-lived presigned URL (S3 dev) — `ttlSeconds`
    * may be ignored for public on adapters whose public URLs don't expire.
+   *
+   * `opts.downloadFilename` forces a `Content-Disposition: attachment` with
+   * that filename on the response, so a renamed document downloads under its
+   * current display name. Honored on the S3 (dev) signed-URL path; Vercel Blob
+   * (prod) ignores it and serves the pathname basename, which `renameDocument`
+   * keeps in sync with the display name. See each adapter for support details.
    */
-  getReadUrl(access: 'public' | 'private', pathname: string, ttlSeconds: number): Promise<string>
+  getReadUrl(
+    access: 'public' | 'private',
+    pathname: string,
+    ttlSeconds: number,
+    opts?: { downloadFilename?: string },
+  ): Promise<string>
 }
 
-let cached: Promise<StorageEffects> | null = null
-
-async function getAdapter(): Promise<StorageEffects> {
-  if (cached) return cached
-  cached = (async () => {
-    if (process.env.STORAGE_ADAPTER === 'devLog') {
-      return (await import('./adapters/devLog')).devLog
-    }
-    // Local dev S3-compatible storage (RustFS in `compose.yaml`). Takes
-    // precedence over BLOB_* so `vercel env pull` doesn't accidentally route
-    // dev uploads at the real Vercel Blob CDN.
-    if (process.env.S3_ENDPOINT) {
-      return (await import('./adapters/s3')).s3
-    }
-    if (!process.env.BLOB_PUBLIC_READ_WRITE_TOKEN || !process.env.BLOB_PRIVATE_READ_WRITE_TOKEN) {
-      return (await import('./adapters/devLog')).devLog
-    }
-    return (await import('./adapters/vercelBlob')).vercelBlob
-  })()
-  return cached
-}
+const getAdapter = lazy(async (): Promise<StorageEffects> => {
+  if (process.env.STORAGE_ADAPTER === 'devLog') {
+    return (await import('./adapters/devLog')).devLog
+  }
+  // Local dev S3-compatible storage (RustFS in `compose.yaml`). Takes
+  // precedence over BLOB_* so `vercel env pull` doesn't accidentally route
+  // dev uploads at the real Vercel Blob CDN.
+  if (process.env.S3_ENDPOINT) {
+    return (await import('./adapters/s3')).s3
+  }
+  if (!process.env.BLOB_PUBLIC_READ_WRITE_TOKEN || !process.env.BLOB_PRIVATE_READ_WRITE_TOKEN) {
+    return (await import('./adapters/devLog')).devLog
+  }
+  return (await import('./adapters/vercelBlob')).vercelBlob
+})
 
 export const storage: StorageEffects = {
   async mintUploadToken(input) {
@@ -92,8 +132,16 @@ export const storage: StorageEffects = {
     const adapter = await getAdapter()
     return adapter.delete(access, pathname)
   },
-  async getReadUrl(access, pathname, ttlSeconds) {
+  async put(access, pathname, bytes, contentType) {
     const adapter = await getAdapter()
-    return adapter.getReadUrl(access, pathname, ttlSeconds)
+    return adapter.put(access, pathname, bytes, contentType)
+  },
+  async copy(access, fromPathname, toPathname, contentType) {
+    const adapter = await getAdapter()
+    return adapter.copy(access, fromPathname, toPathname, contentType)
+  },
+  async getReadUrl(access, pathname, ttlSeconds, opts) {
+    const adapter = await getAdapter()
+    return adapter.getReadUrl(access, pathname, ttlSeconds, opts)
   },
 }

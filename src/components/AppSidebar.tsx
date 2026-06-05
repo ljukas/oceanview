@@ -5,6 +5,7 @@ import {
   ContactIcon,
   FolderIcon,
   LogOutIcon,
+  Trash2Icon,
   UserIcon,
   UsersIcon,
 } from 'lucide-react'
@@ -31,7 +32,14 @@ type SidebarUser = {
 }
 
 type NavItem = {
-  to: '/' | '/contacts' | '/documents' | '/admin/users' | '/admin/shares' | '/konto'
+  to:
+    | '/'
+    | '/contacts'
+    | '/documents'
+    | '/admin/users'
+    | '/admin/shares'
+    | '/admin/documents/bin'
+    | '/konto'
   label: string
   icon: ComponentType<{ className?: string }>
 }
@@ -45,6 +53,7 @@ const mainNavItems: Array<NavItem> = [
 const adminNavItems: Array<NavItem> = [
   { to: '/admin/users', label: 'Användare', icon: UsersIcon },
   { to: '/admin/shares', label: 'Andelar', icon: AnchorIcon },
+  { to: '/admin/documents/bin', label: 'Papperskorg', icon: Trash2Icon },
 ]
 
 export function AppSidebar({ user }: { user: SidebarUser }) {

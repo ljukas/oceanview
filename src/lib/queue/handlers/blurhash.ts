@@ -15,7 +15,7 @@ export type BlurhashJobMetadata = {
 /**
  * Shared handler for the `blurhash` job. Invoked by both the Nitro
  * `vercel:queue` plugin (production) and the local BullMQ worker
- * (`scripts/devBlurhashWorker.ts`) so a single source of truth backs both
+ * (`scripts/devQueueWorker.ts`) so a single source of truth backs both
  * runtimes.
  *
  * The producer carries the `kind` of the file in the payload so downstream

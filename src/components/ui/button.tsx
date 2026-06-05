@@ -5,7 +5,20 @@ import type * as React from 'react'
 import { cn } from '~/lib/utils'
 
 const buttonVariants = cva(
-  "group/button inline-flex shrink-0 select-none items-center justify-center whitespace-nowrap rounded-lg border border-transparent bg-clip-padding font-medium text-sm outline-none transition-all focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 active:not-aria-[haspopup]:translate-y-px disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 [&_svg:not([class*='size-'])]:size-4 [&_svg]:pointer-events-none [&_svg]:shrink-0",
+  [
+    // base: inline flex, no-wrap, rounded, medium small text
+    'group/button inline-flex shrink-0 select-none items-center justify-center whitespace-nowrap rounded-lg border border-transparent bg-clip-padding font-medium text-sm outline-none transition-all',
+    // focus ring
+    'focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50',
+    // press: nudge down 1px, but not for menu/popover triggers
+    'active:not-aria-[haspopup]:translate-y-px',
+    // disabled
+    'disabled:pointer-events-none disabled:opacity-50',
+    // invalid state (aria-invalid + dark overrides)
+    'aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40',
+    // icons: default 1rem unless explicitly sized; non-interactive, no shrink
+    "[&_svg:not([class*='size-'])]:size-4 [&_svg]:pointer-events-none [&_svg]:shrink-0",
+  ],
   {
     variants: {
       variant: {
@@ -21,14 +34,36 @@ const buttonVariants = cva(
         link: 'text-primary underline-offset-4 hover:underline',
       },
       size: {
+        // default: tighter padding on the side that holds an inline icon
         default:
           'h-8 gap-1.5 px-2.5 has-data-[icon=inline-end]:pr-2 has-data-[icon=inline-start]:pl-2',
-        xs: "h-6 gap-1 in-data-[slot=button-group]:rounded-lg rounded-[min(var(--radius-md),10px)] px-2 text-xs has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 [&_svg:not([class*='size-'])]:size-3",
-        sm: "h-7 gap-1 in-data-[slot=button-group]:rounded-lg rounded-[min(var(--radius-md),12px)] px-2.5 text-[0.8rem] has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 [&_svg:not([class*='size-'])]:size-3.5",
+        xs: [
+          // size + spacing + extra-small text
+          'h-6 gap-1 px-2 text-xs',
+          // radius: clamped small radius, but square corners inside a button-group
+          'in-data-[slot=button-group]:rounded-lg rounded-[min(var(--radius-md),10px)]',
+          // padding: tighter on the side that holds an inline icon
+          'has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5',
+          // smaller default icon size
+          "[&_svg:not([class*='size-'])]:size-3",
+        ],
+        sm: [
+          // size + spacing + slightly-smaller text
+          'h-7 gap-1 px-2.5 text-[0.8rem]',
+          // radius: clamped small radius, but square corners inside a button-group
+          'in-data-[slot=button-group]:rounded-lg rounded-[min(var(--radius-md),12px)]',
+          // padding: tighter on the side that holds an inline icon
+          'has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5',
+          // smaller default icon size
+          "[&_svg:not([class*='size-'])]:size-3.5",
+        ],
+        // large: tighter padding on the side that holds an inline icon
         lg: 'h-9 gap-1.5 px-2.5 has-data-[icon=inline-end]:pr-2 has-data-[icon=inline-start]:pl-2',
         icon: 'size-8',
+        // icon-xs: square; clamped radius, but square corners inside a button-group; smaller icon
         'icon-xs':
           "size-6 in-data-[slot=button-group]:rounded-lg rounded-[min(var(--radius-md),10px)] [&_svg:not([class*='size-'])]:size-3",
+        // icon-sm: square; clamped radius, but square corners inside a button-group
         'icon-sm':
           'size-7 in-data-[slot=button-group]:rounded-lg rounded-[min(var(--radius-md),12px)]',
         'icon-lg': 'size-9',

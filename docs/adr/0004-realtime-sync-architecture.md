@@ -153,6 +153,7 @@ export const realtimeEventSchema = z.discriminatedUnion('kind', [
 - `kind` is always `<namespace>.changed`, where `<namespace>` is the top-level `appRouter` key the client should invalidate. Today: `user.changed` → invalidates `orpc.user.key()`. Tomorrow: `season.changed` → `orpc.season.key()`, `share.changed` → `orpc.share.key()`.
 - `ids` is metadata, not a payload. Coarse invalidation ignores it. It exists so a future fine-grained variant can patch the cache without a schema break.
 - One variant per entity is the default. Don't pre-split into `user.created` / `user.updated` / `user.deleted` — the client doesn't care which mutation happened, only that the namespace is dirty.
+- **Compound publishes are fine when one mutation dirties more than one namespace.** A procedure may publish several events in sequence. `src/lib/orpc/procedures/folder.ts` does this: a folder rename/move/soft-delete/restore publishes both `folder.changed` *and* `document.changed`, because folder path changes flow into the denormalized document search haystack and a folder cascade soft-deletes its documents. The rule is still "thin event, fat refetch" per namespace — just emit one per dirtied namespace. The schema also carries cross-namespace coupling the other direction: `share.changed` is dispatched in the hook to invalidate both `orpc.share` and `orpc.user.listContacts`.
 
 ### Why this is a deep module
 
@@ -170,6 +171,8 @@ In the architecture skill's vocabulary:
 ### Single-instance Vercel fluid compute
 
 The in-memory `MemoryPublisher` works **only** because publisher and subscriber are in the same Node process. Vercel's fluid compute keeps a single instance warm under our load profile, so a mutation in tab A and the SSE handler serving tab B run inside the same process. If we ever scale to >1 instance — explicit horizontal scaling, region failover, or anything else that splits the process pool — events published on one instance are invisible to subscribers on others. That's a revisit trigger, not a current concern. The migration when it lands is: write a new adapter (Postgres `LISTEN/NOTIFY` is the cheapest first step — no new vendor) and point `realtime` at it. Publish and subscribe call sites don't change.
+
+> The **presence** subsystem ([ADR-0011](./0011-presence-online-status-architecture.md)) rides this same bus and shares this exact assumption: its `presence.changed` variant is published from this ADR's SSE procedure on the `0→1` / `1→0` connection transitions, and its refcount store is in-process for the same reason `MemoryPublisher` is. When this single-instance assumption is broken, realtime and presence migrate to a distributed adapter together.
 
 ### Reconnection
 

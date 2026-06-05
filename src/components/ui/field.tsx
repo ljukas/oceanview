@@ -9,7 +9,10 @@ function FieldSet({ className, ...props }: React.ComponentProps<'fieldset'>) {
     <fieldset
       data-slot="field-set"
       className={cn(
-        'flex flex-col gap-4 has-[>[data-slot=checkbox-group]]:gap-3 has-[>[data-slot=radio-group]]:gap-3',
+        // Layout: vertical stack
+        'flex flex-col gap-4',
+        // Tighter gap when wrapping a checkbox/radio group
+        'has-[>[data-slot=checkbox-group]]:gap-3 has-[>[data-slot=radio-group]]:gap-3',
         className,
       )}
       {...props}
@@ -40,7 +43,12 @@ function FieldGroup({ className, ...props }: React.ComponentProps<'div'>) {
     <div
       data-slot="field-group"
       className={cn(
-        'group/field-group @container/field-group flex w-full flex-col gap-5 data-[slot=checkbox-group]:gap-3 *:data-[slot=field-group]:gap-4',
+        // Container-query context for child Fields, plus group hook
+        'group/field-group @container/field-group',
+        // Layout: vertical stack
+        'flex w-full flex-col gap-5',
+        // Tighter gap for checkbox groups; nested field-groups
+        'data-[slot=checkbox-group]:gap-3 *:data-[slot=field-group]:gap-4',
         className,
       )}
       {...props}
@@ -48,20 +56,45 @@ function FieldGroup({ className, ...props }: React.ComponentProps<'div'>) {
   )
 }
 
-const fieldVariants = cva('group/field flex w-full gap-2 data-[invalid=true]:text-destructive', {
-  variants: {
-    orientation: {
-      vertical: 'flex-col *:w-full [&>.sr-only]:w-auto',
-      horizontal:
-        'flex-row items-center has-[>[data-slot=field-content]]:items-start *:data-[slot=field-label]:flex-auto has-[>[data-slot=field-content]]:[&>[role=checkbox],[role=radio]]:mt-px',
-      responsive:
-        '@md/field-group:flex-row flex-col @md/field-group:items-center *:w-full @md/field-group:*:w-auto @md/field-group:has-[>[data-slot=field-content]]:items-start @md/field-group:*:data-[slot=field-label]:flex-auto [&>.sr-only]:w-auto @md/field-group:has-[>[data-slot=field-content]]:[&>[role=checkbox],[role=radio]]:mt-px',
+const fieldVariants = cva(
+  // Base: group hook, flex row by default, invalid state turns destructive
+  'group/field flex w-full gap-2 data-[invalid=true]:text-destructive',
+  {
+    variants: {
+      orientation: {
+        // Stacked label-over-control; children full-width except visually-hidden labels
+        vertical: ['flex-col', '*:w-full [&>.sr-only]:w-auto'],
+        // Label beside control on one row
+        horizontal: [
+          // Direction + alignment
+          'flex-row items-center',
+          // Let the label grow to fill the row
+          '*:data-[slot=field-label]:flex-auto',
+          // When a field-content block is present: top-align and nudge the checkbox/radio
+          'has-[>[data-slot=field-content]]:items-start',
+          'has-[>[data-slot=field-content]]:[&>[role=checkbox],[role=radio]]:mt-px',
+        ],
+        // Stacked on narrow groups, switches to horizontal at the field-group @md breakpoint
+        responsive: [
+          // Direction: column by default, row at @md
+          '@md/field-group:flex-row flex-col',
+          // Alignment: center children once horizontal
+          '@md/field-group:items-center',
+          // Width: full when stacked, auto once horizontal; visually-hidden labels stay auto
+          '*:w-full @md/field-group:*:w-auto [&>.sr-only]:w-auto',
+          // Let the label grow to fill the row once horizontal
+          '@md/field-group:*:data-[slot=field-label]:flex-auto',
+          // When a field-content block is present (horizontal): top-align and nudge the checkbox/radio
+          '@md/field-group:has-[>[data-slot=field-content]]:items-start',
+          '@md/field-group:has-[>[data-slot=field-content]]:[&>[role=checkbox],[role=radio]]:mt-px',
+        ],
+      },
+    },
+    defaultVariants: {
+      orientation: 'vertical',
     },
   },
-  defaultVariants: {
-    orientation: 'vertical',
-  },
-})
+)
 
 function Field({
   className,
@@ -94,7 +127,15 @@ function FieldLabel({ className, ...props }: React.ComponentProps<typeof Label>)
     <Label
       data-slot="field-label"
       className={cn(
-        'group/field-label peer/field-label flex w-fit gap-2 leading-snug has-[>[data-slot=field]]:rounded-lg has-[>[data-slot=field]]:border has-data-checked:border-primary/30 has-data-checked:bg-primary/5 *:data-[slot=field]:p-2.5 group-data-[disabled=true]/field:opacity-50 dark:has-data-checked:border-primary/20 dark:has-data-checked:bg-primary/10',
+        // Base: group/peer hooks, inline label sizing
+        'group/field-label peer/field-label flex w-fit gap-2 leading-snug',
+        // Card styling when the label wraps a nested field (e.g. selectable card)
+        'has-[>[data-slot=field]]:rounded-lg has-[>[data-slot=field]]:border *:data-[slot=field]:p-2.5',
+        // Checked state highlight (with dark-mode variant)
+        'has-data-checked:border-primary/30 has-data-checked:bg-primary/5 dark:has-data-checked:border-primary/20 dark:has-data-checked:bg-primary/10',
+        // Dim when the parent field is disabled
+        'group-data-[disabled=true]/field:opacity-50',
+        // Card layout: full-width, stacked
         'has-[>[data-slot=field]]:w-full has-[>[data-slot=field]]:flex-col',
         className,
       )}
@@ -121,8 +162,13 @@ function FieldDescription({ className, ...props }: React.ComponentProps<'p'>) {
     <p
       data-slot="field-description"
       className={cn(
-        'text-left font-normal text-muted-foreground text-sm leading-normal group-has-data-horizontal/field:text-balance [[data-variant=legend]+&]:-mt-1.5',
+        // Base muted helper text; balance text inside a horizontal field
+        'text-left font-normal text-muted-foreground text-sm leading-normal group-has-data-horizontal/field:text-balance',
+        // Tighten gap right after a legend
+        '[[data-variant=legend]+&]:-mt-1.5',
+        // Spacing tweaks by position in the field
         'nth-last-2:-mt-1 last:mt-0',
+        // Inline link styling
         '[&>a:hover]:text-primary [&>a]:underline [&>a]:underline-offset-4',
         className,
       )}

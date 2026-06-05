@@ -1,4 +1,5 @@
 import {
+  CopyObjectCommand,
   DeleteObjectCommand,
   GetObjectCommand,
   HeadObjectCommand,
@@ -6,6 +7,7 @@ import {
   S3Client,
 } from '@aws-sdk/client-s3'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
+import { contentDispositionAttachment } from '~/utils/filename'
 import type { StorageEffects } from '../storage'
 
 // Same upload-window TTL the vercelBlob adapter uses for `clientToken`.
@@ -106,13 +108,49 @@ export const s3: StorageEffects = {
     await client.send(new DeleteObjectCommand({ Bucket: bucketFor(access), Key: pathname }))
   },
 
-  async getReadUrl(access, pathname, ttlSeconds) {
+  async put(access, pathname, bytes, contentType) {
+    await client.send(
+      new PutObjectCommand({
+        Bucket: bucketFor(access),
+        Key: pathname,
+        Body: bytes,
+        ContentType: contentType,
+      }),
+    )
+  },
+
+  async copy(access, fromPathname, toPathname, contentType) {
+    const bucket = bucketFor(access)
+    await client.send(
+      new CopyObjectCommand({
+        Bucket: bucket,
+        // CopySource is `{bucket}/{key}`; encode so keys with spaces or other
+        // URL-reserved characters resolve to the right object.
+        CopySource: encodeURI(`${bucket}/${fromPathname}`),
+        Key: toPathname,
+        // MetadataDirective REPLACE so the re-passed content type is applied to
+        // the destination instead of being copied from the source object.
+        ContentType: contentType,
+        MetadataDirective: 'REPLACE',
+      }),
+    )
+  },
+
+  async getReadUrl(access, pathname, ttlSeconds, opts) {
     if (access === 'public') {
       return publicReadUrl(bucketFor(access), pathname)
     }
     return getSignedUrl(
       client,
-      new GetObjectCommand({ Bucket: bucketFor(access), Key: pathname }),
+      new GetObjectCommand({
+        Bucket: bucketFor(access),
+        Key: pathname,
+        // S3 echoes this back as the response's Content-Disposition, so the
+        // browser saves the file under the document's current display name.
+        ...(opts?.downloadFilename
+          ? { ResponseContentDisposition: contentDispositionAttachment(opts.downloadFilename) }
+          : {}),
+      }),
       { expiresIn: ttlSeconds },
     )
   },

@@ -9,6 +9,12 @@
 
 > **Amended 2026-05-25.** The tier-3 ("Durable / deferred") passages — TL;DR row, the durability footnote under "Why not pub/sub?", **Approach comparison D**, and the section formerly titled *"When to reach for tier 3 (outbox)"* — are superseded by **[ADR-0007 — Background-Job Queue Architecture](./0007-background-job-queue-architecture.md)**. The durable tier landed as Vercel Queues + a shared handler (BullMQ + Redis in local dev), not the speculated Postgres outbox + cron worker. The trigger wasn't durability; it was latency + CPU offload (blurhash). The outbox shape stays *available* as a layered option for a future effect that genuinely needs DB-atomic enqueue, but is no longer the recommended default for tier 3 — see ADR-0007. Everything else in this ADR (tiers 1 and 2, the `effects/` seam, why not pub/sub at points 1–3 and 5) stands as originally written.
 
+> **Amended 2026-06-04** (implementation reality — the seam stands, these details drifted):
+> - **No `runEffect.ts` helper.** Tier-2 fire-and-forget is expressed inline at the call site as `effects.x.y(...).catch((error) => context.log.warn(...))`, plus Better Auth's `backgroundTasks` / Vercel `waitUntil()` where work must outlive the response. The `runEffect(tag, fn)` wrapper described below and in Phase 1 was never built; read its mentions as "the tier-2 contract" (catch + log, never throw to caller), not a literal function.
+> - **No `audit` effect.** `effects.audit` / `src/lib/effects/audit/` shown in the namespace tree and call-site examples is illustrative only — it was never implemented (correctly deferred per Phase 1 point 5). Ignore it as a current file.
+> - **`email` ships three adapters**, not two: `resend` (prod), `smtp` (dev → Mailpit), `devLog` (test). See [ADR-0008](./0008-email-architecture.md). The "two adapters from day one" line is about the seam being real; three only strengthens it.
+> - **The effects inventory is wider than email/storage/queue.** Two **in-process** effects also live under `src/lib/effects/` and follow the same seam, but own in-process state rather than the outside world: `realtime` (SSE pub/sub — see [ADR-0004](./0004-realtime-sync-architecture.md)) and `presence` (online/away tracking — see [ADR-0011](./0011-presence-online-status-architecture.md)). The "effects own the outside world" framing below predates them; treat in-process effects as a sanctioned second category.
+
 ---
 
 ## Context

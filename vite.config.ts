@@ -49,8 +49,8 @@ export default defineConfig({
           // TanStack Start manages Nitro's serverDir; declare the queue
           // consumer plugin explicitly so it survives the rolldown bundle.
           // The file uses the `vercel:queue` runtime hook — see
-          // `server/plugins/blurhashQueue.ts`.
-          plugins: ['./server/plugins/blurhashQueue.ts'],
+          // `server/plugins/queueConsumer.ts`.
+          plugins: ['./server/plugins/queueConsumer.ts'],
           // Activates Vercel Image Optimization for `/_vercel/image?url=…&w=…&q=…`.
           // The `unpic/providers/vercel` transformer (used by ~/lib/image/transformer)
           // produces URLs that resolve here in production. In `pnpm dev` the
@@ -72,12 +72,14 @@ export default defineConfig({
                 minimumCacheTTL: 2_678_400,
               },
             },
-            // Subscribes the Vercel preset's queue handler to the `blurhash`
-            // topic. Producers call `queue.publish('blurhash', { fileId })`
-            // from oRPC procedures; the consumer lives in
-            // `server/plugins/blurhashQueue.ts` (vercel:queue hook).
+            // Subscribes the Vercel preset's queue handler to each topic.
+            // Producers call `queue.publish('<topic>', …)` from oRPC
+            // procedures; the consumer lives in
+            // `server/plugins/queueConsumer.ts` (vercel:queue hook), which
+            // dispatches by topic name. `pdf_thumbnail` is reserved but not
+            // yet produced/consumed — no trigger until the renderer ships.
             queues: {
-              triggers: [{ topic: 'blurhash' }],
+              triggers: [{ topic: 'blurhash' }, { topic: 'image_thumbnail' }],
             },
           },
           rollupConfig: {

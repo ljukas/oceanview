@@ -1,7 +1,4 @@
-export type FileDomainErrorCode =
-  | 'NOT_FOUND'
-  | 'CANNOT_DELETE_OTHERS_FILE'
-  | 'CANNOT_DELETE_AVATAR_VIA_DOCUMENT_DELETE'
+export type FileDomainErrorCode = 'NOT_FOUND'
 
 export class FileDomainError extends Error {
   constructor(public readonly code: FileDomainErrorCode) {

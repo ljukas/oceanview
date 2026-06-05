@@ -12,10 +12,8 @@ export const file = pgTable(
       .notNull()
       .references(() => user.id, { onDelete: 'cascade' }),
     pathname: text('pathname').notNull().unique(),
-    name: text('name').notNull(),
     mime: text('mime').notNull(),
     sizeBytes: integer('size_bytes').notNull(),
-    folder: text('folder'),
     access: fileAccessEnum('access').notNull(),
     blurhash: text('blurhash'),
     uploadedAt: timestamp('uploaded_at', { withTimezone: true }).defaultNow().notNull(),

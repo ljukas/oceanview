@@ -1,6 +1,6 @@
-import { and, desc, eq, inArray, isNull } from 'drizzle-orm'
+import { and, eq, inArray, isNull } from 'drizzle-orm'
 import { db } from '~/lib/db'
-import { file, user } from '~/lib/db/schema'
+import { file } from '~/lib/db/schema'
 import { FileDomainError } from './errors'
 
 export type FileAccess = 'public' | 'private'
@@ -9,36 +9,26 @@ export type FileRow = {
   id: string
   ownerId: string
   pathname: string
-  name: string
   mime: string
   sizeBytes: number
-  folder: string | null
   access: FileAccess
   blurhash: string | null
   uploadedAt: Date
   deletedAt: Date | null
 }
 
-export type DocumentRow = FileRow & { ownerName: string }
-
-export type ConfirmUploadInput = {
-  ownerId: string
+export type AvatarUploadInput = {
   pathname: string
-  name: string
   mime: string
   sizeBytes: number
-  folder?: string | null
-  access: FileAccess
 }
 
 const fileSelection = {
   id: file.id,
   ownerId: file.ownerId,
   pathname: file.pathname,
-  name: file.name,
   mime: file.mime,
   sizeBytes: file.sizeBytes,
-  folder: file.folder,
   access: file.access,
   blurhash: file.blurhash,
   uploadedAt: file.uploadedAt,
@@ -56,20 +46,13 @@ export async function findActiveById(id: string): Promise<FileRow | null> {
   return row
 }
 
-export async function confirmUpload(input: ConfirmUploadInput): Promise<FileRow> {
-  const [row] = await db
-    .insert(file)
-    .values({
-      ownerId: input.ownerId,
-      pathname: input.pathname,
-      name: input.name,
-      mime: input.mime,
-      sizeBytes: input.sizeBytes,
-      folder: input.folder ?? null,
-      access: input.access,
-    })
-    .returning(fileSelection)
-  return row
+/**
+ * Repoint a file row at a new storage pathname after the byte has been moved
+ * (e.g. a document rename, which copies the blob to a basename matching the new
+ * display name). Identity stays on `file.id`; only the storage path changes.
+ */
+export async function updatePathname(input: { fileId: string; pathname: string }): Promise<void> {
+  await db.update(file).set({ pathname: input.pathname }).where(eq(file.id, input.fileId))
 }
 
 export async function setBlurhash(input: { fileId: string; blurhash: string }): Promise<void> {
@@ -77,16 +60,6 @@ export async function setBlurhash(input: { fileId: string; blurhash: string }): 
     .update(file)
     .set({ blurhash: input.blurhash })
     .where(and(eq(file.id, input.fileId), isNull(file.deletedAt)))
-}
-
-export async function listAllDocuments(): Promise<Array<DocumentRow>> {
-  const rows = await db
-    .select({ ...fileSelection, ownerName: user.name })
-    .from(file)
-    .innerJoin(user, eq(file.ownerId, user.id))
-    .where(and(eq(file.access, 'private'), isNull(file.deletedAt)))
-    .orderBy(desc(file.uploadedAt))
-  return rows
 }
 
 /**
@@ -97,7 +70,7 @@ export async function listAllDocuments(): Promise<Array<DocumentRow>> {
  */
 export async function replaceAvatarForUser(input: {
   userId: string
-  newRow: Omit<ConfirmUploadInput, 'ownerId' | 'access'>
+  newRow: AvatarUploadInput
 }): Promise<{ newRow: FileRow; previousPathnames: Array<string> }> {
   return db.transaction(async (tx) => {
     const previous = await tx
@@ -110,10 +83,8 @@ export async function replaceAvatarForUser(input: {
       .values({
         ownerId: input.userId,
         pathname: input.newRow.pathname,
-        name: input.newRow.name,
         mime: input.newRow.mime,
         sizeBytes: input.newRow.sizeBytes,
-        folder: input.newRow.folder ?? null,
         access: 'public',
       })
       .returning(fileSelection)
@@ -134,27 +105,20 @@ export async function replaceAvatarForUser(input: {
   })
 }
 
-export async function softDelete(input: {
-  id: string
-  actingUserId: string
-  actingUserRole: string | null
-}): Promise<FileRow> {
-  const target = await findById(input.id)
+/**
+ * Soft-delete a file row by id. The byte-handle level only — document soft-delete
+ * touches document.deleted_at and leaves the byte alone; this is for direct byte
+ * lifecycle ops (e.g. orphaned-avatar cleanup outside of replaceAvatarForUser).
+ */
+export async function softDelete(id: string): Promise<FileRow> {
+  const target = await findById(id)
   if (!target) throw new FileDomainError('NOT_FOUND')
   if (target.deletedAt) return target
-
-  if (target.access === 'public') {
-    throw new FileDomainError('CANNOT_DELETE_AVATAR_VIA_DOCUMENT_DELETE')
-  }
-
-  if (input.actingUserRole !== 'admin' && target.ownerId !== input.actingUserId) {
-    throw new FileDomainError('CANNOT_DELETE_OTHERS_FILE')
-  }
 
   const [row] = await db
     .update(file)
     .set({ deletedAt: new Date() })
-    .where(eq(file.id, input.id))
+    .where(eq(file.id, id))
     .returning(fileSelection)
   return row
 }

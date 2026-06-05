@@ -1,10 +1,14 @@
 import { onError } from '@orpc/server'
 import { RPCHandler } from '@orpc/server/fetch'
+import { BatchHandlerPlugin } from '@orpc/server/plugins'
 import { createFileRoute } from '@tanstack/react-router'
 import { createRequestLogger, logger } from '~/lib/logger/server'
 import { appRouter } from '~/lib/orpc/router'
 
 const handler = new RPCHandler(appRouter, {
+  // Accepts batched requests at /api/rpc/__batch__. The client batches only the
+  // per-tile thumbnail `previewUrl` lookups (see orpc/client.ts).
+  plugins: [new BatchHandlerPlugin()],
   interceptors: [
     onError((error) => {
       logger.error('orpc handler error', { error })

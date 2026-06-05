@@ -1,89 +1,129 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { UploadIcon } from 'lucide-react'
-import { useRef, useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
+import { forwardRef, type ReactNode, useCallback, useImperativeHandle } from 'react'
+import { useDropzone } from 'react-dropzone'
 import { toast } from 'sonner'
-import { Button } from '~/components/ui/button'
-import { Spinner } from '~/components/ui/spinner'
-import { uploadFileToStorage } from '~/lib/effects/storage/clientUpload'
-import { orpc } from '~/lib/orpc/client'
+import { Progress } from '~/components/ui/progress'
+import { useUploadQueue } from '~/hooks/useUploadQueue'
+import { runUploadFlow } from '~/lib/effects/storage/clientUpload'
+import { client, orpc } from '~/lib/orpc/client'
+import { cn } from '~/lib/utils'
 
-const ACCEPT_LIST = [
-  'application/pdf',
-  'image/jpeg',
-  'image/png',
-  'image/webp',
-  'image/heic',
-  'application/msword',
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-] as const
-const ACCEPT = ACCEPT_LIST.join(',')
-const MAX_BYTES = 25_000_000
+const MAX_BYTES = 100_000_000
 
-type DocumentMime = (typeof ACCEPT_LIST)[number]
-
-function isDocumentMime(value: string): value is DocumentMime {
-  return (ACCEPT_LIST as readonly string[]).includes(value)
+type Props = {
+  folderId: string | null
+  children: ReactNode
 }
 
-export function DocumentUpload() {
+export type DocumentUploadHandle = { open: () => void }
+
+/**
+ * Drop zone wrapping the document list. Dragging OS files anywhere over the
+ * list runs the three-step upload flow per file in parallel, into the current
+ * folder. Progress is announced via aria-live. The file picker is opened via
+ * the imperative `open()` handle (the trigger button lives in the page
+ * toolbar).
+ */
+export const DocumentUpload = forwardRef<DocumentUploadHandle, Props>(function DocumentUpload(
+  { folderId, children },
+  ref,
+) {
   const queryClient = useQueryClient()
-  const inputRef = useRef<HTMLInputElement>(null)
-  const [pending, setPending] = useState(false)
+  const { uploads, run } = useUploadQueue()
 
-  const mintMutation = useMutation(orpc.file.mintDocumentUpload.mutationOptions())
-  const confirmMutation = useMutation(orpc.file.confirmDocumentUpload.mutationOptions())
+  const handleFiles = useCallback(
+    async (files: Array<File>) => {
+      const accepted = files.filter((f) => {
+        if (f.size > MAX_BYTES) {
+          toast.error(`"${f.name}" är för stor (max 100 MB)`)
+          return false
+        }
+        return true
+      })
+      if (accepted.length === 0) return
 
-  async function handleFile(file: File) {
-    if (file.size > MAX_BYTES) {
-      toast.error('Filen är för stor (max 25 MB)')
-      return
-    }
-    if (!isDocumentMime(file.type)) {
-      toast.error('Filtypen stöds inte')
-      return
-    }
-    setPending(true)
-    try {
-      const mint = await mintMutation.mutateAsync({
-        contentType: file.type,
-        sizeBytes: file.size,
-        name: file.name,
+      const { ok } = await run(accepted, async (file, onProgress) => {
+        try {
+          const contentType = file.type || 'application/octet-stream'
+          await runUploadFlow(file, {
+            access: 'private',
+            contentType,
+            mint: () =>
+              client.document.mintDocumentUpload({
+                contentType,
+                sizeBytes: file.size,
+                name: file.name,
+              }),
+            confirm: (mint) =>
+              client.document.confirmDocumentUpload({
+                pathname: mint.pathname,
+                name: file.name,
+                sizeBytes: file.size,
+                folderId,
+              }),
+            onProgress,
+          })
+        } catch (err) {
+          toast.error(
+            `Kunde inte ladda upp "${file.name}": ${err instanceof Error ? err.message : 'okänt fel'}`,
+          )
+          throw err
+        }
       })
 
-      await uploadFileToStorage(file, mint, { access: 'private', contentType: file.type })
+      await queryClient.invalidateQueries({ queryKey: orpc.document.key() })
+      // Announce completion via a toast (sonner is a live region) rather than
+      // re-announcing every progress tick.
+      if (ok > 0) {
+        toast.success(`${ok} ${ok === 1 ? 'dokument uppladdat' : 'dokument uppladdade'}`)
+      }
+    },
+    [folderId, queryClient, run],
+  )
 
-      await confirmMutation.mutateAsync({
-        pathname: mint.pathname,
-        name: file.name,
-        sizeBytes: file.size,
-      })
+  const { getRootProps, getInputProps, isDragActive, open } = useDropzone({
+    onDrop: (files) => void handleFiles(files),
+    noClick: true,
+    noKeyboard: true,
+  })
 
-      await queryClient.invalidateQueries({ queryKey: orpc.file.listDocuments.key() })
-      toast.success('Dokumentet laddades upp')
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Kunde inte ladda upp filen')
-    } finally {
-      setPending(false)
-      if (inputRef.current) inputRef.current.value = ''
-    }
-  }
+  useImperativeHandle(ref, () => ({ open }), [open])
 
   return (
-    <>
-      <input
-        ref={inputRef}
-        type="file"
-        accept={ACCEPT}
-        className="sr-only"
-        onChange={(e) => {
-          const f = e.target.files?.[0]
-          if (f) void handleFile(f)
-        }}
-      />
-      <Button onClick={() => inputRef.current?.click()} disabled={pending}>
-        {pending ? <Spinner data-icon="inline-start" /> : <UploadIcon />}
-        Ladda upp dokument
-      </Button>
-    </>
+    <div className="flex flex-col gap-3">
+      <div
+        {...getRootProps()}
+        className={cn(
+          'relative rounded-lg transition-colors',
+          isDragActive && 'outline-dashed outline-2 outline-ring outline-offset-4',
+        )}
+      >
+        <input {...getInputProps()} />
+        {isDragActive ? (
+          <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-lg bg-background/80">
+            <p className="font-medium text-sm">Släpp filerna för att ladda upp…</p>
+          </div>
+        ) : null}
+        {children}
+      </div>
+
+      {uploads.length > 0 ? (
+        <ul className="flex flex-col gap-2">
+          {uploads.map((u) => (
+            <li key={u.id} className="flex flex-col gap-1 rounded-md border p-2">
+              <div className="flex items-center justify-between gap-2 text-sm">
+                <span className="truncate">{u.name}</span>
+                <span className="shrink-0 text-muted-foreground text-xs tabular-nums">
+                  {u.status === 'error' ? 'Misslyckades' : `Laddar upp… ${Math.round(u.pct)}%`}
+                </span>
+              </div>
+              {u.status === 'uploading' ? (
+                <Progress value={u.pct} aria-label={`Laddar upp ${u.name}`} />
+              ) : null}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
   )
-}
+})

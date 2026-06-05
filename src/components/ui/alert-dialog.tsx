@@ -27,7 +27,12 @@ function AlertDialogOverlay({
     <AlertDialogPrimitive.Overlay
       data-slot="alert-dialog-overlay"
       className={cn(
-        'data-open:fade-in-0 data-closed:fade-out-0 fixed inset-0 z-50 bg-black/10 duration-100 data-closed:animate-out data-open:animate-in supports-backdrop-filter:backdrop-blur-xs',
+        // enter/exit animations: fade in on open, fade out on close
+        'data-open:fade-in-0 data-closed:fade-out-0 duration-100 data-closed:animate-out data-open:animate-in',
+        // positioning: full-screen backdrop above content layers
+        'fixed inset-0 z-50',
+        // appearance: dim + optional backdrop blur when supported
+        'bg-black/10 supports-backdrop-filter:backdrop-blur-xs',
         className,
       )}
       {...props}
@@ -49,7 +54,16 @@ function AlertDialogContent({
         data-slot="alert-dialog-content"
         data-size={size}
         className={cn(
-          'group/alert-dialog-content data-open:fade-in-0 data-open:zoom-in-95 data-closed:fade-out-0 data-closed:zoom-out-95 fixed top-1/2 left-1/2 z-50 grid w-full -translate-x-1/2 -translate-y-1/2 gap-4 rounded-xl bg-popover p-4 text-popover-foreground outline-none ring-1 ring-foreground/10 duration-100 data-[size=default]:max-w-xs data-[size=sm]:max-w-xs data-closed:animate-out data-open:animate-in data-[size=default]:sm:max-w-sm',
+          // group container: lets children react to this content's data-size/data-slot state
+          'group/alert-dialog-content',
+          // enter/exit animations: fade + zoom on open, reverse on close
+          'data-open:fade-in-0 data-open:zoom-in-95 data-closed:fade-out-0 data-closed:zoom-out-95 duration-100 data-closed:animate-out data-open:animate-in',
+          // positioning: centered above overlay
+          'fixed top-1/2 left-1/2 z-50 -translate-x-1/2 -translate-y-1/2',
+          // box/layout: grid panel with padding, rounding, ring border
+          'grid w-full gap-4 rounded-xl bg-popover p-4 text-popover-foreground outline-none ring-1 ring-foreground/10',
+          // sizing variants: max-width per data-size, wider at sm+ for default
+          'data-[size=default]:max-w-xs data-[size=sm]:max-w-xs data-[size=default]:sm:max-w-sm',
           className,
         )}
         {...props}
@@ -63,7 +77,14 @@ function AlertDialogHeader({ className, ...props }: React.ComponentProps<'div'>)
     <div
       data-slot="alert-dialog-header"
       className={cn(
-        'grid grid-rows-[auto_1fr] place-items-center gap-1.5 text-center has-data-[slot=alert-dialog-media]:grid-rows-[auto_auto_1fr] has-data-[slot=alert-dialog-media]:gap-x-4 sm:group-data-[size=default]/alert-dialog-content:place-items-start sm:group-data-[size=default]/alert-dialog-content:text-left sm:group-data-[size=default]/alert-dialog-content:has-data-[slot=alert-dialog-media]:grid-rows-[auto_1fr]',
+        // box/layout: centered stacked grid
+        'grid grid-rows-[auto_1fr] place-items-center gap-1.5 text-center',
+        // has-* conditional layout: extra row + column gap when a media slot is present
+        'has-data-[slot=alert-dialog-media]:grid-rows-[auto_auto_1fr] has-data-[slot=alert-dialog-media]:gap-x-4',
+        // responsive: default-size content left-aligns at sm+
+        'sm:group-data-[size=default]/alert-dialog-content:place-items-start sm:group-data-[size=default]/alert-dialog-content:text-left',
+        // responsive + has-*: default-size content with media collapses back to two rows at sm+
+        'sm:group-data-[size=default]/alert-dialog-content:has-data-[slot=alert-dialog-media]:grid-rows-[auto_1fr]',
         className,
       )}
       {...props}
@@ -76,7 +97,12 @@ function AlertDialogFooter({ className, ...props }: React.ComponentProps<'div'>)
     <div
       data-slot="alert-dialog-footer"
       className={cn(
-        '-mx-4 -mb-4 flex flex-col-reverse gap-2 rounded-b-xl border-t bg-muted/50 p-4 group-data-[size=sm]/alert-dialog-content:grid group-data-[size=sm]/alert-dialog-content:grid-cols-2 sm:flex-row sm:justify-end',
+        // box/layout: full-bleed footer bar with top border and muted background
+        '-mx-4 -mb-4 flex flex-col-reverse gap-2 rounded-b-xl border-t bg-muted/50 p-4',
+        // sizing variant: sm content lays buttons out as a two-column grid
+        'group-data-[size=sm]/alert-dialog-content:grid group-data-[size=sm]/alert-dialog-content:grid-cols-2',
+        // responsive: row-aligned, right-justified at sm+
+        'sm:flex-row sm:justify-end',
         className,
       )}
       {...props}
@@ -89,7 +115,12 @@ function AlertDialogMedia({ className, ...props }: React.ComponentProps<'div'>) 
     <div
       data-slot="alert-dialog-media"
       className={cn(
-        "mb-2 inline-flex size-10 items-center justify-center rounded-md bg-muted sm:group-data-[size=default]/alert-dialog-content:row-span-2 *:[svg:not([class*='size-'])]:size-6",
+        // box/layout: centered icon tile
+        'mb-2 inline-flex size-10 items-center justify-center rounded-md bg-muted',
+        // responsive: default-size content spans two grid rows at sm+
+        'sm:group-data-[size=default]/alert-dialog-content:row-span-2',
+        // icons: size unsized child <svg> to 1.5rem
+        "*:[svg:not([class*='size-'])]:size-6",
         className,
       )}
       {...props}
@@ -105,7 +136,10 @@ function AlertDialogTitle({
     <AlertDialogPrimitive.Title
       data-slot="alert-dialog-title"
       className={cn(
-        'font-heading font-medium text-base sm:group-data-[size=default]/alert-dialog-content:group-has-data-[slot=alert-dialog-media]/alert-dialog-content:col-start-2',
+        // typography: heading font
+        'font-heading font-medium text-base',
+        // responsive + has-*: shift to second column at sm+ when default-size content has media
+        'sm:group-data-[size=default]/alert-dialog-content:group-has-data-[slot=alert-dialog-media]/alert-dialog-content:col-start-2',
         className,
       )}
       {...props}
@@ -121,7 +155,10 @@ function AlertDialogDescription({
     <AlertDialogPrimitive.Description
       data-slot="alert-dialog-description"
       className={cn(
-        'text-balance text-muted-foreground text-sm md:text-pretty *:[a]:underline *:[a]:underline-offset-3 *:[a]:hover:text-foreground',
+        // typography: muted body text, balanced wrapping
+        'text-balance text-muted-foreground text-sm md:text-pretty',
+        // child links: underline child <a> elements with hover emphasis
+        '*:[a]:underline *:[a]:underline-offset-3 *:[a]:hover:text-foreground',
         className,
       )}
       {...props}
