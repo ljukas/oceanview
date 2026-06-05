@@ -1,3 +1,11 @@
+# Pin kysely to 0.28.x: @better-auth/kysely-adapter@1.6.14 (latest) still imports
+# DEFAULT_MIGRATION_TABLE / DEFAULT_MIGRATION_LOCK_TABLE from "kysely", but kysely
+# 0.29 moved them to the "kysely/migration" subpath, which breaks the build.
+# Fixed upstream by better-auth#9811 but not yet released — remove this override
+# once a better-auth release containing it lands. See better-auth#9810.
+overrides:
+  kysely: ^0.28.17
+
 allowBuilds:
   '@prisma/client': false
   better-sqlite3: false
