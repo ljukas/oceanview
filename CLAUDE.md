@@ -197,7 +197,6 @@ WebFetch before guessing APIs.
 - Tailwind v4 — `tailwindcss.com/docs`
 - shadcn/ui (+ theming + TanStack Form integration) — `ui.shadcn.com`
 - oRPC — `orpc.dev/docs` (+ `/adapters/tanstack-start`, `/integrations/{better-auth,tanstack-query}`, `/best-practices/optimize-ssr`)
-- next-themes — `github.com/pacocoursey/next-themes`
 - Vite — `vite.dev`
 - Vercel + TanStack Start — `vercel.com/docs/frameworks/tanstack-start`
 - Vercel Blob — `vercel.com/docs/vercel-blob`
@@ -264,7 +263,7 @@ One line each. Reasoning in `git log CLAUDE.md` and in the linked ADR.
 - **Assignment events are first-class** (2026-05-27). `ownership_assignment_event` parent table groups sibling per-part rows so history collapses to one entry per admin decision; no `kind` column on the parent (computed from children — drift-free). See ADR-0002 patterns; see also ADR-0009 for the new whole-share rule enforced alongside.
 - **Organization rules live in ADR-0009** (2026-05-27). Social rules the schema can't express (e.g. "every owner holds at least one whole share") are documented there and enforced as typed `<Entity>DomainError` raised pre-commit by services. New rules append to that ADR.
 - **UI**: shadcn/ui (style `radix-nova`, base `slate`) + Tailwind v4. CSS vars in `src/styles/app.css`; `components.json` source of truth.
-- **Dark mode**: `next-themes` with `attribute="class"` + system + manual toggle; no FOUC.
+- **Dark mode**: cookie-based (`oceanview-theme`), read in the root loader and applied to `<html>` during SSR; light/dark scriptless, `system` resolved by a small owned inline script + a `matchMedia` listener. Own `ThemeProvider`/`useTheme` (no next-themes). Manual toggle + system; no FOUC.
 - **Package manager**: pnpm.
 - **Linter/formatter**: Biome (editor-only, no CI gate); Tailwind class sorting on; CSS skipped (Tailwind v4 directives unsupported).
 - **Sidebar breakpoints**: drawer <1024px, icon-rail 1024–1279px, full ≥1280px. `MOBILE_BREAKPOINT` in `src/hooks/useMobile.ts`. Sidebar primitive consumes it; pages step at `md:`. Icon-rail tooltips are the canonical exception to the "skip tooltips on self-evident icons" rule.
