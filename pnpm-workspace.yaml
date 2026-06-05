@@ -5,3 +5,8 @@ allowBuilds:
   msgpackr-extract: true
   msw: false
   sharp: true
+minimumReleaseAgeExclude:
+  - '@tanstack/react-start-rsc@0.1.19'
+  - '@tanstack/react-start@1.168.20'
+  - '@tanstack/start-plugin-core@1.171.12'
+  - '@types/node@24.13.0'
