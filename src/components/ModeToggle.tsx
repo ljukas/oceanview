@@ -1,5 +1,5 @@
 import { MoonIcon, SunIcon } from 'lucide-react'
-import { useTheme } from 'next-themes'
+import { useTheme } from '~/components/ThemeProvider'
 import { Button } from '~/components/ui/button'
 import {
   DropdownMenu,
@@ -8,9 +8,10 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from '~/components/ui/dropdown-menu'
+import type { Theme } from '~/lib/theme'
 
 export function ModeToggle() {
-  const { theme = 'system', setTheme } = useTheme()
+  const { theme, setTheme } = useTheme()
 
   return (
     <DropdownMenu>
@@ -22,7 +23,7 @@ export function ModeToggle() {
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
-        <DropdownMenuRadioGroup value={theme} onValueChange={setTheme}>
+        <DropdownMenuRadioGroup value={theme} onValueChange={(value) => setTheme(value as Theme)}>
           <DropdownMenuRadioItem value="light">Ljust</DropdownMenuRadioItem>
           <DropdownMenuRadioItem value="dark">Mörkt</DropdownMenuRadioItem>
           <DropdownMenuRadioItem value="system">System</DropdownMenuRadioItem>

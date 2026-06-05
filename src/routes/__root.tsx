@@ -11,6 +11,7 @@ import { DefaultCatchBoundary } from '~/components/DefaultCatchBoundary'
 import { NotFound } from '~/components/NotFound'
 import { ThemeProvider } from '~/components/ThemeProvider'
 import { Toaster } from '~/components/ui/sonner'
+import { getTheme } from '~/lib/themeFns'
 import appCss from '~/styles/app.css?url'
 import { seo } from '~/utils/seo'
 
@@ -49,17 +50,29 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
   }),
   errorComponent: DefaultCatchBoundary,
   notFoundComponent: () => <NotFound />,
+  loader: () => getTheme(),
   shellComponent: RootDocument,
 })
 
+// Resolves `system` to a `.dark` class before paint — the one case the server
+// can't decide. Light/dark are applied via the React-bound className below, so
+// this only runs when the stored preference is `system`.
+const SYSTEM_THEME_SCRIPT =
+  "if(matchMedia('(prefers-color-scheme: dark)').matches)document.documentElement.classList.add('dark')"
+
 function RootDocument({ children }: { children: React.ReactNode }) {
+  const theme = Route.useLoaderData()
   return (
-    <html lang="sv" suppressHydrationWarning>
+    <html lang="sv" className={theme === 'dark' ? 'dark' : undefined} suppressHydrationWarning>
       <head>
         <HeadContent />
+        {theme === 'system' && (
+          // biome-ignore lint/security/noDangerouslySetInnerHtml: tiny owned FOUC-prevention script
+          <script dangerouslySetInnerHTML={{ __html: SYSTEM_THEME_SCRIPT }} />
+        )}
       </head>
       <body suppressHydrationWarning>
-        <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
+        <ThemeProvider theme={theme}>
           {children}
           <Toaster />
         </ThemeProvider>
