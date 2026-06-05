@@ -28,7 +28,7 @@ function useBinInvalidate() {
   return async () => {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: orpc.bin.key() }),
-      queryClient.invalidateQueries({ queryKey: orpc.document.key() }),
+      queryClient.invalidateQueries({ queryKey: orpc.document.listDocuments.key() }),
       queryClient.invalidateQueries({ queryKey: orpc.folder.key() }),
     ])
   }

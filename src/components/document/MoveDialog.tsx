@@ -10,16 +10,25 @@ import {
   DialogTitle,
 } from '~/components/ui/dialog'
 import { useAppForm } from '~/hooks/form'
-import { orpc } from '~/lib/orpc/client'
+import { client, orpc } from '~/lib/orpc/client'
 import { optimisticRemove } from '~/lib/orpc/optimistic'
 
 const ROOT_VALUE = '__root__'
 
 // What is being moved. A document can land anywhere (and carries its source
 // `folderId` so the move can drop it from that folder's cache optimistically);
-// a folder cannot land in its own subtree (excluded below; the service guards).
+// `documents` is the bulk variant (a multi-selection, all in the same source
+// folder); a folder cannot land in its own subtree (excluded below; the service
+// guards).
 type MoveTarget =
   | { kind: 'document'; id: string; name: string; folderId: string | null }
+  | {
+      kind: 'documents'
+      ids: Array<string>
+      folderId: string | null
+      count: number
+      onMoved?: () => void
+    }
   | { kind: 'folder'; id: string; name: string }
 
 type Props = {
@@ -41,7 +50,7 @@ export function MoveDialog({ open, onOpenChange, target }: Props) {
   const onSettled = () =>
     Promise.all([
       queryClient.invalidateQueries({ queryKey: orpc.folder.key() }),
-      queryClient.invalidateQueries({ queryKey: orpc.document.key() }),
+      queryClient.invalidateQueries({ queryKey: orpc.document.listDocuments.key() }),
     ])
 
   const moveDocument = useMutation(
@@ -80,6 +89,28 @@ export function MoveDialog({ open, onOpenChange, target }: Props) {
       const folderId = value.destination === ROOT_VALUE ? null : value.destination
       if (target.kind === 'document') {
         await moveDocument.mutateAsync({ id: target.id, folderId })
+      } else if (target.kind === 'documents') {
+        // No batch endpoint: drop all from the source list once, fan out single
+        // moves, reconcile once, and toast once (the per-id mutation would toast
+        // and invalidate N times).
+        const idSet = new Set(target.ids)
+        await optimisticRemove(
+          queryClient,
+          orpc.document.listDocuments.queryKey({ input: { folderId: target.folderId } }),
+          (d) => idSet.has(d.id),
+        )
+        const results = await Promise.allSettled(
+          target.ids.map((id) => client.document.moveDocument({ id, folderId })),
+        )
+        await onSettled()
+        const failed = results.filter((r) => r.status === 'rejected').length
+        if (failed > 0) {
+          toast.error(`${failed} av ${target.count} kunde inte flyttas`)
+          return
+        }
+        toast.success(`${target.count} dokument flyttades`)
+        target.onMoved?.()
+        onOpenChange(false)
       } else {
         await moveFolder.mutateAsync({ id: target.id, newParentId: folderId })
       }
@@ -90,7 +121,11 @@ export function MoveDialog({ open, onOpenChange, target }: Props) {
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Flytta "{target.name}"</DialogTitle>
+          <DialogTitle>
+            {target.kind === 'documents'
+              ? `Flytta ${target.count} dokument`
+              : `Flytta "${target.name}"`}
+          </DialogTitle>
           <DialogDescription>Välj målmapp.</DialogDescription>
         </DialogHeader>
         <form

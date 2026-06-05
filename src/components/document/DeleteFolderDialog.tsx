@@ -26,7 +26,7 @@ export function DeleteFolderDialog({ open, onOpenChange, folder }: Props) {
       onSuccess: async (result) => {
         await Promise.all([
           queryClient.invalidateQueries({ queryKey: orpc.folder.key() }),
-          queryClient.invalidateQueries({ queryKey: orpc.document.key() }),
+          queryClient.invalidateQueries({ queryKey: orpc.document.listDocuments.key() }),
         ])
         toast.success(
           `Mappen togs bort (${result.foldersAffected} mappar, ${result.documentsAffected} dokument)`,

@@ -7,7 +7,7 @@ import { appRouter } from '~/lib/orpc/router'
 
 const handler = new RPCHandler(appRouter, {
   // Accepts batched requests at /api/rpc/__batch__. The client batches only the
-  // per-tile thumbnail `previewUrl` lookups (see orpc/client.ts).
+  // per-tile `document.thumbnail` lookups (see orpc/client.ts).
   plugins: [new BatchHandlerPlugin()],
   interceptors: [
     onError((error) => {

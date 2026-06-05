@@ -40,7 +40,8 @@ export function RenameDocumentDialog({ open, onOpenChange, document }: Props) {
         onOpenChange(false)
       },
       onError: (err) => toast.error(err.message || 'Kunde inte byta namn'),
-      onSettled: () => queryClient.invalidateQueries({ queryKey: orpc.document.key() }),
+      onSettled: () =>
+        queryClient.invalidateQueries({ queryKey: orpc.document.listDocuments.key() }),
     }),
   )
 

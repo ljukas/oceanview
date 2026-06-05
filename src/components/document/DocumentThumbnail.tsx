@@ -11,34 +11,44 @@ type Props = {
   mime: string
   extension?: string | null
   blurhash: string | null
+  /**
+   * The document's rendered-thumbnail path: `null` = not yet rendered, `''` =
+   * render failed (sentinel), else a real path in the public store. The tile
+   * fetches a thumbnail URL only when this is a real path.
+   */
+  thumbnailPathname: string | null
   className?: string
 }
 
-// Signed preview URLs expire (1 h server TTL); refetch a little before that so
-// a long-lived tile never points at a dead URL.
-const PREVIEW_STALE_MS = 50 * 60 * 1000
-
 /**
- * Tile preview for a document. Image mimes lazily fetch a signed storage URL
- * *after* render (so the grid paints instantly) and load it directly as an
- * <img> — the app download route can't serve <img> requests (Sec-Fetch-Dest:
- * image → 404). The blurhash, when present, paints behind so the tile is never
- * an empty box while the URL resolves. PDFs and other mimes get a mime icon.
- *
- * Rendered WebP thumbnails are deferred (ADR-0010); when that worker lands the
- * `previewUrl` procedure can prefer the public thumbnail with no change here.
+ * Tile preview for a document. Documents with a rendered thumbnail (ADR-0010)
+ * lazily fetch its public-store URL *after* render (so the grid paints
+ * instantly) and load it directly as an <img>. The URL is stable, so the tile
+ * loads once and never re-downloads. The blurhash, when present, paints behind
+ * so the tile is never an empty box while the URL resolves — and stays as the
+ * placeholder for images whose thumbnail isn't ready (or failed to render).
+ * PDFs and other non-image mimes get a mime icon.
  */
-export function DocumentThumbnail({ id, mime, extension, blurhash, className }: Props) {
+export function DocumentThumbnail({
+  id,
+  mime,
+  extension,
+  blurhash,
+  thumbnailPathname,
+  className,
+}: Props) {
   const isImage = SHARP_DECODABLE_MIME_SET.has(mime)
+  const hasThumbnail = thumbnailPathname != null && thumbnailPathname !== ''
   const gradient = useMemo(
     () => (blurhash ? blurhashToCssGradientString(blurhash) : null),
     [blurhash],
   )
 
   const { data } = useQuery({
-    ...orpc.document.previewUrl.queryOptions({ input: { id } }),
-    enabled: isImage,
-    staleTime: PREVIEW_STALE_MS,
+    ...orpc.document.thumbnail.queryOptions({ input: { id } }),
+    enabled: hasThumbnail,
+    // Public thumbnail URLs don't expire, so fetch once and keep it.
+    staleTime: Number.POSITIVE_INFINITY,
   })
 
   if (!isImage) {

@@ -134,14 +134,29 @@ function HistoryRow({ entry, isLast }: { entry: HistoryEntry; isLast: boolean })
 // Best-effort human line from the jsonb from/to payloads. Shapes are documented
 // in documentEvent.ts; unknown shapes render nothing rather than guessing.
 function HistoryDetail({ entry }: { entry: HistoryEntry }) {
-  const from = entry.fromValue as { name?: string } | null
-  const to = entry.toValue as { name?: string } | null
-  if (entry.kind === 'rename' && from?.name && to?.name) {
-    return (
-      <span className="text-muted-foreground text-xs">
-        {from.name} → {to.name}
-      </span>
-    )
+  if (entry.kind === 'rename') {
+    const from = entry.fromValue as { name?: string } | null
+    const to = entry.toValue as { name?: string } | null
+    if (from?.name && to?.name) {
+      return (
+        <span className="text-muted-foreground text-xs">
+          {from.name} → {to.name}
+        </span>
+      )
+    }
+  }
+  if (entry.kind === 'move') {
+    const from = entry.fromValue as { name?: string | null } | null
+    const to = entry.toValue as { name?: string | null } | null
+    // Pre-fix move events stored only folderId (no `name` key); without a name
+    // we can't resolve a label, so skip rather than guess. null name = root.
+    if (from && to && 'name' in from && 'name' in to) {
+      return (
+        <span className="text-muted-foreground text-xs">
+          {from.name ?? 'Hem'} → {to.name ?? 'Hem'}
+        </span>
+      )
+    }
   }
   return null
 }

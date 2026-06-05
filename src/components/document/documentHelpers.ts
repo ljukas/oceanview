@@ -114,10 +114,23 @@ export function folderTrail(folders: Array<FolderRow>, folderId: string | null):
 export const ROOT_DROP_ID = 'folder:root'
 export const folderDropId = (folderId: string) => `folder:${folderId}`
 export const documentDragId = (documentId: string) => `document:${documentId}`
+// A folder row is both draggable and droppable; the drag id uses a distinct
+// prefix from its `folder:` drop id. The drag carries `data: { folderId }`, so
+// handlers read the data rather than parsing this id.
+export const folderDragId = (folderId: string) => `folder-drag:${folderId}`
+
+/**
+ * Droppable id for the "up one level" chip. Distinct `up:` prefix so it never
+ * collides with the parent/root droppable the breadcrumb already registers —
+ * dnd-kit ids must be unique. Resolves to the same target as the folder ids.
+ */
+export const folderUpDropId = (parentId: string | null) =>
+  parentId === null ? 'up:root' : `up:${parentId}`
 
 /** Parse a droppable id back to a target folderId (null = root), or undefined. */
 export function parseFolderDropId(id: string): string | null | undefined {
-  if (id === ROOT_DROP_ID) return null
+  if (id === ROOT_DROP_ID || id === 'up:root') return null
+  if (id.startsWith('up:')) return id.slice('up:'.length)
   if (id.startsWith('folder:')) return id.slice('folder:'.length)
   return undefined
 }
@@ -192,4 +205,53 @@ export function fileTypeAppearance(file: { mime: string; extension?: string | nu
     FAMILY_BY_MIME[file.mime.toLowerCase()] ??
     (file.extension ? FAMILY_BY_EXTENSION[file.extension.toLowerCase()] : undefined)
   return family ? APPEARANCE_BY_FAMILY[family] : FALLBACK_APPEARANCE
+}
+
+// Human-readable "Kind" labels for the Typ column, Finder-style. These are the
+// only user-facing strings here (Swedish); the family/subtype/extension keys
+// stay English. We reuse the family maps above so type detection lives in one
+// place; archives derive their label straight from the extension so a `.rar`
+// reads "RAR-arkiv", not a generic "Arkiv".
+const KIND_LABEL_BY_FAMILY: Record<Exclude<FileFamily, 'archive'>, string> = {
+  pdf: 'PDF-dokument',
+  word: 'Word-dokument',
+  excel: 'Excel-kalkylblad',
+  csv: 'CSV-fil',
+  presentation: 'PowerPoint-presentation',
+  text: 'Textdokument',
+}
+
+const IMAGE_LABEL_BY_SUBTYPE: Record<string, string> = {
+  jpeg: 'JPEG-bild',
+  png: 'PNG-bild',
+  gif: 'GIF-bild',
+  webp: 'WebP-bild',
+  heic: 'HEIC-bild',
+  heif: 'HEIC-bild',
+  avif: 'AVIF-bild',
+  'svg+xml': 'SVG-bild',
+  bmp: 'BMP-bild',
+  tiff: 'TIFF-bild',
+}
+
+/**
+ * Swedish, type-specific "Kind" label for the Typ column: "PDF-dokument",
+ * "JPEG-bild", "ZIP-arkiv", … Falls back to an extension-derived "IPA-fil" for
+ * unknown types, or a bare "Fil" when there's no extension either. Folders are
+ * labelled "Mapp" at the row level — they never reach this helper.
+ */
+export function fileKindLabel(file: { mime: string; extension?: string | null }): string {
+  const mime = file.mime.toLowerCase()
+  const ext = file.extension?.toLowerCase() ?? ''
+
+  if (mime.startsWith('image/')) {
+    const subtype = mime.slice('image/'.length)
+    return IMAGE_LABEL_BY_SUBTYPE[subtype] ?? (ext ? `${ext.toUpperCase()}-bild` : 'Bild')
+  }
+
+  const family = FAMILY_BY_MIME[mime] ?? (ext ? FAMILY_BY_EXTENSION[ext] : undefined)
+  if (family === 'archive') return ext ? `${ext.toUpperCase()}-arkiv` : 'Arkiv'
+  if (family) return KIND_LABEL_BY_FAMILY[family]
+
+  return ext ? `${ext.toUpperCase()}-fil` : 'Fil'
 }
