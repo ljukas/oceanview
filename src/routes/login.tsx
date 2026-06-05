@@ -3,19 +3,17 @@ import { useState } from 'react'
 import { LoginFormCard } from '~/components/login/LoginFormCard'
 import { MagicLinkSentCard } from '~/components/login/MagicLinkSentCard'
 import { WelcomeBackCard } from '~/components/login/WelcomeBackCard'
+import { useAwaitSignIn } from '~/hooks/useAwaitSignIn'
 import { useSignInPasskeyAutofill } from '~/hooks/usePasskeys'
 import { clearBrowserSession, getBrowserSession } from '~/lib/browserSessionFns'
 import { getSession } from '~/lib/getSession'
+import { sanitizeRedirect } from '~/lib/utils'
 
-function sanitizeRedirect(raw: unknown): string | undefined {
-  if (typeof raw !== 'string') return undefined
-  return /^\/(?!\/)/.test(raw) ? raw : undefined
-}
-
+// The magic link lands in a *new* tab on the /signed-in confirmation page,
+// carrying the in-app destination so its "Fortsätt här" fallback knows where to go.
 function buildCallbackURL(redirectPath: string | undefined): string {
-  const base = redirectPath ?? '/'
-  const separator = base.includes('?') ? '&' : '?'
-  return `${base}${separator}passkey=setup`
+  const destination = redirectPath ?? '/'
+  return `/signed-in?redirect=${encodeURIComponent(destination)}`
 }
 
 export const Route = createFileRoute('/login')({
@@ -46,10 +44,20 @@ function Login() {
 
   const savedLogin = useOther ? null : initialSavedLogin
   const callbackURL = buildCallbackURL(redirectPath)
+  const destination = redirectPath ?? '/'
+
+  // Once the link has been sent, watch for the browser becoming authenticated in
+  // the tab the user opens from their inbox, and advance this tab automatically.
+  useAwaitSignIn({
+    enabled: sentTo !== null,
+    onSignedIn: () => {
+      navigate({ to: destination, search: destination === '/' ? { passkey: 'setup' } : undefined })
+    },
+  })
 
   useSignInPasskeyAutofill({
     onSignedIn: () => {
-      navigate({ to: redirectPath ?? '/' })
+      navigate({ to: destination })
     },
   })
 
