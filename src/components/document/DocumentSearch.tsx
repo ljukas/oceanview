@@ -1,9 +1,9 @@
 import { formatForDisplay, useHotkey } from '@tanstack/react-hotkeys'
-import { useQuery } from '@tanstack/react-query'
+import { useDebouncedValue } from '@tanstack/react-pacer'
+import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { FolderIcon, SearchIcon } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
-import { useDebounceCallback } from 'usehooks-ts'
 import { Button } from '~/components/ui/button'
 import {
   Command,
@@ -26,11 +26,15 @@ export function DocumentSearch() {
   const navigate = useNavigate()
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
-  // `query` drives the controlled input immediately; `debounced` lags 250ms and
-  // gates the server search. useDebounceCallback (usehooks-ts) owns the timer,
-  // cancel-on-unmount, and trailing-edge semantics so we don't hand-roll them.
-  const [debounced, setDebounced] = useState('')
-  const debounceSearch = useDebounceCallback(setDebounced, 250)
+  // `query` drives the controlled input immediately; Pacer derives `debounced`
+  // from it 250ms after the last keystroke (trailing edge) and gates the server
+  // search — no extra state, manual timer, or cleanup to hand-roll.
+  const [debounced] = useDebouncedValue(query, { wait: 250 })
+  // cmdk keeps the previously selected item highlighted across searches and
+  // scrolls it into view, leaving a new result set mid-scroll. We control the
+  // selected value and clear it on every edit / new result set so cmdk re-picks
+  // the first item and scrolls *that* (the top) into view.
+  const [selected, setSelected] = useState('')
   // formatForDisplay reads navigator, so resolve the label after mount to avoid
   // an SSR/client hydration mismatch (empty until then → kbd hint not rendered).
   const [hotkeyLabel, setHotkeyLabel] = useState('')
@@ -47,12 +51,21 @@ export function DocumentSearch() {
   const { data: hits = [], isFetching } = useQuery({
     ...orpc.documentSearch.search.queryOptions({ input: { q: debounced } }),
     enabled: open && debounced.length >= 2,
+    // Keep the previous hits on screen while a new query loads so results (or
+    // the explanation) don't flash blank between keystrokes.
+    placeholderData: keepPreviousData,
   })
 
   // Folder hits carry a non-null `path`; navigation goes through the readable
   // `/documents/$` splat rather than the folder id (the predicate narrows so).
   const folders = hits.filter((h) => h.kind === 'folder')
   const documents = hits.filter((h) => h.kind === 'document')
+
+  // "Inga träffar." only after a search settles with zero hits. The explanation
+  // covers everything else with no hits yet — short query *and* in-flight first
+  // search — so it stays visible until results arrive instead of blanking out.
+  const showNoResults = debounced.length >= 2 && !isFetching && hits.length === 0
+  const showExplanation = hits.length === 0 && !showNoResults
 
   return (
     <>
@@ -77,17 +90,15 @@ export function DocumentSearch() {
         description="Sök efter mappar och dokument"
         className="sm:max-w-xl"
       >
-        <Command shouldFilter={false}>
+        <Command shouldFilter={false} value={selected} onValueChange={setSelected}>
           <CommandInput
             value={query}
-            onValueChange={(value) => {
-              setQuery(value)
-              debounceSearch(value.trim())
-            }}
+            onValueChange={setQuery}
             placeholder="Sök efter mappar och dokument…"
+            loading={isFetching}
           />
           <CommandList>
-            {debounced.length < 2 ? (
+            {showExplanation ? (
               <div className="px-4 py-10 text-center">
                 <p className="font-medium text-base">Sök efter mappar och dokument</p>
                 <p className="mt-1 text-muted-foreground text-sm">
@@ -95,9 +106,7 @@ export function DocumentSearch() {
                 </p>
               </div>
             ) : null}
-            {debounced.length >= 2 && !isFetching && hits.length === 0 ? (
-              <CommandEmpty>Inga träffar.</CommandEmpty>
-            ) : null}
+            {showNoResults ? <CommandEmpty>Inga träffar.</CommandEmpty> : null}
             {folders.length > 0 ? (
               <CommandGroup heading="Mappar">
                 {folders.map((hit) => (
