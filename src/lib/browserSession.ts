@@ -1,10 +1,11 @@
 import { deleteCookie, getCookie, setCookie } from '@tanstack/react-start/server'
 import { z } from 'zod'
 
-// Per-browser memo of what we remember about this visitor — currently the
-// email + avatar of the last user who signed in, so the login screen can
-// show a "Welcome back" card. Not the auth session (that's Better Auth's
-// own cookies); name kept distinct to avoid confusion.
+// Per-browser memo of what we remember about this visitor — currently just the
+// email of the last user who signed in, so the login screen can show a "Welcome
+// back" card. The avatar is fetched live by that email (user.avatarByEmail) so
+// it never goes stale. Not the auth session (that's Better Auth's own cookies);
+// name kept distinct to avoid confusion.
 export const BROWSER_SESSION_COOKIE = 'oceanview-browser-session'
 
 const COOKIE_OPTIONS = {
@@ -17,7 +18,6 @@ const COOKIE_OPTIONS = {
 
 export const browserSessionSchema = z.object({
   email: z.email(),
-  image: z.string().url().nullable(),
 })
 
 export type BrowserSession = z.infer<typeof browserSessionSchema>

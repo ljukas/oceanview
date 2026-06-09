@@ -7,6 +7,7 @@ import { useAwaitSignIn } from '~/hooks/useAwaitSignIn'
 import { useSignInPasskey, useSignInPasskeyAutofill } from '~/hooks/usePasskeys'
 import { clearBrowserSession, getBrowserSession } from '~/lib/browserSessionFns'
 import { getSession } from '~/lib/getSession'
+import { orpc } from '~/lib/orpc/client'
 import { sanitizeRedirect } from '~/lib/utils'
 
 // The magic link lands in a *new* tab on the /signed-in confirmation page,
@@ -25,12 +26,21 @@ export const Route = createFileRoute('/login')({
     const session = await getSession()
     if (session) throw redirect({ to: search.redirect ?? '/' })
   },
-  loader: async () => {
+  loader: async ({ context }) => {
     const session = await getBrowserSession()
-    const savedLogin = session?.email
-      ? { email: session.email, image: session.image ?? null }
-      : null
-    return { savedLogin }
+    if (!session?.email) return { savedLogin: null }
+    // Fetch the avatar live by email rather than trusting a stale cookie value:
+    // a changed/removed avatar would otherwise 404 and fall back to the initial.
+    const avatar = await context.queryClient.ensureQueryData(
+      orpc.user.avatarByEmail.queryOptions({ input: { email: session.email } }),
+    )
+    return {
+      savedLogin: {
+        email: session.email,
+        image: avatar.image,
+        imageBlurhash: avatar.imageBlurhash,
+      },
+    }
   },
   component: Login,
 })
@@ -80,6 +90,7 @@ function Login() {
         <WelcomeBackCard
           email={savedLogin.email}
           image={savedLogin.image}
+          imageBlurhash={savedLogin.imageBlurhash}
           callbackURL={callbackURL}
           onSent={setSentTo}
           onSwitchUser={() => {

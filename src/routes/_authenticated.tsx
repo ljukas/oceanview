@@ -16,9 +16,7 @@ export const Route = createFileRoute('/_authenticated')({
       throw redirect({ to: '/login', search: { redirect: location.href } })
     }
     if (environmentManager.isServer()) {
-      await rememberBrowserUser({
-        data: { email: session.user.email, image: session.user.image ?? null },
-      })
+      await rememberBrowserUser({ data: { email: session.user.email } })
     }
     return { user: session.user }
   },

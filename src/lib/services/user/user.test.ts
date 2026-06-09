@@ -9,6 +9,7 @@ import {
   countAdmins,
   createAsAdmin,
   findActiveById,
+  findAvatarByEmail,
   findIdByEmail,
   findRowById,
   listAll,
@@ -52,6 +53,39 @@ test('findIdByEmail returns null when no user has that email', async () => {
 test('findIdByEmail returns the id when a user with that email exists', async () => {
   const aliceId = await insertMember('alice@test.oceanview.local', 'Alice')
   expect(await findIdByEmail('alice@test.oceanview.local')).toBe(aliceId)
+})
+
+test('findAvatarByEmail returns the avatar for a user with an image', async () => {
+  await db.insert(user).values({
+    name: 'Alice',
+    email: 'alice@test.oceanview.local',
+    image: 'https://example.com/avatar.webp',
+    imageBlurhash: 'LKO2?U%2Tw=w]~RBVZRi};RPxuwH',
+  })
+  expect(await findAvatarByEmail('alice@test.oceanview.local')).toEqual({
+    image: 'https://example.com/avatar.webp',
+    imageBlurhash: 'LKO2?U%2Tw=w]~RBVZRi};RPxuwH',
+  })
+})
+
+test('findAvatarByEmail returns all-null for an unknown email', async () => {
+  expect(await findAvatarByEmail('ghost@test.oceanview.local')).toEqual({
+    image: null,
+    imageBlurhash: null,
+  })
+})
+
+test('findAvatarByEmail returns all-null for a soft-deleted user', async () => {
+  await db.insert(user).values({
+    name: 'Old',
+    email: 'old@test.oceanview.local',
+    image: 'https://example.com/avatar.webp',
+    deletedAt: new Date('2020-01-01'),
+  })
+  expect(await findAvatarByEmail('old@test.oceanview.local')).toEqual({
+    image: null,
+    imageBlurhash: null,
+  })
 })
 
 test('listAll returns active users ordered by name', async () => {
