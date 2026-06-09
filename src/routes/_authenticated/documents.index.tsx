@@ -1,5 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { DocumentsView } from '~/components/document/DocumentsView'
+import { DocumentsView } from '~/components/document/views/DocumentsView'
 import { orpc } from '~/lib/orpc/client'
 import { seo } from '~/utils/seo'
 

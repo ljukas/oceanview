@@ -50,7 +50,10 @@ export const folderRouter = {
       } catch (err) {
         rethrowAsORPC(err)
       }
-      await realtime.publish({ kind: 'folder.changed', ids: [created.id] })
+      await realtime.publish(
+        { kind: 'folder.changed', ids: [created.id] },
+        { source: context.user.id },
+      )
       return created
     }),
 
@@ -69,8 +72,11 @@ export const folderRouter = {
         rethrowAsORPC(err)
       }
       // Descendant document haystacks changed too.
-      await realtime.publish({ kind: 'folder.changed', ids: [updated.id] })
-      await realtime.publish({ kind: 'document.changed' })
+      await realtime.publish(
+        { kind: 'folder.changed', ids: [updated.id] },
+        { source: context.user.id },
+      )
+      await realtime.publish({ kind: 'document.changed' }, { source: context.user.id })
       return updated
     }),
 
@@ -88,8 +94,11 @@ export const folderRouter = {
       } catch (err) {
         rethrowAsORPC(err)
       }
-      await realtime.publish({ kind: 'folder.changed', ids: [updated.id] })
-      await realtime.publish({ kind: 'document.changed' })
+      await realtime.publish(
+        { kind: 'folder.changed', ids: [updated.id] },
+        { source: context.user.id },
+      )
+      await realtime.publish({ kind: 'document.changed' }, { source: context.user.id })
       return updated
     }),
 
@@ -111,8 +120,10 @@ export const folderRouter = {
         actorId: context.user.id,
         ...result,
       })
-      await realtime.publish({ kind: 'folder.changed' })
-      await realtime.publish({ kind: 'document.changed' })
+      await realtime.publish({ kind: 'folder.changed' }, { source: context.user.id })
+      await realtime.publish({ kind: 'document.changed' }, { source: context.user.id })
+      // The folder and its documents moved in/out of the (admin) bin.
+      await realtime.publish({ kind: 'bin.changed' }, { source: context.user.id })
       return result
     }),
 
@@ -134,8 +145,10 @@ export const folderRouter = {
         actorId: context.user.id,
         ...result,
       })
-      await realtime.publish({ kind: 'folder.changed' })
-      await realtime.publish({ kind: 'document.changed' })
+      await realtime.publish({ kind: 'folder.changed' }, { source: context.user.id })
+      await realtime.publish({ kind: 'document.changed' }, { source: context.user.id })
+      // The folder and its documents moved in/out of the (admin) bin.
+      await realtime.publish({ kind: 'bin.changed' }, { source: context.user.id })
       return result
     }),
 

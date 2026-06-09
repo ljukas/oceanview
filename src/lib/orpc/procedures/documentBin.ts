@@ -51,6 +51,11 @@ export const binRouter = {
         })
       }
       context.log.info('document hard-deleted', { documentId: input.id, actorId: context.user.id })
-      await realtime.publish({ kind: 'document.changed', ids: [input.id] })
+      await realtime.publish(
+        { kind: 'document.changed', ids: [input.id] },
+        { source: context.user.id },
+      )
+      // The document was purged from the (admin) bin.
+      await realtime.publish({ kind: 'bin.changed' }, { source: context.user.id })
     }),
 }

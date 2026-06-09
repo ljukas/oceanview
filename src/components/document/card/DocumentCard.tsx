@@ -1,0 +1,176 @@
+import { CircleCheckIcon, CircleIcon, MoreVerticalIcon } from 'lucide-react'
+import { DocumentRowDialogs } from '~/components/document/actions/DocumentRowDialogs'
+import { DocumentThumbnail } from '~/components/document/shared/DocumentThumbnail'
+import {
+  buildDocActions,
+  DocumentMenuItems,
+  type MenuComponents,
+} from '~/components/document/shared/documentActions'
+import {
+  type CurrentUser,
+  type DocumentRow,
+  documentDateFormatter,
+  documentDisplayName,
+  fileKindLabel,
+  formatSize,
+} from '~/components/document/shared/documentHelpers'
+import { Button } from '~/components/ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '~/components/ui/dropdown-menu'
+import { useDialogState } from '~/hooks/useDialogState'
+import { useLongPress } from '~/hooks/useLongPress'
+import { cn } from '~/lib/utils'
+
+const dropdownComponents: MenuComponents = {
+  Item: DropdownMenuItem,
+  Group: DropdownMenuGroup,
+  Separator: DropdownMenuSeparator,
+}
+
+// The ⋮ trigger must not start a long-press or toggle the card — swallow the
+// pointer/click before they reach the card's handlers.
+const swallow = {
+  onPointerDown: (e: React.PointerEvent) => e.stopPropagation(),
+  onClick: (e: React.MouseEvent) => e.stopPropagation(),
+}
+
+/**
+ * A document as a touch card (the mobile counterpart of `DocumentTableRow`).
+ * Tap opens the file; long-press enters select mode and selects it. In select
+ * mode tap toggles its membership and a checkbox replaces the ⋮ menu. The ⋮
+ * (outside select mode) reuses the shared action list + row dialogs.
+ */
+export function DocumentCard({
+  doc,
+  currentUser,
+  selectMode,
+  isSelected,
+  onActivate,
+  onToggle,
+  onEnterSelect,
+}: {
+  doc: DocumentRow
+  currentUser: CurrentUser
+  selectMode: boolean
+  isSelected: boolean
+  /** Tap when not in select mode → open the file. */
+  onActivate: () => void
+  /** Tap when in select mode → toggle this card. */
+  onToggle: () => void
+  /** Long-press → enter select mode and select this card. */
+  onEnterSelect: () => void
+}) {
+  const dialog = useDialogState<'rename' | 'move' | 'history' | 'delete'>()
+  const canEdit = doc.ownerId === currentUser.id || currentUser.role === 'admin'
+  const name = documentDisplayName(doc)
+  const kind = fileKindLabel(doc)
+
+  const { longPressHandlers, didLongPress } = useLongPress(onEnterSelect)
+
+  // The ⋮ acts on this one document only (single-item actions).
+  const groups = buildDocActions({
+    isMulti: false,
+    canEdit,
+    downloadHref: `/api/files/download/${doc.id}`,
+    onHistory: () => dialog.show('history'),
+    onRename: () => dialog.show('rename'),
+    onMove: () => dialog.show('move'),
+    onDelete: () => dialog.show('delete'),
+  })
+
+  return (
+    <>
+      {/* biome-ignore lint/a11y/useSemanticElements: a div carries the tap + long-press gesture; a native button would fight the nested ⋮ menu and select checkbox. */}
+      <div
+        {...longPressHandlers}
+        role="button"
+        tabIndex={0}
+        aria-pressed={selectMode ? isSelected : undefined}
+        onClick={() => {
+          if (didLongPress()) return // long-press already handled this press
+          if (selectMode) onToggle()
+          else onActivate()
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault()
+            if (selectMode) onToggle()
+            else onActivate()
+          }
+        }}
+        className={cn(
+          'flex select-none items-center gap-3 rounded-lg border p-3 outline-none focus-visible:ring-2 focus-visible:ring-ring',
+          isSelected
+            ? 'bg-selected text-selected-foreground'
+            : 'bg-card hover:bg-muted/50 active:bg-muted',
+        )}
+      >
+        <DocumentThumbnail
+          id={doc.id}
+          mime={doc.mime}
+          extension={doc.extension}
+          blurhash={doc.blurhash}
+          thumbnailPathname={doc.thumbnailPathname}
+          className="size-10 shrink-0"
+        />
+        <div className="flex min-w-0 flex-1 flex-col">
+          <span className="truncate font-medium" title={name}>
+            {name}
+          </span>
+          <span
+            className={cn(
+              'truncate text-xs',
+              isSelected ? 'text-selected-foreground/80' : 'text-muted-foreground',
+            )}
+          >
+            {`${kind} • ${doc.ownerName}`}
+          </span>
+          <span
+            className={cn(
+              'truncate text-xs tabular-nums',
+              isSelected ? 'text-selected-foreground/80' : 'text-muted-foreground',
+            )}
+          >
+            {`${documentDateFormatter.format(doc.uploadedAt)} • ${formatSize(doc.sizeBytes)}`}
+          </span>
+        </div>
+
+        {selectMode ? (
+          isSelected ? (
+            <CircleCheckIcon aria-hidden="true" className="size-5 shrink-0" />
+          ) : (
+            <CircleIcon aria-hidden="true" className="size-5 shrink-0 text-muted-foreground" />
+          )
+        ) : (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon-sm" aria-label="Dokumentåtgärder" {...swallow}>
+                <MoreVerticalIcon />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DocumentMenuItems groups={groups} components={dropdownComponents} />
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
+      </div>
+
+      <DocumentRowDialogs
+        active={dialog.active}
+        onClose={dialog.close}
+        doc={doc}
+        name={name}
+        isMulti={false}
+        actingDocIds={[doc.id]}
+        actingFolderIds={[]}
+        clearSelection={() => {}}
+      />
+    </>
+  )
+}

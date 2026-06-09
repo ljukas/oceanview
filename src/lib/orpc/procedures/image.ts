@@ -78,7 +78,10 @@ export const imageRouter = {
         pathname: input.pathname,
         replacedCount: previousPathnames.length,
       })
-      await realtime.publish({ kind: 'user.changed', ids: [context.user.id] })
+      await realtime.publish(
+        { kind: 'user.changed', ids: [context.user.id] },
+        { source: context.user.id },
+      )
       return { imageUrl: blob.url }
     }),
 }

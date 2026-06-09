@@ -1,3 +1,4 @@
+import { KeyRoundIcon } from 'lucide-react'
 import { useState } from 'react'
 import { toast } from 'sonner'
 import { Avatar, AvatarFallback, AvatarImage } from '~/components/ui/avatar'
@@ -11,6 +12,7 @@ import {
   CardTitle,
 } from '~/components/ui/card'
 import { Spinner } from '~/components/ui/spinner'
+import { usePasskeySupport } from '~/hooks/usePasskeys'
 import { authClient } from '~/lib/authClient'
 
 type Props = {
@@ -18,10 +20,21 @@ type Props = {
   image: string | null
   onSent: (email: string) => void
   onSwitchUser: () => void
+  onPasskeySignIn: () => void
+  passkeyPending: boolean
   callbackURL: string
 }
 
-export function WelcomeBackCard({ email, image, onSent, onSwitchUser, callbackURL }: Props) {
+export function WelcomeBackCard({
+  email,
+  image,
+  onSent,
+  onSwitchUser,
+  onPasskeySignIn,
+  passkeyPending,
+  callbackURL,
+}: Props) {
+  const passkeySupported = usePasskeySupport()
   const [isSending, setIsSending] = useState(false)
 
   async function sendMagicLink() {
@@ -54,8 +67,21 @@ export function WelcomeBackCard({ email, image, onSent, onSwitchUser, callbackUR
         <div className="break-all text-center font-medium text-sm">{email}</div>
       </CardContent>
       <CardFooter className="flex-col gap-3">
+        {passkeySupported && (
+          <Button
+            type="button"
+            className="w-full"
+            disabled={passkeyPending}
+            onClick={onPasskeySignIn}
+          >
+            {passkeyPending ? <Spinner data-icon="inline-start" /> : <KeyRoundIcon />}
+            Logga in med passkey
+          </Button>
+        )}
+
         <Button
           type="button"
+          variant={passkeySupported ? 'outline' : 'default'}
           className="w-full"
           disabled={isSending}
           onClick={() => {

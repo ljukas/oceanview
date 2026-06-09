@@ -224,7 +224,7 @@ WebFetch before guessing APIs.
 - **`vercel env pull` is dangerous**: writes prod `DATABASE_URL` into `.env.local`, which Vite + Drizzle prefer over `.env`. If you must run it, immediately delete the `DATABASE_URL*` lines from `.env.local` — otherwise `pnpm db:migrate` migrates **production**.
 - **Migrations are explicit locally outside `pnpm dev:up`.** `dev:up` auto-runs `db:migrate`; `db:up`, `build`, ad-hoc flows do not. `vercel-build` migrates on deploy.
 - **File naming.**
-  - Routes (`src/routes/`) follow [TanStack file-naming](https://tanstack.com/router/latest/docs/routing/file-naming-conventions): lowercase + tokens (`__root`, `_authenticated`, `$id`, `index`).
+  - Routes (`src/routes/`) follow [TanStack file-naming](https://tanstack.com/router/latest/docs/routing/file-naming-conventions): lowercase + tokens (`__root`, `_authenticated`, `$id`, `index`). **URL paths are English** — name route files (and thus URL segments) in English even though the page renders Swedish: `/owners` not `/delagare`, `/account` not `/konto`. The Swedish label lives in the heading/nav, never the URL.
   - React components: **PascalCase** matching the export. Feature components in `src/components/<entity>/`; top-level reserved for app-wide chrome.
   - Hooks: **camelCase** with `use` prefix.
   - Everything else (lib / utils / data / config): **camelCase**.
@@ -234,7 +234,7 @@ WebFetch before guessing APIs.
 - **Lock TanStack Start to a specific RC version** in `package.json` until 1.0.
 - **Free tier first.** Confirm any third-party service covers ~20 users on a free tier.
 - **Every screen must be responsive.** Desktop + mobile + tablet; use Tailwind responsive utilities + shadcn primitives; no fixed pixel widths.
-- **User-facing text is Swedish, informal "du".** "Oceanview" stays untranslated. Code identifiers, comments, logs, commits, DB enum values stay English. `<html lang="sv">` in `__root.tsx`.
+- **User-facing text is Swedish, informal "du".** "Oceanview" stays untranslated. Code identifiers, comments, logs, commits, DB enum values, and **route URL paths** stay English (`/owners`, `/account` — not `/delagare`, `/konto`). `<html lang="sv">` in `__root.tsx`.
 
 ---
 
@@ -266,7 +266,7 @@ One line each. Reasoning in `git log CLAUDE.md` and in the linked ADR.
 - **Dark mode**: cookie-based (`oceanview-theme`), read in the root loader and applied to `<html>` during SSR; light/dark scriptless, `system` resolved by a small owned inline script + a `matchMedia` listener. Own `ThemeProvider`/`useTheme` (no next-themes). Manual toggle + system; no FOUC.
 - **Package manager**: pnpm.
 - **Linter/formatter**: Biome (editor-only, no CI gate); Tailwind class sorting on; CSS skipped (Tailwind v4 directives unsupported).
-- **Sidebar breakpoints**: drawer <1024px, icon-rail 1024–1279px, full ≥1280px. `MOBILE_BREAKPOINT` in `src/hooks/useMobile.ts`. Sidebar primitive consumes it; pages step at `md:`. Icon-rail tooltips are the canonical exception to the "skip tooltips on self-evident icons" rule.
+- **Sidebar breakpoints**: drawer <768px (`md`); persistent icon rail (expandable inline) from `md` (768px) up. `MOBILE_BREAKPOINT` (768) in `src/hooks/useMobile.ts` aligns with the sidebar primitive's own `md:` show/hide. Pages step at `md:`. Icon-rail tooltips are the canonical exception to the "skip tooltips on self-evident icons" rule.
 
 ---
 

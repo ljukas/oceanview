@@ -4,7 +4,7 @@ import { LoginFormCard } from '~/components/login/LoginFormCard'
 import { MagicLinkSentCard } from '~/components/login/MagicLinkSentCard'
 import { WelcomeBackCard } from '~/components/login/WelcomeBackCard'
 import { useAwaitSignIn } from '~/hooks/useAwaitSignIn'
-import { useSignInPasskeyAutofill } from '~/hooks/usePasskeys'
+import { useSignInPasskey, useSignInPasskeyAutofill } from '~/hooks/usePasskeys'
 import { clearBrowserSession, getBrowserSession } from '~/lib/browserSessionFns'
 import { getSession } from '~/lib/getSession'
 import { sanitizeRedirect } from '~/lib/utils'
@@ -61,6 +61,12 @@ function Login() {
     },
   })
 
+  const { signIn: signInPasskey, pending: passkeyPending } = useSignInPasskey({
+    onSignedIn: () => {
+      navigate({ to: destination })
+    },
+  })
+
   async function switchToOtherEmail() {
     await clearBrowserSession()
     setUseOther(true)
@@ -79,9 +85,16 @@ function Login() {
           onSwitchUser={() => {
             void switchToOtherEmail()
           }}
+          onPasskeySignIn={() => void signInPasskey()}
+          passkeyPending={passkeyPending}
         />
       ) : (
-        <LoginFormCard onSent={setSentTo} callbackURL={callbackURL} />
+        <LoginFormCard
+          onSent={setSentTo}
+          callbackURL={callbackURL}
+          onPasskeySignIn={() => void signInPasskey()}
+          passkeyPending={passkeyPending}
+        />
       )}
       <input
         type="text"

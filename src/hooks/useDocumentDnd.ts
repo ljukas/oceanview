@@ -16,7 +16,11 @@ import {
 import { useQueryClient } from '@tanstack/react-query'
 import { useCallback, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
-import { type FolderRow, parseFolderDropId } from '~/components/document/documentHelpers'
+import {
+  type FolderRow,
+  parseFolderDropId,
+  planMixedDrop,
+} from '~/components/document/shared/documentHelpers'
 import { client, orpc, type RouterOutputs } from '~/lib/orpc/client'
 import { optimisticPatch, optimisticRemove } from '~/lib/orpc/optimistic'
 
@@ -45,7 +49,9 @@ export function useDocumentDnd({
   activeFolderId,
   visibleDocuments,
   folders,
-  selectedIds,
+  selectedDocIds,
+  selectedFolderIds,
+  isAdmin,
   clearSelection,
 }: {
   /** Resolved folder id from the URL, or null for the virtual root. */
@@ -53,23 +59,35 @@ export function useDocumentDnd({
   visibleDocuments: ReadonlyArray<DocumentRow>
   /** The flat folder tree — for the folder drag ghost + descendant guard. */
   folders: ReadonlyArray<FolderRow>
-  /** Ids currently selected (a drag that starts on one of these moves them all). */
-  selectedIds: ReadonlyArray<string>
+  /** Selected document ids (a drag that starts on one of these moves the selection). */
+  selectedDocIds: ReadonlyArray<string>
+  /** Selected folder ids (admin-only; a drag on one moves the whole mixed selection). */
+  selectedFolderIds: ReadonlyArray<string>
+  isAdmin: boolean
   clearSelection: () => void
 }) {
   const queryClient = useQueryClient()
 
-  // A drag carries either a document (with multi-select group semantics) or a
-  // single folder, discriminated by `event.active.data`.
+  // A drag carries either a document or a folder, discriminated by
+  // `event.active.data`. A drag starting on a *selected* row carries the whole
+  // mixed selection (docs + folders).
   const [active, setActive] = useState<ActiveDrag | null>(null)
   const activeDoc =
     active?.kind === 'document' ? visibleDocuments.find((d) => d.id === active.id) : undefined
   const activeFolder =
     active?.kind === 'folder' ? folders.find((f) => f.id === active.id) : undefined
-  // How many docs the active drag carries: the whole selection when the dragged
-  // row is selected, else just the one (0 for a folder drag).
-  const activeCount =
-    active?.kind === 'document' ? (selectedIds.includes(active.id) ? selectedIds.length : 1) : 0
+  // How many items the active drag carries: the whole selection when the dragged
+  // row is part of it, else just the one. 0 when idle.
+  const totalSelected = selectedDocIds.length + selectedFolderIds.length
+  const activeCount = !active
+    ? 0
+    : active.kind === 'document'
+      ? selectedDocIds.includes(active.id)
+        ? totalSelected
+        : 1
+      : isAdmin && selectedFolderIds.includes(active.id)
+        ? totalSelected
+        : 1
   // Set on a successful drop so the drop animation flies the ghost into the
   // target folder instead of snapping back to the source row. Null = no move.
   const dropTargetRect = useRef<ClientRect | null>(null)
@@ -152,6 +170,44 @@ export function useDocumentDnd({
     [queryClient],
   )
 
+  // Group move of a mixed selection: one optimistic pass (drop docs from the
+  // source list, re-parent folders in the tree), one fan-out of single moves,
+  // one reconcile, one combined toast — same no-batch pattern as `runMove`.
+  const runMixedMove = useCallback(
+    async (docIds: Array<string>, folderIds: Array<string>, target: string | null) => {
+      const docSet = new Set(docIds)
+      const folderSet = new Set(folderIds)
+      await optimisticRemove(
+        queryClient,
+        orpc.document.listDocuments.queryKey({ input: { folderId: activeFolderId } }),
+        (doc) => docSet.has(doc.id),
+      )
+      await optimisticPatch(
+        queryClient,
+        orpc.folder.tree.queryKey(),
+        (f) => folderSet.has(f.id),
+        (f) => ({ ...f, parentId: target }),
+      )
+      const results = await Promise.allSettled([
+        ...docIds.map((id) => client.document.moveDocument({ id, folderId: target })),
+        ...folderIds.map((id) => client.folder.moveFolder({ id, newParentId: target })),
+      ])
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: orpc.folder.key() }),
+        queryClient.invalidateQueries({ queryKey: orpc.document.listDocuments.key() }),
+      ])
+      const total = docIds.length + folderIds.length
+      const failed = results.filter((r) => r.status === 'rejected').length
+      if (failed === 0) {
+        toast.success(total === 1 ? 'Objektet flyttades' : `${total} objekt flyttades`)
+        clearSelection()
+      } else {
+        toast.error(`${failed} av ${total} kunde inte flyttas`)
+      }
+    },
+    [queryClient, activeFolderId, clearSelection],
+  )
+
   const onDragStart = useCallback((event: DragStartEvent) => {
     dropTargetRect.current = null
     const data = event.active.data.current
@@ -167,37 +223,49 @@ export function useDocumentDnd({
       const over = event.over
       if (over) {
         const target = parseFolderDropId(String(over.id))
-        if (target !== undefined && data?.documentId) {
-          const draggedId = data.documentId as string
-          // A selected row drags the whole selection; an unselected row drags itself.
-          const dragSet = selectedIds.includes(draggedId) ? selectedIds : [draggedId]
-          const ids = dragSet.filter((id) => {
-            const doc = visibleDocuments.find((d) => d.id === id)
-            return doc && doc.folderId !== target
+        const dragged = data?.documentId
+          ? ({ kind: 'document', id: data.documentId as string } as const)
+          : data?.folderId
+            ? ({ kind: 'folder', id: data.folderId as string } as const)
+            : null
+        if (target !== undefined && dragged) {
+          const plan = planMixedDrop({
+            dragged,
+            target,
+            selectedDocIds,
+            selectedFolderIds,
+            visibleDocuments,
+            folders,
+            isAdmin,
           })
-          if (ids.length > 0) {
-            // Real move: fly the ghost into the dropped target rather than snap back.
+          // Real moves fly the ghost into the dropped target rather than snap back.
+          if (plan.kind === 'single-doc') {
             dropTargetRect.current = over.rect
-            void runMove(ids, target)
-          }
-        } else if (target !== undefined && data?.folderId) {
-          const draggedId = data.folderId as string
-          const dragged = folders.find((f) => f.id === draggedId)
-          const targetFolder = target === null ? null : folders.find((f) => f.id === target)
-          // Skip no-ops/illegals; the service also rejects subtree moves.
-          const isSelf = target === draggedId
-          const sameParent = (dragged?.parentId ?? null) === target
-          const intoSubtree =
-            !!dragged && !!targetFolder && targetFolder.path.startsWith(dragged.path)
-          if (!isSelf && !sameParent && !intoSubtree) {
+            void runMove([plan.id], target)
+          } else if (plan.kind === 'single-folder') {
             dropTargetRect.current = over.rect
-            void runFolderMove(draggedId, target)
+            void runFolderMove(plan.id, target)
+          } else if (plan.kind === 'mixed') {
+            dropTargetRect.current = over.rect
+            void runMixedMove(plan.docIds, plan.folderIds, target)
+          } else if (plan.kind === 'abort') {
+            toast.error('Kan inte flytta in i en markerad mapp')
           }
+          // 'none' → no-op (already in target / nothing legal): snap back, no toast.
         }
       }
       setActive(null)
     },
-    [selectedIds, visibleDocuments, folders, runMove, runFolderMove],
+    [
+      selectedDocIds,
+      selectedFolderIds,
+      visibleDocuments,
+      folders,
+      isAdmin,
+      runMove,
+      runFolderMove,
+      runMixedMove,
+    ],
   )
 
   const onDragCancel = useCallback(() => setActive(null), [])

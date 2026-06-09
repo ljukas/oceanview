@@ -118,7 +118,10 @@ export const documentRouter = {
             })
           })
       }
-      await realtime.publish({ kind: 'document.changed', ids: [inserted.document.id] })
+      await realtime.publish(
+        { kind: 'document.changed', ids: [inserted.document.id] },
+        { source: context.user.id },
+      )
       return { id: inserted.document.id }
     }),
 
@@ -208,7 +211,10 @@ export const documentRouter = {
           })
         }
       }
-      await realtime.publish({ kind: 'document.changed', ids: [updated.document.id] })
+      await realtime.publish(
+        { kind: 'document.changed', ids: [updated.document.id] },
+        { source: context.user.id },
+      )
       return { id: updated.document.id }
     }),
 
@@ -226,7 +232,10 @@ export const documentRouter = {
       } catch (err) {
         rethrowAsORPC(err)
       }
-      await realtime.publish({ kind: 'document.changed', ids: [updated.document.id] })
+      await realtime.publish(
+        { kind: 'document.changed', ids: [updated.document.id] },
+        { source: context.user.id },
+      )
       return { id: updated.document.id }
     }),
 
@@ -249,7 +258,12 @@ export const documentRouter = {
         ownerId: deleted.file.ownerId,
         actorId: context.user.id,
       })
-      await realtime.publish({ kind: 'document.changed', ids: [deleted.document.id] })
+      await realtime.publish(
+        { kind: 'document.changed', ids: [deleted.document.id] },
+        { source: context.user.id },
+      )
+      // The document moved into the (admin) bin.
+      await realtime.publish({ kind: 'bin.changed' }, { source: context.user.id })
     }),
 
   restoreDocument: adminProcedure
@@ -265,7 +279,12 @@ export const documentRouter = {
       } catch (err) {
         rethrowAsORPC(err)
       }
-      await realtime.publish({ kind: 'document.changed', ids: [restored.document.id] })
+      await realtime.publish(
+        { kind: 'document.changed', ids: [restored.document.id] },
+        { source: context.user.id },
+      )
+      // The document moved out of the (admin) bin.
+      await realtime.publish({ kind: 'bin.changed' }, { source: context.user.id })
       return { id: restored.document.id }
     }),
 

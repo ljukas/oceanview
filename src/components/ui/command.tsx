@@ -9,6 +9,7 @@ import {
   DialogTitle,
 } from '~/components/ui/dialog'
 import { InputGroup, InputGroupAddon } from '~/components/ui/input-group'
+import { Spinner } from '~/components/ui/spinner'
 import { cn } from '~/lib/utils'
 
 function Command({ className, ...props }: React.ComponentProps<typeof CommandPrimitive>) {
@@ -55,8 +56,9 @@ function CommandDialog({
 
 function CommandInput({
   className,
+  loading = false,
   ...props
-}: React.ComponentProps<typeof CommandPrimitive.Input>) {
+}: React.ComponentProps<typeof CommandPrimitive.Input> & { loading?: boolean }) {
   return (
     <div data-slot="command-input-wrapper" className="p-1">
       <InputGroup
@@ -81,6 +83,11 @@ function CommandInput({
         <InputGroupAddon>
           <SearchIcon className="in-data-[slot=dialog-content]:size-5 size-4 shrink-0 opacity-50" />
         </InputGroupAddon>
+        {loading ? (
+          <InputGroupAddon align="inline-end">
+            <Spinner className="in-data-[slot=dialog-content]:size-5 size-4 opacity-50" />
+          </InputGroupAddon>
+        ) : null}
       </InputGroup>
     </div>
   )

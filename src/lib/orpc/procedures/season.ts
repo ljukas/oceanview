@@ -71,7 +71,7 @@ export const seasonRouter = {
     try {
       const created = await seasonService.createSeason(input)
       context.log.info('admin created season', { year: created.year })
-      await realtime.publish({ kind: 'season.changed' })
+      await realtime.publish({ kind: 'season.changed' }, { source: context.user.id })
       return created
     } catch (err) {
       // Unique-constraint collision on `year` — two admins racing, or an
@@ -96,13 +96,13 @@ export const seasonRouter = {
       startShare: input.startShare,
     })
     context.log.info('admin updated season', { year: input.year })
-    await realtime.publish({ kind: 'season.changed' })
+    await realtime.publish({ kind: 'season.changed' }, { source: context.user.id })
     return updated
   }),
 
   delete: adminProcedure.input(seasonYearSchema).handler(async ({ input, context }) => {
     await seasonService.deleteSeason(input.year)
     context.log.info('admin deleted season', { year: input.year })
-    await realtime.publish({ kind: 'season.changed' })
+    await realtime.publish({ kind: 'season.changed' }, { source: context.user.id })
   }),
 }

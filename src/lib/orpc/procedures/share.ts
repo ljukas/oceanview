@@ -185,10 +185,10 @@ export const shareRouter = {
         shareCode: input.shareCode,
         kind: input.assignment.kind,
       })
-      await realtime.publish({
-        kind: 'share.changed',
-        ids: [input.shareCode],
-      })
+      await realtime.publish(
+        { kind: 'share.changed', ids: [input.shareCode] },
+        { source: context.user.id },
+      )
     }),
 
   unassign: adminProcedure
@@ -209,9 +209,9 @@ export const shareRouter = {
         shareCode: input.shareCode,
         parts: input.parts,
       })
-      await realtime.publish({
-        kind: 'share.changed',
-        ids: [input.shareCode],
-      })
+      await realtime.publish(
+        { kind: 'share.changed', ids: [input.shareCode] },
+        { source: context.user.id },
+      )
     }),
 }

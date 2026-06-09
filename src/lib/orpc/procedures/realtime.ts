@@ -1,5 +1,6 @@
 import { eventIterator } from '@orpc/server'
 import { presence, realtime } from '~/lib/effects'
+import { shouldDeliver } from '~/lib/effects/realtime/realtime'
 import { realtimeEventSchema } from '~/lib/effects/realtime/types'
 import { protectedProcedure } from '~/lib/orpc/context'
 
@@ -19,14 +20,15 @@ export const realtimeRouter = {
     .output(eventIterator(realtimeEventSchema))
     .handler(async function* ({ context, signal }) {
       context.log.info('realtime subscriber connected')
-      const becameOnline = await presence.acquire(context.user.id)
+      const self = context.user.id
+      const becameOnline = await presence.acquire(self)
       if (becameOnline) await realtime.publish({ kind: 'presence.changed' })
       try {
-        for await (const event of realtime.subscribe({ signal, log: context.log })) {
-          yield event
+        for await (const { event, source } of realtime.subscribe({ signal, log: context.log })) {
+          if (shouldDeliver(source, self)) yield event
         }
       } finally {
-        const becameOffline = await presence.release(context.user.id)
+        const becameOffline = await presence.release(self)
         if (becameOffline) await realtime.publish({ kind: 'presence.changed' })
         context.log.info('realtime subscriber disconnected')
       }
