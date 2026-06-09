@@ -103,7 +103,7 @@ export const userRouter = {
   create: adminProcedure.input(userInputSchema).handler(async ({ input, context }) => {
     const created = await userService.createAsAdmin(input)
     context.log.info('admin created user', { targetId: created.id, role: input.role })
-    await realtime.publish({ kind: 'user.changed', ids: [created.id] })
+    await realtime.publish({ kind: 'user.changed', ids: [created.id] }, { source: context.user.id })
     return created
   }),
 
@@ -118,7 +118,10 @@ export const userRouter = {
           role: input.role,
         })
         context.log.info('admin updated user', { targetId: input.id, role: input.role })
-        await realtime.publish({ kind: 'user.changed', ids: [updated.id] })
+        await realtime.publish(
+          { kind: 'user.changed', ids: [updated.id] },
+          { source: context.user.id },
+        )
         return updated
       } catch (err) {
         rethrowAsORPC(err, 'update')
@@ -136,7 +139,7 @@ export const userRouter = {
       headers: context.headers,
     })
     context.log.info('admin soft-deleted user', { targetId: input.id })
-    await realtime.publish({ kind: 'user.changed', ids: [input.id] })
+    await realtime.publish({ kind: 'user.changed', ids: [input.id] }, { source: context.user.id })
   }),
 
   restore: adminProcedure.input(z.object({ id: z.uuid() })).handler(async ({ input, context }) => {
@@ -146,6 +149,6 @@ export const userRouter = {
       rethrowAsORPC(err, 'restore')
     }
     context.log.info('admin restored user', { targetId: input.id })
-    await realtime.publish({ kind: 'user.changed', ids: [input.id] })
+    await realtime.publish({ kind: 'user.changed', ids: [input.id] }, { source: context.user.id })
   }),
 }

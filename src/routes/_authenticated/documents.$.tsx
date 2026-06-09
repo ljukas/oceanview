@@ -1,7 +1,7 @@
 import { useSuspenseQuery } from '@tanstack/react-query'
 import { createFileRoute, Navigate } from '@tanstack/react-router'
-import { DocumentsView } from '~/components/document/DocumentsView'
-import { resolveFolderBySplat } from '~/components/document/documentHelpers'
+import { resolveFolderBySplat } from '~/components/document/shared/documentHelpers'
+import { DocumentsView } from '~/components/document/views/DocumentsView'
 import { orpc } from '~/lib/orpc/client'
 import { seo } from '~/utils/seo'
 

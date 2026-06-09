@@ -1,0 +1,257 @@
+import { useMutation, useQueryClient, useSuspenseQuery } from '@tanstack/react-query'
+import { FolderIcon, RotateCcwIcon, Trash2Icon } from 'lucide-react'
+import { useState } from 'react'
+import { toast } from 'sonner'
+import {
+  type BinEntry,
+  fileTypeAppearance,
+  folderParentBreadcrumb,
+  partitionBinEntries,
+} from '~/components/document/shared/documentHelpers'
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '~/components/ui/alert-dialog'
+import { Badge } from '~/components/ui/badge'
+import { Button } from '~/components/ui/button'
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '~/components/ui/empty'
+import { orpc } from '~/lib/orpc/client'
+import { optimisticRemove } from '~/lib/orpc/optimistic'
+import { cn } from '~/lib/utils'
+
+const dateTimeFormatter = new Intl.DateTimeFormat('sv-SE', {
+  dateStyle: 'medium',
+  timeStyle: 'short',
+})
+
+function useBinInvalidate() {
+  const queryClient = useQueryClient()
+  return async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: orpc.bin.key() }),
+      queryClient.invalidateQueries({ queryKey: orpc.document.listDocuments.key() }),
+      queryClient.invalidateQueries({ queryKey: orpc.folder.key() }),
+    ])
+  }
+}
+
+export function DocumentBin() {
+  const { data: entries } = useSuspenseQuery(orpc.bin.list.queryOptions())
+  const { batches, loose } = partitionBinEntries(entries)
+
+  if (entries.length === 0) {
+    return (
+      <Empty className="rounded-lg border">
+        <EmptyHeader>
+          <EmptyMedia variant="icon">
+            <Trash2Icon />
+          </EmptyMedia>
+          <EmptyTitle>Papperskorgen är tom</EmptyTitle>
+          <EmptyDescription>Borttagna mappar och dokument hamnar här.</EmptyDescription>
+        </EmptyHeader>
+      </Empty>
+    )
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      {[...batches.entries()].map(([correlationId, items]) => (
+        <BatchCard key={correlationId} correlationId={correlationId} items={items} />
+      ))}
+      {loose.map((entry) => (
+        <LooseRow key={`${entry.kind}:${entry.id}`} entry={entry} />
+      ))}
+    </div>
+  )
+}
+
+// A batch is one cascade soft-delete: exactly one root folder plus its
+// descendants. The root is the folder entry with the shortest path (its path
+// prefixes every other entry); we surface its name + location like a file row.
+function batchRoot(items: Array<BinEntry>): BinEntry | null {
+  const folders = items.filter((i) => i.kind === 'folder' && i.path)
+  if (folders.length === 0) return null
+  return folders.reduce((a, b) =>
+    (a.path as string).split('/').length <= (b.path as string).split('/').length ? a : b,
+  )
+}
+
+function batchContents(subfolderCount: number, documentCount: number): string {
+  const parts: Array<string> = []
+  if (subfolderCount > 0) {
+    parts.push(`${subfolderCount} ${subfolderCount === 1 ? 'undermapp' : 'undermappar'}`)
+  }
+  if (documentCount > 0) parts.push(`${documentCount} dokument`)
+  return parts.length ? parts.join(', ') : 'Tom mapp'
+}
+
+function BatchCard({ correlationId, items }: { correlationId: string; items: Array<BinEntry> }) {
+  const queryClient = useQueryClient()
+  const invalidate = useBinInvalidate()
+  const root = batchRoot(items)
+  const folderCount = items.filter((i) => i.kind === 'folder').length
+  const documentCount = items.filter((i) => i.kind === 'document').length
+  const contents = batchContents(folderCount - 1, documentCount)
+  const deletedAt = items[0]?.deletedAt
+
+  const restore = useMutation(
+    orpc.folder.restoreFolder.mutationOptions({
+      // The whole batch leaves the bin together — drop every entry sharing this
+      // correlation id before the round-trip.
+      onMutate: () =>
+        optimisticRemove(
+          queryClient,
+          orpc.bin.list.queryKey(),
+          (e) => e.correlationId === correlationId,
+        ),
+      onSuccess: () => toast.success('Återställd'),
+      onError: (err) => toast.error(err.message || 'Kunde inte återställa'),
+      onSettled: invalidate,
+    }),
+  )
+
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-lg border bg-card p-4">
+      <div className="flex min-w-0 items-center gap-2">
+        <FolderIcon aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
+        <div className="flex min-w-0 flex-col">
+          <span className="truncate font-medium text-sm">{root?.name ?? 'Borttagen mapp'}</span>
+          <span className="truncate text-muted-foreground text-xs">
+            {root?.path ? `${folderParentBreadcrumb(root.path)} · ${contents}` : contents}
+          </span>
+          {deletedAt ? (
+            <span className="text-muted-foreground text-xs">
+              {dateTimeFormatter.format(deletedAt)}
+            </span>
+          ) : null}
+        </div>
+      </div>
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={() => restore.mutate({ correlationId })}
+        disabled={restore.isPending}
+      >
+        <RotateCcwIcon data-icon="inline-start" />
+        Återställ
+      </Button>
+    </div>
+  )
+}
+
+function LooseRow({ entry }: { entry: BinEntry }) {
+  const queryClient = useQueryClient()
+  const invalidate = useBinInvalidate()
+  const [confirmHard, setConfirmHard] = useState(false)
+
+  // Both actions remove this one entry from the bin list; drop it before the
+  // round-trip. Only documents get these actions (folders restore by batch).
+  const removeFromBin = () =>
+    optimisticRemove(
+      queryClient,
+      orpc.bin.list.queryKey(),
+      (e) => e.kind === entry.kind && e.id === entry.id,
+    )
+
+  const restore = useMutation(
+    orpc.document.restoreDocument.mutationOptions({
+      onMutate: removeFromBin,
+      onSuccess: () => toast.success('Dokumentet återställdes'),
+      onError: (err) => toast.error(err.message || 'Kunde inte återställa'),
+      onSettled: invalidate,
+    }),
+  )
+  const hardDelete = useMutation(
+    orpc.bin.hardDeleteDocument.mutationOptions({
+      onMutate: removeFromBin,
+      onSuccess: () => {
+        toast.success('Dokumentet raderades permanent')
+        setConfirmHard(false)
+      },
+      onError: (err) => toast.error(err.message || 'Kunde inte radera'),
+      onSettled: invalidate,
+    }),
+  )
+
+  const isFolder = entry.kind === 'folder'
+  const appearance = isFolder
+    ? null
+    : fileTypeAppearance({ mime: entry.mime ?? '', extension: entry.extension })
+  const Icon = appearance?.Icon ?? FolderIcon
+
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-lg border bg-card p-4">
+      <div className="flex min-w-0 items-center gap-2">
+        <Icon
+          aria-hidden="true"
+          className={cn('size-4 shrink-0', appearance?.className ?? 'text-muted-foreground')}
+        />
+        <div className="flex min-w-0 flex-col">
+          <span className="truncate font-medium text-sm">{entry.name}</span>
+          <span className="text-muted-foreground text-xs">
+            {dateTimeFormatter.format(entry.deletedAt)}
+          </span>
+        </div>
+        {isFolder ? <Badge variant="secondary">Mapp</Badge> : null}
+      </div>
+      <div className="flex shrink-0 items-center gap-2">
+        {/* Folder restore here is rare (folders normally arrive in a batch); the
+            restore-by-correlation path covers cascades. A lone folder has no
+            correlation to restore, so only documents get actions. */}
+        {!isFolder ? (
+          <>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => restore.mutate({ id: entry.id })}
+              disabled={restore.isPending}
+            >
+              <RotateCcwIcon data-icon="inline-start" />
+              Återställ
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Radera permanent"
+              className="text-destructive hover:text-destructive"
+              onClick={() => setConfirmHard(true)}
+            >
+              <Trash2Icon />
+            </Button>
+          </>
+        ) : null}
+      </div>
+
+      <AlertDialog open={confirmHard} onOpenChange={setConfirmHard}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Radera "{entry.name}" permanent?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Filen tas bort för gott och kan inte återställas. Historiken bevaras.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setConfirmHard(false)}
+              disabled={hardDelete.isPending}
+            >
+              Avbryt
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => hardDelete.mutate({ id: entry.id })}
+              disabled={hardDelete.isPending}
+            >
+              Radera permanent
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
+  )
+}

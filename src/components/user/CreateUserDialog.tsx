@@ -44,8 +44,9 @@ export function CreateUserDialog({ open, onOpenChange }: Props) {
   const form = useAppForm({
     defaultValues: userFieldsDefaults,
     validators: { onSubmit: userFieldsSchema },
-    onSubmit: async ({ value }) => {
+    onSubmit: async ({ value, formApi }) => {
       await createMutation.mutateAsync(value)
+      formApi.reset()
     },
   })
 

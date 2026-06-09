@@ -1,15 +1,13 @@
-import { Link, useMatchRoute } from '@tanstack/react-router'
+import { Link, linkOptions, useMatchRoute } from '@tanstack/react-router'
 import {
   AnchorIcon,
   CalendarIcon,
-  ContactIcon,
   FolderIcon,
   LogOutIcon,
   Trash2Icon,
   UserIcon,
   UsersIcon,
 } from 'lucide-react'
-import type { ComponentType } from 'react'
 import { ModeToggle } from '~/components/ModeToggle'
 import { Button } from '~/components/ui/button'
 import {
@@ -31,30 +29,18 @@ type SidebarUser = {
   role?: string | null
 }
 
-type NavItem = {
-  to:
-    | '/'
-    | '/contacts'
-    | '/documents'
-    | '/admin/users'
-    | '/admin/shares'
-    | '/admin/documents/bin'
-    | '/konto'
-  label: string
-  icon: ComponentType<{ className?: string }>
-}
-
-const mainNavItems: Array<NavItem> = [
+const mainNavItems = linkOptions([
   { to: '/', label: 'Kalender', icon: CalendarIcon },
-  { to: '/contacts', label: 'Kontakter', icon: ContactIcon },
+  { to: '/owners', label: 'Delägare', icon: UsersIcon },
   { to: '/documents', label: 'Dokument', icon: FolderIcon },
-]
+])
 
-const adminNavItems: Array<NavItem> = [
-  { to: '/admin/users', label: 'Användare', icon: UsersIcon },
+const adminNavItems = linkOptions([
   { to: '/admin/shares', label: 'Andelar', icon: AnchorIcon },
   { to: '/admin/documents/bin', label: 'Papperskorg', icon: Trash2Icon },
-]
+])
+
+type NavItem = (typeof mainNavItems)[number] | (typeof adminNavItems)[number]
 
 export function AppSidebar({ user }: { user: SidebarUser }) {
   const matchRoute = useMatchRoute()
@@ -100,7 +86,7 @@ export function AppSidebar({ user }: { user: SidebarUser }) {
       <SidebarFooter className="flex flex-row items-center gap-2 p-4">
         <ModeToggle />
         <Button variant="outline" size="icon" asChild aria-label="Konto">
-          <Link to="/konto" onClick={() => setOpenMobile(false)}>
+          <Link to="/account" onClick={() => setOpenMobile(false)}>
             <UserIcon />
           </Link>
         </Button>

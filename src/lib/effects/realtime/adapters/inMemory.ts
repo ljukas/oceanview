@@ -1,14 +1,13 @@
 import { MemoryPublisher } from '@orpc/experimental-publisher/memory'
-import type { RealtimeEffects } from '../realtime'
-import type { RealtimeEvent } from '../types'
+import type { RealtimeEffects, RealtimeEnvelope } from '../realtime'
 
 const CHANNEL = 'event' as const
 
 export function createInMemoryRealtime(): RealtimeEffects {
-  const publisher = new MemoryPublisher<{ [CHANNEL]: RealtimeEvent }>()
+  const publisher = new MemoryPublisher<{ [CHANNEL]: RealtimeEnvelope }>()
   return {
-    async publish(event) {
-      publisher.publish(CHANNEL, event)
+    async publish(event, opts) {
+      publisher.publish(CHANNEL, { event, source: opts?.source })
     },
     subscribe({ signal }) {
       return publisher.subscribe(CHANNEL, { signal })

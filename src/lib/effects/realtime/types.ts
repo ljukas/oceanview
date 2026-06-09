@@ -11,6 +11,9 @@ export const realtimeEventSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('document.changed'), ids: z.array(z.string()).optional() }),
   z.object({ kind: z.literal('folder.changed'), ids: z.array(z.string()).optional() }),
   z.object({ kind: z.literal('share.changed'), ids: z.array(z.string()).optional() }),
+  // Bin (admin deleted-items view) contents changed — published only by
+  // soft-delete / restore / hard-delete, never by upload / rename / move.
+  z.object({ kind: z.literal('bin.changed') }),
   // Add per-entity variants here as they adopt.
 ])
 

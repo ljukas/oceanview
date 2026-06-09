@@ -1,24 +1,28 @@
+import { KeyRoundIcon } from 'lucide-react'
 import { toast } from 'sonner'
 import { z } from 'zod'
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from '~/components/ui/card'
+import { Button } from '~/components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '~/components/ui/card'
 import { FieldGroup } from '~/components/ui/field'
+import { Separator } from '~/components/ui/separator'
+import { Spinner } from '~/components/ui/spinner'
 import { useAppForm } from '~/hooks/form'
+import { usePasskeySupport } from '~/hooks/usePasskeys'
 import { authClient } from '~/lib/authClient'
 
 const loginSchema = z.object({
   email: z.email(),
 })
 
-type Props = { onSent: (email: string) => void; callbackURL: string }
+type Props = {
+  onSent: (email: string) => void
+  callbackURL: string
+  onPasskeySignIn: () => void
+  passkeyPending: boolean
+}
 
-export function LoginFormCard({ onSent, callbackURL }: Props) {
+export function LoginFormCard({ onSent, callbackURL, onPasskeySignIn, passkeyPending }: Props) {
+  const passkeySupported = usePasskeySupport()
   const form = useAppForm({
     defaultValues: { email: '' },
     validators: { onSubmit: loginSchema },
@@ -39,15 +43,36 @@ export function LoginFormCard({ onSent, callbackURL }: Props) {
     <Card className="w-full max-w-sm">
       <CardHeader>
         <CardTitle>Oceanview</CardTitle>
-        <CardDescription>Logga in med en länk som vi skickar till din e-post.</CardDescription>
+        <CardDescription>Logga in med en passkey eller en länk till din e-post.</CardDescription>
       </CardHeader>
-      <form
-        onSubmit={(e) => {
-          e.preventDefault()
-          form.handleSubmit()
-        }}
-      >
-        <CardContent className="pb-4">
+
+      <CardContent className="flex flex-col gap-4">
+        {passkeySupported && (
+          <>
+            <Button
+              type="button"
+              className="w-full"
+              disabled={passkeyPending}
+              onClick={onPasskeySignIn}
+            >
+              {passkeyPending ? <Spinner data-icon="inline-start" /> : <KeyRoundIcon />}
+              Logga in med passkey
+            </Button>
+            <div className="flex items-center gap-3">
+              <Separator className="flex-1" />
+              <span className="text-muted-foreground text-xs">eller</span>
+              <Separator className="flex-1" />
+            </div>
+          </>
+        )}
+
+        <form
+          className="flex flex-col gap-4"
+          onSubmit={(e) => {
+            e.preventDefault()
+            form.handleSubmit()
+          }}
+        >
           <FieldGroup>
             <form.AppField
               name="email"
@@ -61,18 +86,17 @@ export function LoginFormCard({ onSent, callbackURL }: Props) {
               )}
             />
           </FieldGroup>
-        </CardContent>
 
-        <CardFooter className="flex-col gap-3">
           <form.AppForm>
             <form.SubmitButton
               label="Skicka inloggningslänk"
               pendingLabel="Skickar…"
+              variant={passkeySupported ? 'outline' : 'default'}
               className="w-full"
             />
           </form.AppForm>
-        </CardFooter>
-      </form>
+        </form>
+      </CardContent>
     </Card>
   )
 }

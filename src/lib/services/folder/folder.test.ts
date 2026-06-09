@@ -344,6 +344,9 @@ test('listBin returns flat rows ordered by deletedAt DESC with correlationId', a
   const docEntry = bin.find((e) => e.kind === 'document')
   expect(folderEntry?.id).toBe(root.id)
   expect(docEntry?.id).toBe(doc.document.id)
+  // Document entries carry mime + extension so the bin UI can render type icons.
+  expect(docEntry?.mime).toBe('application/pdf')
+  expect(docEntry?.extension).toBe('pdf')
 
   // Sanity: file row survives soft-delete cascade (only document.deletedAt is set).
   const [fileRow] = await db.select({ id: file.id }).from(file).where(eq(file.id, doc.file.id))

@@ -26,6 +26,7 @@ Server-push invalidation, end-to-end:
 3. **SSE handler** — `protectedProcedure` `realtime.events` (`src/lib/orpc/procedures/realtime.ts`) is an `async function*` with `.output(eventIterator(realtimeEventSchema))` — that combination flips oRPC's `RPCHandler` into SSE-encoder mode. It forwards `realtime.subscribe({ signal, log: context.log })` to the client. `signal` is wired by oRPC to both client disconnect and function shutdown.
 4. **Subscriber hook** — `useRealtimeSync()` (`src/hooks/useRealtimeSync.ts`) is mounted **once** in `src/routes/_authenticated.tsx`. It opens a single SSE stream, iterates events, and `switch`es on `event.kind` to `queryClient.invalidateQueries({ queryKey: orpc.<namespace>.key() })`. Reconnects with `exponential-backoff` (1s → 30s cap, ×2, full jitter, infinite attempts, stop on `UNAUTHORIZED`).
 5. **Event schema** — `realtimeEventSchema` in `src/lib/effects/realtime/types.ts` is a discriminated union on `kind`. `kind` is always `<namespace>.changed` where `<namespace>` is the top-level `appRouter` key the client should invalidate. `ids` is optional metadata for future fine-grained patching; coarse invalidation ignores it.
+6. **Echo suppression** — a mutation publishes with `{ source: context.user.id }`. The SSE handler does **not** deliver an event back to the actor who caused it (`shouldDeliver(source, self)` in `src/lib/effects/realtime/realtime.ts`). The actor's own tab already updated itself locally via its mutation's `onSuccess` invalidation / optimistic write — realtime exists to propagate **other** actors' changes. `source` rides a server-internal envelope (`{ event, source }`), never the wire schema. Sourceless publishes (presence transitions, background jobs) broadcast to everyone, including the actor.
 
 This keeps the **interface** small (two functions on the effect, one event schema), the **implementation** swappable (in-memory today; Postgres `LISTEN/NOTIFY` or Redis later if we ever multi-instance), and the **locality** intact (the procedure reads top-to-bottom: validate → service → publish; the hook reads top-to-bottom: open → dispatch → reconnect).
 
@@ -112,7 +113,7 @@ update: adminProcedure
     try {
       const updated = await userService.updateAsAdmin(context.user.id, input.id, { ... })
       context.log.info('admin updated user', { targetId: input.id, role: input.role })
-      await realtime.publish({ kind: 'user.changed', ids: [updated.id] })
+      await realtime.publish({ kind: 'user.changed', ids: [updated.id] }, { source: context.user.id })
       return updated
     } catch (err) {
       rethrowAsORPC(err, 'update')
@@ -124,6 +125,7 @@ Rules:
 - Publish **after** the service call returns successfully — never before, never inside the service. Services are DB-only ([ADR-0002](./0002-service-domain-architecture.md)) and must not import the `realtime` effect.
 - Publish **after** any sync-critical side effect that must succeed before clients see the change (e.g. `auth.api.revokeUserSessions` on delete — see `procedures/user.ts:92-103`).
 - Publish on **every** state-changing mutation for an opted-in entity, including create, update, delete, restore. Missing one publish means every client sees stale data until they navigate.
+- Pass `{ source: context.user.id }` from mutation procedures so the actor's own tab isn't double-invalidated (see [Echo suppression](#echo-suppression)). Omit `source` **only** for broadcast-to-all publishes where there is no single acting user or every client (incl. the actor) must receive it: the two `presence.changed` publishes in the SSE handler, and the background thumbnail job (`src/lib/queue/handlers/imageThumbnail.ts`) — the uploader depends on that later echo to surface `thumbnailPathname`.
 
 ### Where to subscribe — once per authenticated tab
 
@@ -154,12 +156,28 @@ export const realtimeEventSchema = z.discriminatedUnion('kind', [
 - `ids` is metadata, not a payload. Coarse invalidation ignores it. It exists so a future fine-grained variant can patch the cache without a schema break.
 - One variant per entity is the default. Don't pre-split into `user.created` / `user.updated` / `user.deleted` — the client doesn't care which mutation happened, only that the namespace is dirty.
 - **Compound publishes are fine when one mutation dirties more than one namespace.** A procedure may publish several events in sequence. `src/lib/orpc/procedures/folder.ts` does this: a folder rename/move/soft-delete/restore publishes both `folder.changed` *and* `document.changed`, because folder path changes flow into the denormalized document search haystack and a folder cascade soft-deletes its documents. The rule is still "thin event, fat refetch" per namespace — just emit one per dirtied namespace. The schema also carries cross-namespace coupling the other direction: `share.changed` is dispatched in the hook to invalidate both `orpc.share` and `orpc.user.listContacts`.
+- **`bin.changed` is published only by mutations that move an item in or out of the admin bin** — soft-delete document/folder (enter), restore document/folder and hard-delete document (leave). These publish it *alongside* their `document.changed` / `folder.changed`. Crucially, upload / rename / move publish `document.changed` *without* `bin.changed`, so unrelated document edits don't mark the bin query stale. This is why the bin has its own event rather than piggybacking on `document.changed`.
+
+### Echo suppression
+
+A mutation invalidates the actor's own tab twice without this: once via the mutation's local `onSuccess`/optimistic write, and again when the SSE stream echoes the same `<namespace>.changed` event back to the tab that caused it. The two near-simultaneous `invalidateQueries` calls race on the same key, and `invalidateQueries`' default `cancelRefetch: true` aborts the in-flight refetch — visible as a storm of `(canceled)` requests during e.g. a batch upload. It's also redundant work: realtime's job is to sync **other** actors' changes, not our own.
+
+So the SSE handler suppresses self-echo. `source` rides a server-internal envelope (`RealtimeEnvelope = { event: RealtimeEvent; source?: string }`), not `realtimeEventSchema` — keeping a user id off the wire and the suppression policy out of the client. The handler reads its own `self = context.user.id` and yields only when `shouldDeliver(source, self)` (`src/lib/effects/realtime/realtime.ts`): deliver if `source` is undefined (broadcast) or differs from `self`.
+
+```ts
+const self = context.user.id
+for await (const { event, source } of realtime.subscribe({ signal, log })) {
+  if (shouldDeliver(source, self)) yield event
+}
+```
+
+Granularity is **user-level** (not per-tab): `context.user.id` is already available on both the publish and subscribe sides, so no per-tab id / header plumbing is needed. This is safe because every mutation already refreshes the actor's own view locally (the convention in `src/lib/orpc/optimistic.ts`: realtime is a *second* safety net, not the primary updater).
 
 ### Why this is a deep module
 
 In the architecture skill's vocabulary:
 
-- **Interface** — two functions on `RealtimeEffects` (`publish`, `subscribe`) plus the typed event schema. Stable; new entities extend the schema's discriminated union, not the interface.
+- **Interface** — two functions on `RealtimeEffects` (`publish(event, opts?: { source? })`, `subscribe(): AsyncIterable<RealtimeEnvelope>`) plus the typed event schema and the `shouldDeliver` policy helper. Stable; new entities extend the schema's discriminated union, not the interface.
 - **Implementation** — `MemoryPublisher` channel routing, SSE encoding via `eventIterator`, `AbortSignal` teardown on disconnect and shutdown, reconnect-with-backoff and full jitter, coarse invalidation policy in the browser hook. All hidden.
 - **Two seams** — the `RealtimeEffects` interface (real seam: in-memory today, broker-backed adapter tomorrow if multi-instance lands) and the event-schema enum (one variant per opted-in namespace).
 - **Test surface = the interface** — `realtime.test.ts` exercises publish/subscribe/abort against the real `MemoryPublisher`. No mocks. The deletion test passes: removing this module would re-scatter `MemoryPublisher`, the SSE handler, the schema, the dispatch switch, and the reconnect loop across every entity's procedures and routes.
@@ -224,9 +242,9 @@ When an entity (e.g. `share`) needs realtime sync:
 
 3. **Publish from every mutation procedure** for that entity (`src/lib/orpc/procedures/share.ts`):
    ```ts
-   await realtime.publish({ kind: 'share.changed', ids: [/* affected ids */] })
+   await realtime.publish({ kind: 'share.changed', ids: [/* affected ids */] }, { source: context.user.id })
    ```
-   After the service call returns. After any sync-critical side effect. Before returning to the caller.
+   After the service call returns. After any sync-critical side effect. Before returning to the caller. Pass `{ source: context.user.id }` so the actor's own tab isn't double-invalidated — omit it only for broadcast-to-all publishes (see [Echo suppression](#echo-suppression)).
 
 4. **No DB, no migration, no schema.ts change.** The bus is in-memory; the channel is shared across all event kinds; the discriminated union does all the type-routing.
 
@@ -277,6 +295,7 @@ Drift checks for this ADR itself:
 - Hard dependency on single-instance deployment. The day we scale horizontally, the in-memory adapter has to be replaced before realtime sync survives.
 - Coarse invalidation can over-refetch when a screen displays unrelated rows from the same namespace. Acceptable today; revisit per-query if a refetch turns expensive.
 - No durability — disconnected clients miss intermediate events. Recovered automatically by TanStack Query's stale-query refetch, but worth knowing.
+- Echo suppression is user-level: a second tab opened by the **same** user no longer gets an instant realtime push from the first tab's mutations. It resyncs on window focus (`refetchOnWindowFocus`, default on) or `staleTime` expiry instead. Acceptable for a 10–20 user app; revisit if same-user multi-tab live-sync becomes a real need (the fix is per-tab `source` granularity, which adds a per-tab id + header).
 
 ---
 

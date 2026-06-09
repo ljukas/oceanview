@@ -1,6 +1,8 @@
 import { environmentManager } from '@tanstack/react-query'
 import { createFileRoute, Outlet, redirect } from '@tanstack/react-router'
 import { AppSidebar } from '~/components/AppSidebar'
+import { UploadQueueBox } from '~/components/document/upload/UploadQueueBox'
+import { UploadQueueProvider } from '~/components/document/upload/UploadQueueProvider'
 import { SidebarInset, SidebarProvider, SidebarTrigger } from '~/components/ui/sidebar'
 import { TooltipProvider } from '~/components/ui/tooltip'
 import { useRealtimeSync } from '~/hooks/useRealtimeSync'
@@ -28,16 +30,19 @@ function AuthenticatedLayout() {
   useRealtimeSync()
 
   return (
-    <TooltipProvider>
-      <SidebarProvider>
-        <AppSidebar user={user} />
-        <SidebarInset>
-          <header className="flex h-12 items-center gap-2 border-b px-4 lg:hidden">
-            <SidebarTrigger />
-          </header>
-          <Outlet />
-        </SidebarInset>
-      </SidebarProvider>
-    </TooltipProvider>
+    <UploadQueueProvider>
+      <TooltipProvider>
+        <SidebarProvider>
+          <AppSidebar user={user} />
+          <SidebarInset>
+            <header className="sticky top-0 z-30 flex h-12 items-center gap-2 border-b bg-background px-4 md:hidden">
+              <SidebarTrigger />
+            </header>
+            <Outlet />
+          </SidebarInset>
+        </SidebarProvider>
+      </TooltipProvider>
+      <UploadQueueBox />
+    </UploadQueueProvider>
   )
 }

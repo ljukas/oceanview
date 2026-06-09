@@ -19,7 +19,7 @@ function dispatch(queryClient: QueryClient, event: RealtimeEvent) {
       return
     case 'share.changed':
       void queryClient.invalidateQueries({ queryKey: orpc.share.key() })
-      // ContactCard renders owned shares; keep that view in sync.
+      // The Delägare table renders owned shares; keep that view in sync.
       void queryClient.invalidateQueries({ queryKey: orpc.user.listContacts.key() })
       return
     case 'document.changed':
@@ -39,6 +39,12 @@ function dispatch(queryClient: QueryClient, event: RealtimeEvent) {
       void queryClient.invalidateQueries({ queryKey: orpc.document.listDocuments.key() })
       void queryClient.invalidateQueries({ queryKey: orpc.document.documentHistory.key() })
       void queryClient.invalidateQueries({ queryKey: orpc.documentSearch.key() })
+      return
+    case 'bin.changed':
+      // Soft-delete / restore / hard-delete move an item in or out of the
+      // (admin) bin. Published only by those mutations, so unrelated document
+      // and folder edits leave the bin query untouched.
+      void queryClient.invalidateQueries({ queryKey: orpc.bin.key() })
       return
   }
 }

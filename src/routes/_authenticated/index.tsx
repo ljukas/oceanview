@@ -1,13 +1,15 @@
 import { useSuspenseQuery } from '@tanstack/react-query'
 import { createFileRoute, useMatchRoute } from '@tanstack/react-router'
 import { PlusIcon } from 'lucide-react'
+import { useEffect, useState } from 'react'
 import { z } from 'zod'
+import { PasskeySetupPrompt } from '~/components/passkey/PasskeySetupPrompt'
 import { CreateSeasonDialog } from '~/components/season/CreateSeasonDialog'
 import { DeleteSeasonDialog } from '~/components/season/DeleteSeasonDialog'
 import { DisponeringslistaTable } from '~/components/season/DisponeringslistaTable'
 import { EditSeasonDialog } from '~/components/season/EditSeasonDialog'
 import { Button } from '~/components/ui/button'
-import { useHandlePasskeySetup } from '~/hooks/usePasskeys'
+import { usePasskeySetupPrompt } from '~/hooks/usePasskeys'
 import { orpc } from '~/lib/orpc/client'
 
 const indexSearchSchema = z.object({
@@ -59,10 +61,15 @@ function Calendar() {
   const handleDelete = (year: number) =>
     void navigate({ to: '.', search: { dialog: 'deleteSeason', seasonYear: year } })
 
-  useHandlePasskeySetup({
-    enabled: passkeyParam === 'setup',
-    onHandled: () => void navigate({ to: '/', search: {}, replace: true }),
-  })
+  // Capture the post-sign-in setup intent once, then strip the ?passkey=setup param so a
+  // refresh doesn't reopen the prompt. The captured value keeps the prompt enabled even
+  // after the URL is cleaned.
+  const [wantsPasskeySetup] = useState(() => passkeyParam === 'setup')
+  const passkeyPrompt = usePasskeySetupPrompt({ enabled: wantsPasskeySetup })
+
+  useEffect(() => {
+    if (passkeyParam === 'setup') void navigate({ to: '/', search: {}, replace: true })
+  }, [passkeyParam, navigate])
 
   return (
     <div className="flex flex-col gap-6 p-4 md:p-8">
@@ -100,6 +107,12 @@ function Calendar() {
         onOpenChange={(open) => {
           if (!open) void navigate({ to: '.', search: {} })
         }}
+      />
+      <PasskeySetupPrompt
+        open={passkeyPrompt.open}
+        pending={passkeyPrompt.pending}
+        onCreate={passkeyPrompt.create}
+        onDismiss={passkeyPrompt.dismiss}
       />
     </div>
   )

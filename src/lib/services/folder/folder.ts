@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { and, desc, eq, inArray, isNotNull, isNull, like, ne, sql } from 'drizzle-orm'
 import { db } from '~/lib/db'
-import { document, documentEvent, folder, folderEvent } from '~/lib/db/schema'
+import { document, documentEvent, file, folder, folderEvent } from '~/lib/db/schema'
 import * as documentService from '~/lib/services/document'
 import { joinFilename } from '~/utils/filename'
 import { FolderDomainError } from './errors'
@@ -35,6 +35,8 @@ export type BinEntry = {
   path: string | null
   deletedAt: Date
   correlationId: string | null
+  mime: string | null
+  extension: string | null
 }
 
 export type SoftDeleteResult = {
@@ -470,8 +472,10 @@ export async function listBin(): Promise<Array<BinEntry>> {
       name: document.name,
       extension: document.extension,
       deletedAt: document.deletedAt,
+      mime: file.mime,
     })
     .from(document)
+    .innerJoin(file, eq(document.fileId, file.id))
     .where(isNotNull(document.deletedAt))
 
   const folderIds = folders.map((row) => row.id)
@@ -526,6 +530,8 @@ export async function listBin(): Promise<Array<BinEntry>> {
       // biome-ignore lint/style/noNonNullAssertion: WHERE clause guarantees deletedAt is non-null
       deletedAt: row.deletedAt!,
       correlationId: folderCorrelationById.get(row.id) ?? null,
+      mime: null,
+      extension: null,
     })),
     ...documents.map((row) => ({
       kind: 'document' as const,
@@ -535,6 +541,8 @@ export async function listBin(): Promise<Array<BinEntry>> {
       // biome-ignore lint/style/noNonNullAssertion: WHERE clause guarantees deletedAt is non-null
       deletedAt: row.deletedAt!,
       correlationId: documentCorrelationById.get(row.id) ?? null,
+      mime: row.mime,
+      extension: row.extension,
     })),
   ]
   entries.sort((a, b) => b.deletedAt.getTime() - a.deletedAt.getTime())

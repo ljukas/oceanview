@@ -1,6 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { Suspense } from 'react'
-import { DocumentBin } from '~/components/document/DocumentBin'
+import { DocumentBin } from '~/components/document/views/DocumentBin'
 import { orpc } from '~/lib/orpc/client'
 import { seo } from '~/utils/seo'
 
