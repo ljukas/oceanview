@@ -1,8 +1,9 @@
 import { ORPCError } from '@orpc/server'
 import { z } from 'zod'
+import { normalizeEmail } from '~/lib/adminAllowlist'
 import { auth } from '~/lib/auth'
 import { realtime } from '~/lib/effects'
-import { adminProcedure, protectedProcedure } from '~/lib/orpc/context'
+import { adminProcedure, protectedProcedure, publicProcedure } from '~/lib/orpc/context'
 import type { SharePartRow } from '~/lib/services/share'
 import * as shareService from '~/lib/services/share'
 import * as userService from '~/lib/services/user'
@@ -62,6 +63,13 @@ export const userRouter = {
   findIdByEmail: adminProcedure
     .input(z.object({ email: z.email() }))
     .handler(({ input }) => userService.findIdByEmail(input.email)),
+
+  // Public: backs the login "Välkommen tillbaka" card, which only knows the
+  // last-signed-in email (from the browser-session cookie) and needs the live
+  // avatar. Returns all-null for unknown/avatar-less emails — see service note.
+  avatarByEmail: publicProcedure
+    .input(z.object({ email: z.email() }))
+    .handler(({ input }) => userService.findAvatarByEmail(normalizeEmail(input.email))),
 
   list: adminProcedure
     .input(z.object({ filter: z.enum(['active', 'deleted']).default('active') }))

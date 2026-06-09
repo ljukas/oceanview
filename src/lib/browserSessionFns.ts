@@ -18,7 +18,7 @@ export const rememberBrowserUser = createServerFn({ method: 'POST' })
   .inputValidator(browserSessionSchema)
   .handler(({ data }) => {
     const current = readBrowserSession()
-    if (current?.email !== data.email || current?.image !== data.image) {
+    if (current?.email !== data.email) {
       writeBrowserSession(data)
     }
   })

@@ -27,10 +27,7 @@ export const Route = createFileRoute('/login')({
   },
   loader: async () => {
     const session = await getBrowserSession()
-    const savedLogin = session?.email
-      ? { email: session.email, image: session.image ?? null }
-      : null
-    return { savedLogin }
+    return { savedLogin: session?.email ? { email: session.email } : null }
   },
   component: Login,
 })
@@ -79,7 +76,6 @@ function Login() {
       ) : savedLogin ? (
         <WelcomeBackCard
           email={savedLogin.email}
-          image={savedLogin.image}
           callbackURL={callbackURL}
           onSent={setSentTo}
           onSwitchUser={() => {

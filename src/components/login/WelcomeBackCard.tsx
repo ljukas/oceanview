@@ -1,3 +1,4 @@
+import { useQuery } from '@tanstack/react-query'
 import { KeyRoundIcon } from 'lucide-react'
 import { useState } from 'react'
 import { toast } from 'sonner'
@@ -14,10 +15,10 @@ import {
 import { Spinner } from '~/components/ui/spinner'
 import { usePasskeySupport } from '~/hooks/usePasskeys'
 import { authClient } from '~/lib/authClient'
+import { orpc } from '~/lib/orpc/client'
 
 type Props = {
   email: string
-  image: string | null
   onSent: (email: string) => void
   onSwitchUser: () => void
   onPasskeySignIn: () => void
@@ -27,7 +28,6 @@ type Props = {
 
 export function WelcomeBackCard({
   email,
-  image,
   onSent,
   onSwitchUser,
   onPasskeySignIn,
@@ -36,6 +36,13 @@ export function WelcomeBackCard({
 }: Props) {
   const passkeySupported = usePasskeySupport()
   const [isSending, setIsSending] = useState(false)
+
+  // Fetch the avatar live by email rather than caching it in the cookie (where
+  // it would go stale). Non-blocking: the card renders the initials fallback
+  // immediately and swaps in the avatar once the query resolves.
+  const { data: avatar } = useQuery(orpc.user.avatarByEmail.queryOptions({ input: { email } }))
+  const image = avatar?.image ?? null
+  const imageBlurhash = avatar?.imageBlurhash ?? null
 
   async function sendMagicLink() {
     setIsSending(true)
@@ -59,7 +66,9 @@ export function WelcomeBackCard({
       </CardHeader>
       <CardContent className="flex flex-col items-center gap-3">
         <Avatar className="size-16">
-          {image ? <AvatarImage src={image} alt={email} width={64} height={64} /> : null}
+          {image ? (
+            <AvatarImage src={image} alt={email} width={64} height={64} blurhash={imageBlurhash} />
+          ) : null}
           <AvatarFallback className="font-semibold text-2xl">
             {email[0]?.toUpperCase() ?? '?'}
           </AvatarFallback>
