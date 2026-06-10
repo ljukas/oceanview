@@ -15,6 +15,15 @@
 > - **`email` ships three adapters**, not two: `resend` (prod), `smtp` (dev → Mailpit), `devLog` (test). See [ADR-0008](./0008-email-architecture.md). The "two adapters from day one" line is about the seam being real; three only strengthens it.
 > - **The effects inventory is wider than email/storage/queue.** Two **in-process** effects also live under `src/lib/effects/` and follow the same seam, but own in-process state rather than the outside world: `realtime` (SSE pub/sub — see [ADR-0004](./0004-realtime-sync-architecture.md)) and `presence` (online/away tracking — see [ADR-0011](./0011-presence-online-status-architecture.md)). The "effects own the outside world" framing below predates them; treat in-process effects as a sanctioned second category.
 
+> **Amended 2026-06-10** (storage reality, caller classes, a stale carve-out — the seam still stands):
+> - **Storage landed per [ADR-0006](./0006-file-storage.md), not R2.** The namespace tree's `storage/adapters/r2.ts` and the `presignUpload`/`presignDownload`/`deleteObject` sketch are historical. `src/lib/effects/storage/` ships three adapters — `vercelBlob` (prod), `s3` (dev → RustFS), `devLog` (test) — plus `clientUpload.ts`, the browser-side dispatcher that switches on the discriminated `upload.kind`, and an `envPrefix()`/`stripEnvPrefix()` pair exported from `storage.ts` (kept together so adapter prefixing and validation can't drift). Read every R2 mention below — the "R2 presign" tier-1 example in the TL;DR table, "R2 has no egress fees" in the carried-forward non-negotiables, the `r2` verification grep — as historical; ADR-0006 is the storage source of truth, the same way the 2026-06-04 amendment routes email to [ADR-0008](./0008-email-architecture.md).
+> - **Sanctioned caller classes today** are four: oRPC procedures; the magic-link callback in `src/lib/auth.ts` (the `magicLink` plugin's `sendMagicLink` awaits `emailEffect.sendMagicLink`); queue handlers in `src/lib/queue/handlers/` ([ADR-0007](./0007-background-job-queue-architecture.md)); and the auth-gated file routes `src/routes/api/files/{download,view}.$id.ts` (session check → `storage.getReadUrl` → 302). The carried-forward non-negotiable naming `/api/cron/drain` as *the one* non-oRPC exception is stale — that route was never built. The actual non-oRPC server entrypoints are `/api/files/*`, `/api/log` (browser log sink — [ADR-0003](./0003-logging-architecture.md)), and the Nitro `vercel:queue` consumer plugin (`server/plugins/queueConsumer.ts`).
+> - **Strike the `enqueueEffect(tx, …)` carve-out.** The "Services … **may** call `enqueueEffect(tx, …)` for tier 3" clause in the carried-forward non-negotiables was never built (no outbox exists). The shipped rule is stronger and unconditional: services import **nothing** from `src/lib/effects/` — `grep -ri "effects" src/lib/services/` returns zero hits.
+> - **The Context paragraph is a 2026-05-21 snapshot.** "Only one cross-system side effect actually executes" and "the magic-link transport is `console.log` in `src/lib/auth.ts:46`" were true at decision time only. Today the transport is `emailEffect.sendMagicLink`, awaited (tier 1) inside the `magicLink` plugin callback, and the effects inventory spans email, storage, queue, realtime, and presence.
+> - **Adapter selection is lazy, not at module load.** The shared helper is `src/lib/effects/lazy.ts`: each multi-adapter effect wraps its env-branching selector in `lazy(...)`, which dynamically imports and caches the adapter on **first call** (keeping adapters code-split). The sketch's `export const email: EmailEffects = pickAdapter() // resolves … at module load` describes the seam, not the shipped mechanism — and the tree slot drawn as `runEffect.ts` is occupied by `lazy.ts` in reality.
+> - **Tier classification of the in-process effects.** `realtime` and `presence` are awaited inline at every publish/acquire site with no catch — sound only because the in-memory adapters are infallible by construction (they cannot throw). If a fallible adapter (Redis/Postgres pub/sub) ever replaces them, every publish site moves to the tier-2 contract: catch + log, never fail the request.
+> - **The Verification section is the phase-1 checklist** — see the in-place notes there; the original greps no longer pass and are replaced with ones that do.
+
 ---
 
 ## Context
@@ -135,7 +144,9 @@ src/lib/effects/
 `effects/<domain>/<domain>.ts` exports **typed functions**, not adapter classes:
 
 ```ts
-// src/lib/effects/email/email.ts
+// src/lib/effects/email/email.ts — illustrative sketch; the shipped interface
+// has only sendMagicLink (userInvited/userRemoved were never needed), and the
+// adapter resolves lazily on first call via lazy.ts (see 2026-06-10 amendment)
 export interface EmailEffects {
   sendMagicLink(input: { to: string; url: string }): Promise<void>
   userInvited(input: { to: string; inviterName: string }): Promise<void>
@@ -223,16 +234,16 @@ The originally planned scaffolding (`effect_outbox` table, `enqueue.ts`, `drain.
 
 ## Verification
 
-After phase 1 lands:
+After phase 1 lands *(historical checklist — kept as written except the two greps, replaced 2026-06-10 with ones that pass against today's tree)*:
 
 - `pnpm test` passes — `email.test.ts` exercises the interface contract against devLog.
 - `pnpm dev` — request a magic link from `/login`; in dev (no `RESEND_API_KEY`) the link prints to console as before; in a `.env` with `RESEND_API_KEY` set, the message arrives in the inbox.
 - Manually delete a user via `/admin/users` — confirm: (a) user is soft-deleted, (b) their session is revoked (existing behavior preserved), (c) no new errors in logs.
 - `pnpm check` — Biome lint passes.
-- Grep `src/lib/services/` for `email` / `resend` / `r2` — should return zero hits (services stay DB-only).
-- Grep `src/lib/orpc/procedures/` for `Resend` / `@resend` — should return zero hits (procedures use the `effects` seam, not the SDK directly).
+- `grep -ri "effects\|better-auth\|@vercel/blob\|resend" src/lib/services/` — zero hits (services stay DB-only: no effects namespace, no auth SDK, no transport SDK). *(The original `email`/`resend`/`r2` grep rotted — services legitimately contain `email` as a column/field name.)*
+- `grep -ri "resend\|nodemailer\|@vercel/blob\|@aws-sdk" src/lib/orpc/procedures/` — zero hits (procedures use the `effects` seam, never a transport SDK directly).
 
-After phase 2 lands (when the first durable effect ships):
+After phase 2 lands *(superseded — the outbox was never built; see [ADR-0007](./0007-background-job-queue-architecture.md) for the queue's verification story)*:
 
 - `drain.test.ts` covers: claim semantics under concurrency, retry with backoff, idempotent re-dispatch, dead-letter on max attempts.
 - Trigger the cron route manually with the secret header — outbox drains; without the secret, returns 401.

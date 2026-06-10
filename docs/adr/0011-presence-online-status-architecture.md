@@ -9,11 +9,11 @@
 
 ## Context
 
-[ADR-0004](./0004-realtime-sync-architecture.md) gave every authenticated tab a single SSE stream and an in-process `MemoryPublisher`. Presence is the natural companion feature: a co-ownership group of 10–20 people wants to see who else is currently looking at the boat's data — a green dot on contacts and the admin user list.
+[ADR-0004](./0004-realtime-sync-architecture.md) gave every authenticated tab a single SSE stream and an in-process `MemoryPublisher`. Presence is the natural companion feature: a co-ownership group of 10–20 people wants to see who else is currently looking at the boat's data — a green dot next to each owner in the owners list.
 
 "Who is online" maps cleanly onto the realtime connection that already exists: **a user is online exactly while they hold at least one open SSE subscription**. No separate heartbeat, no polling, no `last_seen` column — the connection *is* the signal. The only wrinkle is multiple tabs: one user with three tabs opens three SSE streams, and we don't want three "user came online" broadcasts (nor a premature "went offline" when they close one of three). That is a **reference count**, and refcounting is the entire substance of this subsystem.
 
-Presence is tightly coupled to ADR-0004 (it publishes through the same bus, depends on the same single-instance assumption) but is a **distinct concern**: its own typed effect, its own adapter seam, its own transition semantics, and its own read model. It earns a first-class ADR rather than a footnote in ADR-0004 — the same call already recorded when this was tracked in `docs/adr-debt/0001-presence-needs-adr.md`.
+Presence is tightly coupled to ADR-0004 (it publishes through the same bus, depends on the same single-instance assumption) but is a **distinct concern**: its own typed effect, its own adapter seam, its own transition semantics, and its own read model. It earns a first-class ADR rather than a footnote in ADR-0004 — the same call already recorded when this was tracked as ADR debt (the `docs/adr-debt/` tracker has since been removed; this ADR superseded its only entry).
 
 This ADR documents the subsystem as it ships today.
 
@@ -125,7 +125,7 @@ Properties that matter:
 
 ### The producer — `src/lib/orpc/procedures/realtime.ts`
 
-The SSE subscription generator owns both ends of the lifecycle:
+The SSE subscription generator owns both ends of the lifecycle (comments elided; the `shouldDeliver(source, self)` filter is ADR-0004's self-echo suppression, not presence):
 
 ```ts
 events: protectedProcedure
@@ -133,21 +133,24 @@ events: protectedProcedure
   .output(eventIterator(realtimeEventSchema))
   .handler(async function* ({ context, signal }) {
     context.log.info('realtime subscriber connected')
-    const becameOnline = await presence.acquire(context.user.id)
-    if (becameOnline) await realtime.publish({ kind: 'presence.changed' })
+    const self = context.user.id
+    const becameOnline = await presence.acquire(self)
     try {
-      for await (const event of realtime.subscribe({ signal, log: context.log })) {
-        yield event
+      if (becameOnline) await realtime.publish({ kind: 'presence.changed' })
+      for await (const { event, source } of realtime.subscribe({ signal, log: context.log })) {
+        if (shouldDeliver(source, self)) yield event
       }
     } finally {
-      const becameOffline = await presence.release(context.user.id)
+      const becameOffline = await presence.release(self)
       if (becameOffline) await realtime.publish({ kind: 'presence.changed' })
       context.log.info('realtime subscriber disconnected')
     }
   })
 ```
 
-The `finally` is the correctness anchor: whether the stream ends by client disconnect, network drop (the `AbortSignal` fires), or graceful function shutdown, `release` always runs. Presence is therefore as reliable as the SSE teardown ADR-0004 already guarantees.
+The `try`/`finally` pairing is the correctness anchor, and the invariant is precise: **`release` runs iff `acquire` ran.** `acquire` is the last statement before the `try`; everything that can fail afterwards — including the post-`acquire` `presence.changed` publish — sits inside the `try`, so any exit path (client disconnect, network drop firing the `AbortSignal`, graceful function shutdown, or a throwing publish) reaches the `finally` and balances the refcount. Presence is therefore as reliable as the SSE teardown ADR-0004 already guarantees.
+
+*(2026-06-10: the post-`acquire` publish originally ran between `acquire` and the `try`. A throw there — impossible with today's in-process `MemoryPublisher`, possible with a future distributed adapter — would have skipped the `finally` and leaked the refcount, pinning the user online forever. The publish was moved inside the `try`.)*
 
 ### The event — `src/lib/effects/realtime/types.ts`
 
@@ -166,7 +169,9 @@ It is a pure "the online set changed, refetch it" signal. (Contrast `user.change
 
 ### The UI
 
-`src/routes/_authenticated/contacts.tsx` and `src/routes/_authenticated/admin/users.tsx` prefetch `orpc.presence.listOnline.queryOptions()` in the loader (alongside their primary query), read it with `useSuspenseQuery`, and build `const onlineSet = new Set(onlineIds)`. They pass `isOnline={onlineSet.has(u.id)}` into `ContactCard` / `UserCard` (and inline into the desktop users table). Online renders as an `<AvatarBadge>` (`src/components/ui/avatar.tsx`) with `bg-success`, an `animate-ping` pulse, and an `sr-only` Swedish label **"Ansluten"**.
+*(Note 2026-06: `contacts.tsx` and `admin/users.tsx` were collapsed into a single owners route, and `ContactCard`/`UserCard` were removed in the process; the dot now renders from the shared table.)*
+
+`src/routes/_authenticated/owners.tsx` prefetches `orpc.presence.listOnline.queryOptions()` in the loader (alongside its primary query). Both views — `ActiveOwners` and `DeletedOwners` (the admin **"Borttagna"** filter) — read it with `useSuspenseQuery`, build `new Set(onlineIds)`, and pass it as `onlineSet` into `OwnersTable` (`src/components/user/OwnersTable.tsx`), which derives `isOnline={onlineSet.has(row.original.id)}` per row. Online renders as an `<AvatarBadge>` (`src/components/ui/avatar.tsx`) with `bg-success`, an `animate-ping` pulse, and an `sr-only` Swedish label **"Ansluten"**. Because `DeletedOwners` intersects the same `listOnline` set, a deleted user whose session is still connected shows a presence dot in the "Borttagna" list too — intentional, not a leak.
 
 ### Why this is a deep module
 
@@ -187,6 +192,8 @@ The refcount `Map` works **only** because every SSE handler runs in one Node pro
 
 Presence state lives only in memory. A redeploy or cold-start resets every refcount to empty. That is correct for a live-connection signal: after a restart, clients' SSE streams reconnect (ADR-0004's backoff loop), each reconnect calls `acquire` again, and the online set rebuilds within seconds. The worst case is a brief window where a still-connected user reads as offline until their stream re-establishes — self-healing, no durability required. There is nothing to persist.
 
+Two accepted side effects of this design: every cold start makes all N clients reconnect at once, and each user's `0→1` transition broadcasts `presence.changed`, so every connected client refetches `listOnline` once per broadcast — O(N²) refetches in the reconnect window, trivial at 20 users, with coalescing the broadcasts as the future fix if it ever matters. And a connecting tab's own `0→1` publish precedes its subscription being established, so a loader-fetched `listOnline` may not show the user's own dot until some later refetch — acceptable; always rendering self as online in the UI is the candidate fix if it ever annoys.
+
 ---
 
 ## Verification
@@ -198,14 +205,14 @@ This subsystem is correctly wired when:
 
 Drift checks for this ADR itself:
 
-- `grep -rn "presence.acquire\|presence.release" src/` — only `src/lib/orpc/procedures/realtime.ts`. Presence is acquired/released **only** by the SSE lifecycle; nowhere else may mint or drop presence.
-- `grep -rn "presence.changed" src/` — exactly three regions agree: the schema variant (`effects/realtime/types.ts`), the dispatch case (`hooks/useRealtimeSync.ts`), and the two publish sites (`procedures/realtime.ts`).
-- `grep -rn "listOnline" src/` — the procedure (`procedures/presence.ts`) plus the two consuming routes (`contacts.tsx`, `admin/users.tsx`). No service reads it.
+- `grep -rn "presence.acquire\|presence.release" src/` — production hits only in `src/lib/orpc/procedures/realtime.ts` (one `acquire`, one `release`); the rest are `effects/presence/presence.test.ts` exercising its own `createInMemoryPresence()` instance. Presence is acquired/released **only** by the SSE lifecycle; nowhere else may mint or drop presence.
+- `grep -rn "presence.changed" src/` — three load-bearing regions agree: the schema variant (`effects/realtime/types.ts`), the dispatch case (`hooks/useRealtimeSync.ts`), and the two publish sites (`procedures/realtime.ts`). The remaining hits are comments mentioning the event (`procedures/realtime.ts` header, `procedures/presence.ts`, `effects/presence/presence.ts`) — fine, but no new *code* hit may appear outside the three regions.
+- `grep -rn "listOnline" src/` — the effect (`effects/presence/`: interface, adapter, tests), the procedure (`procedures/presence.ts`), and one consuming route: `owners.tsx` (loader prefetch plus the `ActiveOwners` and `DeletedOwners` views). No service reads it.
 - `grep -rn "presence" src/lib/services/` — zero hits. Presence is an effect, not a service; services never touch it.
 
 Manual smoke (`pnpm dev`):
 
-1. Sign in as user A in two tabs and user B in one tab. B's contacts/admin list shows A with a green "Ansluten" dot.
+1. Sign in as user A in two tabs and user B in one tab. B's owners list (`/owners`) shows A with a green "Ansluten" dot.
 2. Close **one** of A's tabs — the dot stays (refcount 2→1, no broadcast).
 3. Close A's **last** tab — within a few hundred milliseconds the dot clears on B (1→0 → `presence.changed` → invalidate → refetch).
 4. Reopen A — the dot returns (0→1).
@@ -227,8 +234,8 @@ Manual smoke (`pnpm dev`):
 - `src/hooks/useRealtimeSync.ts` — the dispatch case.
 - `src/lib/orpc/router.ts` — registers `presence`.
 - `src/lib/effects/index.ts` — re-exports `presence`.
-- `src/routes/_authenticated/contacts.tsx`, `src/routes/_authenticated/admin/users.tsx` — consumers.
-- `src/components/contact/ContactCard.tsx`, `src/components/user/UserCard.tsx`, `src/components/ui/avatar.tsx` (`AvatarBadge`) — the "Ansluten" dot.
+- `src/routes/_authenticated/owners.tsx` — consumer (loader prefetch; `ActiveOwners` + `DeletedOwners` views).
+- `src/components/user/OwnersTable.tsx`, `src/components/ui/avatar.tsx` (`AvatarBadge`) — the "Ansluten" dot.
 
 ---
 

@@ -27,7 +27,8 @@ Load on demand, not eagerly. The `pnpm dlx @tanstack/intent` block at the bottom
 | Email templates | `docs/adr/0008-email-architecture.md` + https://react.email/docs |
 | Background jobs, queue topics | `docs/adr/0007-background-job-queue-architecture.md` |
 | Realtime sync (publish events, SSE) | `docs/adr/0004-realtime-sync-architecture.md` |
-| Presence (online/away status) | `docs/adr/0011-presence-online-status-architecture.md` |
+| Presence (online status) | `docs/adr/0011-presence-online-status-architecture.md` |
+| Documents (folders, search, bin, thumbnails) | `docs/adr/0010-document-management.md` |
 | Logging | `docs/adr/0003-logging-architecture.md` |
 | File storage (avatars, documents) | `docs/adr/0006-file-storage.md` |
 | Organization rules (social invariants the schema can't express) | `docs/adr/0009-organization-rules.md` |
@@ -55,7 +56,7 @@ src/
     api/rpc/$.ts                oRPC catch-all
     api/files/download.$id.ts   auth-gated 302 → signed storage URL
     _authenticated.tsx          pathless guard → /login
-    _authenticated/             index, contacts, documents, konto, admin/{users,shares}
+    _authenticated/             index, owners, documents.{index,$}, account, admin/{shares,documents.bin}
   lib/
     auth.ts                     betterAuth(): drizzleAdapter + passkey + magicLink + admin
     authClient.ts               createAuthClient() for the browser
@@ -68,13 +69,15 @@ src/
       context.ts                base / public / protected / admin procedures
       router.ts                 appRouter; SERVER-ONLY
       client.ts                 isomorphic client + TanStack Query utils
-      procedures/               health, user, image, file, share
+      procedures/               health, user, image, share, season, document,
+                                documentBin, documentSearch, folder, presence, realtime
     db/
       index.ts                  drizzle(postgres(DATABASE_URL)), snake_case
       schema/
         betterAuth.ts           CLI-regenerated; DO NOT hand-edit
         index.ts                barrel
-    services/                   per-entity folders (user, season, share, file)
+    services/                   per-entity folders (user, season, share, file,
+                                document, folder, documentSearch, documentEvent)
                                 each: <entity>.ts, errors.ts (when invariants), .test.ts, index.ts barrel
                                 see ADR-0002
     effects/                    cross-system adapters; see ADR-0001
@@ -158,7 +161,7 @@ Five architectural rules (full rationale in each ADR — read it before adjustin
 | `pnpm storage:{up,down}` | RustFS S3 on :14523 + console :14503 + bucket bootstrap |
 | `pnpm mail:{up,down}` | Mailpit SMTP :14522 + UI :14502 |
 | `pnpm email:dev` | React Email preview server on :14501 |
-| `pnpm dev:worker` | Local BullMQ worker (consumes `blurhash` topic) |
+| `pnpm dev:worker` | Local BullMQ worker (consumes `blurhash` + `image_thumbnail` topics) |
 | `pnpm test` / `test:watch` | Vitest; per-test schema (CREATE/migrate/DROP) on Neon Local session-pool URL |
 | `pnpm check` | Biome format + lint + organize imports (writes). Daily driver |
 | `pnpm check:unsafe` / `check:ci` | Unsafe fixes (Tailwind sort); dry-run for CI |
@@ -220,7 +223,7 @@ WebFetch before guessing APIs.
 - **All logging through `~/lib/logger/`.** Never `console.*` directly. See ADR-0003.
 - **Never hand-edit `src/lib/db/schema/betterAuth.ts`** — re-run `pnpm auth:schema`.
 - **All timestamp columns use `timestamp({ withTimezone: true })`.** Better Auth's schema is patched by `pnpm auth:schema`. When drizzle-kit emits `SET DATA TYPE timestamp with time zone`, hand-add `USING "<col>" AT TIME ZONE 'UTC'` to each ALTER before applying (existing values would otherwise be reinterpreted in the session TZ). Reference: `drizzle/0006_use_timestamptz.sql`.
-- **File blobs out-of-process.** Browser → storage directly; bytes never traverse a Vercel Function. `oceanview-public` (avatars) + `oceanview-private` (documents). All file code goes through `src/lib/effects/storage/`. See ADR-0006.
+- **File blobs out-of-process.** Browser → storage directly; user file bytes never traverse a Vercel Function (derived-asset workers — thumbnails, blurhash — are the sanctioned exception). `oceanview-public` (avatars) + `oceanview-private` (documents). All file code goes through `src/lib/effects/storage/`. See ADR-0006.
 - **`vercel env pull` is dangerous**: writes prod `DATABASE_URL` into `.env.local`, which Vite + Drizzle prefer over `.env`. If you must run it, immediately delete the `DATABASE_URL*` lines from `.env.local` — otherwise `pnpm db:migrate` migrates **production**.
 - **Migrations are explicit locally outside `pnpm dev:up`.** `dev:up` auto-runs `db:migrate`; `db:up`, `build`, ad-hoc flows do not. `vercel-build` migrates on deploy.
 - **File naming.**
@@ -252,7 +255,7 @@ One line each. Reasoning in `git log CLAUDE.md` and in the linked ADR.
 - **Side effects in `src/lib/effects/`** with three-tier execution model. See ADR-0001.
 - **Logging**: pino → stdout → Vercel Runtime Logs; browser warn/error POSTs `/api/log`. See ADR-0003.
 - **Realtime sync**: SSE + in-process pub/sub; single-instance assumption. See ADR-0004.
-- **Presence**: online/away via an in-process refcounted `presence` effect on the SSE connection lifecycle; `presence.changed` (no ids) → `listOnline()` refetch. Single-instance assumption shared with ADR-0004. See ADR-0011.
+- **Presence**: online status via an in-process refcounted `presence` effect on the SSE connection lifecycle; `presence.changed` (no ids) → `listOnline()` refetch; away/idle deliberately out of scope. Single-instance assumption shared with ADR-0004. See ADR-0011.
 - **Forms**: `@tanstack/react-form` v1 `createFormHook` + bound shadcn `<Field>`. See ADR-0005.
 - **File storage**: Vercel Blob (prod) / RustFS (dev) / devLog (test); two stores, two oRPC routers, discriminated `upload.kind`. R2 documented as swap-in. See ADR-0006.
 - **Background jobs**: Vercel Queues (prod) / BullMQ + Redis (dev) / devLog (test); shared handler. See ADR-0007.
@@ -262,6 +265,8 @@ One line each. Reasoning in `git log CLAUDE.md` and in the linked ADR.
 - **Admin assigns ownership in whole-share pairs by default; split via toggle** (2026-05-26). 10-card grid at `/admin/shares`; `assignShareAsAdmin`/`unassignShareAsAdmin` wrap both halves in one tx; `src/lib/shares/collapse.ts` collapses full pairs to `A`, lone halves to `A1`/`A2`; mutations publish `share.changed`.
 - **Assignment events are first-class** (2026-05-27). `ownership_assignment_event` parent table groups sibling per-part rows so history collapses to one entry per admin decision; no `kind` column on the parent (computed from children — drift-free). See ADR-0002 patterns; see also ADR-0009 for the new whole-share rule enforced alongside.
 - **Organization rules live in ADR-0009** (2026-05-27). Social rules the schema can't express (e.g. "every owner holds at least one whole share") are documented there and enforced as typed `<Entity>DomainError` raised pre-commit by services. New rules append to that ADR.
+- **Document management per ADR-0010** (2026-06-04, amended 2026-06-10). 1:1 `document`/`file` split; folders as adjacency list + denormalized path; sibling event tables with `correlation_id`; pg_trgm one-input search (deliberate seq scan at this scale); sequential Pacer upload queue; bin under `/admin/documents/bin`; thumbnails as separate public-store WebP assets.
+- **Domain invariants are check-first** (2026-06-10). Explicit read → `<Entity>DomainError` inside the guarded op's tx; never SQLSTATE/message parsing; DB constraints stay as silent backstops; check-then-write races accepted at this scale. See ADR-0002 "Check first".
 - **UI**: shadcn/ui (style `radix-nova`, base `slate`) + Tailwind v4. CSS vars in `src/styles/app.css`; `components.json` source of truth.
 - **Dark mode**: cookie-based (`oceanview-theme`), read in the root loader and applied to `<html>` during SSR; light/dark scriptless, `system` resolved by a small owned inline script + a `matchMedia` listener. Own `ThemeProvider`/`useTheme` (no next-themes). Manual toggle + system; no FOUC.
 - **Package manager**: pnpm.

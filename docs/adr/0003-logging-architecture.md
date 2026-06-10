@@ -7,6 +7,12 @@
 
 ---
 
+> **Amended 2026-06-10** (implementation reality + one recorded decision):
+> - **`runEffect` was never built** (see ADR-0001's 2026-06-04 amendment). Where this ADR says tier-2 `runEffect` "swallows errors" (Context, point 1) and "logs with the effect's tag" (*What to log*, "Significant business events"), read the real tier-2 contract instead: inline `effects.x.y(...).catch((error) => context.log.warn('failed to …', { error }))` at the call site. Live examples: the blurhash and thumbnail enqueues in `src/lib/orpc/procedures/document.ts`.
+> - **`/api/log` is deliberately open ingest.** The route is unauthenticated and has no rate limit — an accepted risk at ~20 users on a URL nobody knows. The guardrails are payload-shaped, not identity-shaped: levels restricted to `warn`/`error`, `msg` ≤ 500 chars, an 8 KB body cap (byte-accurate via `Buffer.byteLength(text, 'utf8')` as of 2026-06-10 — `text.length` would undercount multibyte bodies), and `source: 'browser'` appended server-side so spoofed entries are at least filterable. Revisit if abuse is observed in the log stream or the app becomes known on the public internet.
+
+---
+
 ## Context
 
 Oceanview is a small internal app (10–20 users) deployed on Vercel Hobby. Before this ADR, logging meant scattered `console.log` calls — fine for local debugging, useless for production: messages were unstructured, browser errors had no path to the server, and there was no request scope tying multiple log lines from one HTTP call together.
@@ -121,9 +127,9 @@ src/lib/logger/
 ### Server adapter — `~/lib/logger/server`
 
 - Singleton `logger` via `createServerLogger()` at module load. Factory accepts an optional `DestinationStream` so tests can intercept JSON output without mocking pino.
-- Level defaults: `debug` in dev (`NODE_ENV !== 'production'`), `info` in prod. Override via `LOG_LEVEL` env.
+- Level defaults: `debug` when `NODE_ENV === 'development'`, `info` otherwise — note that `test` therefore runs at `info`, not `debug`. Override via `LOG_LEVEL` env.
 - Base fields baked in: `{ service: 'oceanview', env: NODE_ENV }`.
-- `pino-pretty` transport in dev for colorized output; **transport is dropped when a destination is supplied** (pino-pretty spawns a worker that ignores custom destinations — the factory handles this so test code doesn't have to).
+- `pino-pretty` transport in dev (keyed off the same `NODE_ENV === 'development'` flag as the level default) for colorized output; **transport is dropped when a destination is supplied** (pino-pretty spawns a worker that ignores custom destinations — the factory handles this so test code doesn't have to).
 - `child(fields)` is native pino — no allocation per request beyond the small fields object.
 
 ### Request scope — how `requestId` + `userId` attach
@@ -133,9 +139,11 @@ This is a two-step assembly, not a single middleware:
 1. **The oRPC catch-all route** (`src/routes/api/rpc/$.ts`) calls `createRequestLogger(request)`, which reads `x-vercel-id` (or generates a UUID), and returns `{ log, requestId }` — a `logger.child({ requestId, path })`. Both go straight into the oRPC context.
 2. **`sessionMiddleware`** (`src/lib/orpc/context.ts`) resolves the Better Auth session and, when there's a user, replaces `context.log` with `context.log.child({ userId: user.id })`. No-op for unauthenticated callers.
 
-Net effect inside any handler: `context.log` already carries `{ requestId, path, userId? }`. Handlers add per-event fields (`targetId`, `role`, `error`). The `loggingMiddleware` description in earlier docs is a slight simplification — the work is split between the route entrypoint (request-scoped log construction) and `sessionMiddleware` (user enrichment). The handler-facing contract — "use `context.log`, it's already tagged" — is the same either way.
+Net effect inside any handler: `context.log` already carries `{ requestId, path, userId? }`. Handlers add per-event fields (`targetId`, `role`, `error`). There is no single `loggingMiddleware` — the work is deliberately split between the route entrypoint (request-scoped log construction) and `sessionMiddleware` (user enrichment); the handler-facing contract — "use `context.log`, it's already tagged" — is the same either way.
 
-The oRPC handler is constructed with an `onError` interceptor that calls `logger.error('orpc handler error', { error })`, so any thrown exception in a procedure leaves exactly one error log on the way out, regardless of whether the handler caught and rethrew it.
+The oRPC catch-all is not the only `createRequestLogger` construction site. The SSR in-process oRPC client (`src/lib/orpc/client.ts`) builds the same `{ log, requestId }` context for server-side renders, and the file routes (`src/routes/api/files/download.$id.ts`, `src/routes/api/files/view.$id.ts`) call it for their auth-gated redirects.
+
+The oRPC handler is constructed with an `onError` interceptor that calls `logger.error('orpc handler error', { error })`, so any thrown exception in a procedure leaves exactly one error log on the way out, regardless of whether the handler caught and rethrew it. Because the interceptor logs through the module singleton — it runs outside the per-request context — that line carries **no** `requestId`/`userId`. Moving error logging into a context-aware middleware is a candidate future improvement, not a commitment.
 
 ### Browser adapter — `~/lib/logger/browser`
 
@@ -149,8 +157,9 @@ The oRPC handler is constructed with an `onError` interceptor that calls `logger
 
 The `/api/log` route (`src/routes/api/log.ts`) is the receiving end:
 - Validates with Zod: `level` ∈ `{warn, error}`, `msg` 1–500 chars, `fields` optional record.
-- Hard cap: **8 KB request body**, returns 413 above.
+- Hard cap: **8 KB request body** (byte-accurate via `Buffer.byteLength(text, 'utf8')`), returns 413 above.
 - Forwarded payloads land on the server logger with `source: 'browser'` added so the stream is filterable.
+- Unauthenticated and unthrottled **by design** — accepted risk at this scale; see the 2026-06-10 amendment at the top for the rationale and revisit trigger.
 
 ### Redaction policy — `~/lib/logger/redact.ts`
 
@@ -190,6 +199,8 @@ import { logger } from '~/lib/logger/server'
 logger.warn('getSession failed', { error })
 ```
 
+Background code (no request, hence no `context.log`) follows the same singleton path with a `component` child for scope: `scripts/devQueueWorker.ts` logs through `logger.child({ component: 'devQueueWorker' })`, and the queue handlers in `src/lib/queue/handlers/` import the singleton directly.
+
 In the browser:
 
 ```ts
@@ -212,7 +223,7 @@ If a procedure or service introduces a new **significant event** (new admin acti
 
 A reader can confirm the architecture is being followed without running anything:
 
-- **No raw console calls in app code.** `grep -rn "console\." src/ --include="*.ts" --include="*.tsx"` should match only `src/lib/logger/browser.ts` (the sanctioned wrapper, with `biome-ignore` annotations) and possibly `src/lib/logger/server.test.ts` / `browser.test.ts`. Anything else is a violation.
+- **No raw console calls in app code.** `grep -rn "console\." src/ --include="*.ts" --include="*.tsx"` should match only `src/lib/logger/browser.ts` (the sanctioned wrapper) and possibly `src/lib/logger/server.test.ts` / `browser.test.ts`. Anything else is a violation. Note the lint coverage is partial: only `console.debug`/`console.info` carry `biome-ignore` comments in the wrapper, because `biome.json` allows `console.warn`/`console.error` globally — for those two levels the no-console rule is enforced by review (this grep), not by lint.
 - **No `~/lib/logger/server` import in browser code.** Component files (`src/components/`, `src/routes/`, `src/hooks/`) should import from `~/lib/logger/browser` only, never `/server`. The reverse — `~/lib/logger/browser` imported by server code — is also wrong.
 - **`installGlobalHandlers()` is called exactly once.** Grep `installGlobalHandlers` — should appear in `src/lib/logger/browser.ts` (definition) and `src/router.tsx` (single call site).
 - **`/api/log` is the only browser→server log forwarder.** Grep `fetch.*'/api/log'` — should appear only in `src/lib/logger/browser.ts`.
@@ -222,7 +233,7 @@ Manual smoke test after a change in this area:
 
 1. `pnpm dev:log` then visit `/login` and submit a magic link. The `/tmp/oceanview-dev.log` file should contain a pretty-printed `magic-link sent` (or `magic-link (devLog)`) line with `email` and `url` fields.
 2. From browser devtools console, run `throw new Error('test')`. A `window.error` POST to `/api/log` should appear in the network tab, and the dev log should gain an `error` line with `source: 'browser'`.
-3. Trigger an oRPC procedure that throws inside a service. The dev log should gain one `orpc handler error` line with the request's `requestId` (and `userId` if the user was signed in).
+3. Trigger an oRPC procedure that throws inside a service. The dev log should gain one `orpc handler error` line — note it carries **no** `requestId`/`userId`, because the `onError` interceptor logs through the module singleton, outside the per-request context (see Architecture).
 4. Hit any oRPC procedure twice in quick succession. The two requests' log lines should be correlatable by distinct `requestId` values.
 
 ---
@@ -235,6 +246,8 @@ Manual smoke test after a change in this area:
 - `src/lib/logger/redact.ts` — redact paths.
 - `src/routes/api/log.ts` — browser log sink, Zod-validated.
 - `src/routes/api/rpc/$.ts` — `createRequestLogger(request)` + oRPC `onError` interceptor.
+- `src/lib/orpc/client.ts` — SSR in-process client; second `createRequestLogger` call site.
+- `src/routes/api/files/download.$id.ts` / `view.$id.ts` — file routes; remaining `createRequestLogger` call sites.
 - `src/lib/orpc/context.ts` — `sessionMiddleware` attaches `userId` to `context.log`.
 - `src/router.tsx` — `installGlobalHandlers()` call site.
 
@@ -257,5 +270,6 @@ Manual smoke test after a change in this area:
 **Revisit triggers** — re-open this ADR if any of these change:
 - The user count grows past the "internal tool" boundary, or external compliance enters scope (PII redaction policy then needs tightening).
 - Hobby retention bites — a real bug couldn't be diagnosed because the logs had rolled off.
+- `/api/log` abuse appears in the stream (spoofed or garbage browser entries), or the app becomes known on the public internet — the open-ingest decision (2026-06-10 amendment) then needs auth and/or rate limiting.
 - Alerting becomes a real need (the team gains an on-call rotation).
 - A second piece of telemetry (metrics, traces) lands; at that point it may be cheaper to adopt one vendor (Sentry, Axiom, Datadog) for everything than to stitch three free tiers together.

@@ -1,6 +1,6 @@
 # ADR 0010 — Document Management
 
-- **Status**: Proposed
+- **Status**: Accepted
 - **Date**: 2026-06-03
 - **Deciders**: Lukas
 - **Decision in one line**: Add a 1:1 `document` table over `file` so management concerns (name, folder, thumbnail, search, soft-delete) live separately from the universal byte handle; then layer nested folders (adjacency list + denormalized path), a natural-language pg_trgm search box over a concatenated `folder_path || name` haystack, cascade soft-delete with an admin-only bin, full audit history in two sibling event tables (`document_event` + `folder_event`) joined by `correlation_id`, and per-mime-type thumbnail workers reusing the ADR-0007 queue.
@@ -104,8 +104,8 @@ The `CANNOT_DELETE_AVATAR_VIA_DOCUMENT_DELETE` guard goes away entirely: `docume
 
 Two migrations, in order:
 
-1. **`drizzle/0007_add_document_table.sql`** (custom, hand-edited — drizzle-kit can't generate the backfill): creates `document` (with `folder_id` as a no-FK column for now), backfills from `file` rows where `access='private'`, drops `file.name` + `file.folder`. Zero rows in prod today; backfill preserves `file.id` so storage pathnames remain valid.
-2. **`drizzle/0008_document_management.sql`**: creates `folder`, `file_event`, `folder_event`, `pg_trgm` extension, GIN indexes; ALTERs `document` to add the FK from `folder_id` to `folder(id)`.
+1. **`drizzle/0010_add_document_table.sql`** (custom, hand-edited — drizzle-kit can't generate the backfill): creates `document` (with `folder_id` as a no-FK column for now), backfills from `file` rows where `access='private'`, drops `file.name` + `file.folder`. Zero rows in prod today; backfill preserves `file.id` so storage pathnames remain valid.
+2. **`drizzle/0011_document_management.sql`**: creates `folder`, `file_event`, `folder_event`, `pg_trgm` extension, GIN indexes; ALTERs `document` to add the FK from `folder_id` to `folder(id)`.
 
 Each migration is self-contained and reviewable on its own. The split happens first because everything downstream in this ADR is written against the `document` table.
 
@@ -130,13 +130,13 @@ Each migration is self-contained and reviewable on its own. The split happens fi
 
 5. **Cascade soft-delete is transactional**. `folderService.softDeleteAsAdmin(folderId)` opens one tx, finds the subtree by `path LIKE`, soft-deletes folders + contained documents, emits matched `folder_event` + `document_event` rows under a single `correlation_id`. Restore is the inverse on the same id. Hard-delete (admin from the bin) issues `storage.delete` for each `file.pathname`, then `DELETE` on the `file` row (which cascades to `document`).
 
-6. **Search is a single natural-language input.** Users type words ("bottenmålning", "manual main engine", "möte mars"); they never type paths or wildcards. The implementation builds a concatenated haystack `folder_path || ' ' || name` per document (and `path || ' ' || name` per folder), trigram-indexes it via pg_trgm, and ranks results by `word_similarity(query, haystack)`. Multi-word queries match in any order because trigrams decompose. One oRPC procedure `documentSearchRouter.search({ q })` returns a discriminated union of `{ kind: 'document' | 'folder', id, name, path, score }` sorted by score.
+6. **Search is a single natural-language input.** Users type words ("bottenmålning", "manual main engine", "möte mars"); they never type paths or wildcards. The implementation builds a concatenated haystack `folder_path || ' ' || name` per document (and `path || ' ' || name` per folder), trigram-indexes it via pg_trgm, and ranks results by `word_similarity(query, haystack)`. Multi-word queries match in any order because trigrams decompose. One oRPC procedure `documentSearchRouter.search({ q })` returns a discriminated union of `{ kind: 'document' | 'folder', id, name, path, score }` sorted by score (document hits additionally carry `mime` + `extension` so the palette can render file-type icons — Amendment 2).
 
 7. **Thumbnails are a separate WebP asset, never an in-place rewrite.** Two topics: `image_thumbnail` (sharp, all `image/*` mimes — bandwidth optimization for grid tiles, not a rendering necessity) and `pdf_thumbnail` (pdfjs/pdf-to-img). Both write to `oceanview-public` at `thumbnails/{documentId}.webp`, update `document.thumbnail_pathname`, and publish `document.changed`. The **original byte at `file.pathname` is never touched**. The PDF worker's heavier deps stay out of the image cold-start path. Thumbnails are best-effort — failure logs but doesn't fail the upload confirm. Existing `blurhash` topic is unchanged; it remains the inline placeholder hash for `<img>` while the thumbnail is the actual rendered preview asset.
 
 8. **No mime whitelist on upload.** Any `contentType` is accepted. Documents without a worker-supported mime (anything other than `image/*` or `application/pdf`) render a mime-type icon in the grid; download still works. A future blacklist can guard against specific dangerous mimes if real examples surface.
 
-The 100MB size cap lives at the procedure layer (Zod). Bulk upload + drag-and-drop are UI-only — they re-run the existing three-step flow N times in parallel.
+The 100MB size cap lives at the procedure layer (Zod). Bulk upload + drag-and-drop are UI-only — they re-run the existing three-step flow N times [shipped sequential, not parallel — see Amendment 2].
 
 ---
 
@@ -314,6 +314,10 @@ export const folder = pgTable(
     index('folder_parent_id_idx').on(table.parentId),
     index('folder_path_idx').on(table.path),
     index('folder_search_haystack_trgm_idx').using('gin', sql`${table.searchHaystack} gin_trgm_ops`),
+    // NB: shipped with parent_id coalesced to a sentinel uuid, not the plain
+    // column shown here — Postgres treats each NULL as distinct, so a plain
+    // .on(parentId, name) would silently allow duplicate root-folder names.
+    // See Amendment 2 and src/lib/db/schema/folder.ts.
     uniqueIndex('folder_unique_name_per_parent_idx')
       .on(table.parentId, table.name)
       .where(sql`${table.deletedAt} IS NULL`),
@@ -385,14 +389,15 @@ CREATE INDEX folder_search_haystack_trgm_idx   ON folder   USING gin (search_hay
 **Query shape**. `word_similarity(query, haystack)` is the right pg_trgm operator: it computes the greatest similarity between the query and *any extent* of the target string. This handles multi-word queries naturally — "manual main engine" trigram-matches against `"/Manuals/Engine/ Main turbine.pdf"` because the trigrams from each query word overlap with trigrams in the haystack, regardless of order.
 
 ```ts
-// documentSearch service — pseudocode
-async function search(q: string) {
-  if (q.trim().length < 2) return []
+// documentSearch service — pseudocode (as shipped; see note below)
+async function search(rawQuery: string) {
+  const q = rawQuery.trim().toLowerCase()   // haystacks are lowercased on write
+  if (q.length < 2) return []
   const docRows = await db.execute(sql`
     SELECT d.id, d.name, d.folder_id, word_similarity(${q}, d.search_haystack) AS score
     FROM document d
     WHERE d.deleted_at IS NULL
-      AND d.search_haystack <%> ${q} < 0.7      -- threshold; tune empirically
+      AND word_similarity(${q}, d.search_haystack) > 0.2   -- threshold; tune empirically
     ORDER BY score DESC
     LIMIT 30
   `)
@@ -400,7 +405,7 @@ async function search(q: string) {
     SELECT id, name, path, word_similarity(${q}, search_haystack) AS score
     FROM folder
     WHERE deleted_at IS NULL
-      AND search_haystack <%> ${q} < 0.7
+      AND word_similarity(${q}, search_haystack) > 0.2
     ORDER BY score DESC
     LIMIT 10
   `)
@@ -408,7 +413,7 @@ async function search(q: string) {
 }
 ```
 
-The `<%>` operator returns `(1 - word_similarity)` and is indexable; the `WHERE` clause uses the GIN index for candidate generation, and `word_similarity` re-ranks the survivors. Threshold of `0.7` is the trigram-distance cap (≈ 30% word-similarity floor) — tunable per real-world data.
+> **Correction.** An earlier revision of this section filtered with `search_haystack <%> ${q} < 0.7` and claimed the `WHERE` clause "uses the GIN index". Both halves were wrong: `<%>` is not a pg_trgm operator (the word-similarity *boolean* operators are `<%` / `%>`; the *distance* operators are `<<->` / `<->>`), and a plain `word_similarity(...) > const` predicate — what actually shipped — is **not** index-backed at all. The shipped query deliberately seq-scans and computes `word_similarity` per row, which is fine at our hundreds-of-rows scale. The GIN trigram indexes exist so the documented upgrade path is query-only: switch the `WHERE` to the indexable `search_haystack <% ${q}` and tune `pg_trgm.word_similarity_threshold` when volume warrants it. See Amendment 2 and `src/lib/services/documentSearch/documentSearch.ts`.
 
 `mergeAndRank` is a stable interleave by score; ties broken by entity kind (folders first when scores are equal — folder hits tend to be more navigationally useful).
 
@@ -557,10 +562,10 @@ The blurhash queue handler's `'document'` branch becomes: take `{ documentId, ki
 ### UI surface
 
 ```
-src/routes/_authenticated/documents.index.tsx EDIT — root view (no folder)        [see Amendment 1]
-src/routes/_authenticated/documents.$.tsx     NEW  — splat: /documents/<path>      [see Amendment 1]
-src/routes/_authenticated/documents.bin.tsx   NEW  — admin-only bin
-src/components/document/
+src/routes/_authenticated/documents.index.tsx       EDIT — root view (no folder)        [see Amendment 1]
+src/routes/_authenticated/documents.$.tsx           NEW  — splat: /documents/<path>      [see Amendment 1]
+src/routes/_authenticated/admin/documents.bin.tsx   NEW  — admin-only bin                [see Amendment 2]
+src/components/document/                                                                 [superseded — see Amendment 2]
   DocumentTree.tsx          NEW   — left rail; folder hierarchy
   FolderBreadcrumb.tsx      NEW   — top of grid; path navigation
   DocumentGrid.tsx          NEW   — thumbnails + name + uploader + date; sort + filter
@@ -571,11 +576,13 @@ src/components/document/
   DocumentHistory.tsx       NEW   — per-doc event timeline
 ```
 
+> **Note.** The flat component list above (and `DocumentTree`/`DocumentGrid` specifically) is the plan as written; the shipped tree looks different — see Amendment 2 for the `actions/ card/ dialogs/ shared/ table/ upload/ views/` structure that actually landed.
+
 **Tile-image source**: `<img src={document.thumbnailUrl ?? document.originalUrl}>` for `image/*` mimes — if the worker-generated WebP isn't ready yet (or never will be, e.g. an SVG sharp can't decode), the original renders as a fallback. PDFs render the mime-type icon until the worker writes the thumbnail; everything else renders the mime-type icon permanently. Icons come from `lucide-react` (already a dep): `FileText`, `FileImage`, `FileType`, `File`.
 
 The search bar is **one input, no filters**. Hitting it from anywhere in the documents UI surfaces the ranked discriminated union; clicking a document opens its preview (download via existing signed-URL route), clicking a folder navigates into it. No advanced-search disclosure, no filter chips for v1 — the design bet is that ranking does the work.
 
-Bulk upload is the existing flow N times in parallel — no new transport. Drag-and-drop is `react-dropzone` (or hand-rolled; the API surface is small).
+Bulk upload is the existing flow N times — no new transport [shipped as a sequential queue — see Amendment 2]. Drag-and-drop is `react-dropzone` (or hand-rolled; the API surface is small).
 
 ### Why this is a deep module
 
@@ -596,17 +603,17 @@ A reader can confirm the architecture is followed without running anything:
 - `grep -rn "eq(file.access, 'private')" src/lib/services/` — zero hits. Document scoping is `JOIN document`, not a discriminator filter.
 - `grep -rn "CANNOT_DELETE_AVATAR_VIA_DOCUMENT_DELETE" src/` — zero hits. Type-prevented.
 - `grep -rn "WHERE.*path.*LIKE\|path LIKE" src/lib/services/` — should match only `folder/folder.ts`. Subtree queries are a `folder` service concern.
-- `grep -rn "correlation_id\|correlationId" src/lib/services/` — should match in `folder/folder.ts` (writes) and event read helpers. Never in procedures or routes.
+- `grep -rn "correlation_id\|correlationId" src/lib/services/` — should match in `folder/folder.ts` and `document/document.ts` (cascade writes), `documentEvent/` read helpers, and tests. In procedures it appears only as `restoreFolder`'s `{ correlationId }` input in `orpc/procedures/folder.ts` (Amendment 2 — restore is keyed by correlation id, not folder id). Never in routes.
 - `grep -rn "word_similarity\|gin_trgm_ops\|<%>\|<%" src/lib/services/` — should match only `documentSearch/documentSearch.ts` and the migration. Procedures never construct trigram queries directly.
 - `grep -rn "queue\.publish('image_thumbnail'\|'pdf_thumbnail')" src/` — should match only the confirm procedure and tests.
-- `grep -rn "search_haystack" src/` — should match only `folder/folder.ts`, `document/document.ts`, and `documentSearch/documentSearch.ts`. No route or procedure touches the column.
+- `grep -rn "search_haystack\|searchHaystack" src/` — should match only the schema files (`db/schema/document.ts`, `db/schema/folder.ts`), the `document/`, `folder/`, and `documentSearch/` services (and their tests), and `documentHelpers.test.ts` (folder-tree fixtures). No route or procedure touches the column.
 - `grep -rn "DOCUMENT_MIME\b\|z\.enum\(DOCUMENT_MIME\)" src/` — zero hits. No upload mime whitelist exists.
 - `grep -rn "thumbnails/" src/` — matches only the worker handlers and `documentService.setThumbnailPathname`. No procedure or component constructs the thumbnail pathname.
 - `grep -rn "storage\.put(['\"]private" src/lib/queue/` — zero hits in the thumbnail workers. They write only to the public store; the original byte at `file.pathname` is never overwritten.
 
 Manual smoke tests:
 
-1. **Avatar upload still works** — `/konto`, upload an avatar. One `file` row written (`access='public'`); zero `document` rows. `SELECT count(*) FROM document WHERE file_id IN (SELECT id FROM file WHERE access='public')` returns 0.
+1. **Avatar upload still works** — `/account`, upload an avatar. One `file` row written (`access='public'`); zero `document` rows. `SELECT count(*) FROM document WHERE file_id IN (SELECT id FROM file WHERE access='public')` returns 0.
 2. **Folder create + rename + move** — signed-in user creates `Manuals`; admin renames it to `Manualer`; admin moves `Engine` under `Manualer`. Three `folder_event` rows. All descendant documents' `search_haystack` reflects the new paths (verify by searching for the old name → no hits; new name → hits).
 3. **Bulk upload** five PDFs by drag-and-drop into `Manualer/Engine`. Five `file` rows + five `document` rows in five txs. Five `document_event` rows of kind `upload`. Thumbnails appear within seconds; before they appear, blurhash placeholders render.
 4. **Natural-language search** — type `bottenmlning` (typo, no diacritics) into the search bar. "Båtbottenmålning 2024.pdf" surfaces in the top hits. Type `engine manual` (two words, different order than the filename "Manual for the engine.pdf"). Hit appears.
@@ -631,10 +638,10 @@ Manual smoke tests:
 - `src/lib/orpc/procedures/folder.ts`
 - `src/lib/orpc/procedures/documentSearch.ts`
 - `src/lib/orpc/procedures/documentBin.ts`
-- `src/routes/_authenticated/documents.bin.tsx`
-- `src/components/document/{DocumentTree.tsx, FolderBreadcrumb.tsx, DocumentGrid.tsx, DocumentSearch.tsx, DocumentBin.tsx, FolderActions.tsx, DocumentHistory.tsx}`
-- `drizzle/0007_add_document_table.sql` — custom backfill migration: creates `document` (folder_id without FK), backfills from `file WHERE access='private'`, drops `file.name` + `file.folder`.
-- `drizzle/0008_document_management.sql` — creates `folder`, `document_event`, `folder_event`, pg_trgm extension, GIN indexes; ALTERs `document.folder_id` to add the FK to `folder(id)`.
+- `src/routes/_authenticated/admin/documents.bin.tsx` [see Amendment 2]
+- `src/components/document/{DocumentTree.tsx, FolderBreadcrumb.tsx, DocumentGrid.tsx, DocumentSearch.tsx, DocumentBin.tsx, FolderActions.tsx, DocumentHistory.tsx}` [shipped structure differs — see Amendment 2]
+- `drizzle/0010_add_document_table.sql` — custom backfill migration: creates `document` (folder_id without FK), backfills from `file WHERE access='private'`, drops `file.name` + `file.folder`.
+- `drizzle/0011_document_management.sql` — creates `folder`, `document_event`, `folder_event`, pg_trgm extension, GIN indexes; ALTERs `document.folder_id` to add the FK to `folder(id)`. (Plus `drizzle/0012_add_document_extension.sql` — see the extension paragraph under "Schemas".)
 - Worker handlers for `image_thumbnail` + `pdf_thumbnail` topics in the existing queue handler module.
 
 **Modified**:
@@ -645,11 +652,11 @@ Manual smoke tests:
 - `src/lib/orpc/procedures/file.ts` → **rename to `document.ts`**. All procedures are document-scoped; the rename matches reality. Add `documentRouter.renameDocument`, `moveDocument`, `restoreDocument`, `documentHistory`; `confirmDocumentUpload` accepts `folderId`, writes both rows in one tx, emits `document_event`, dispatches thumbnail job by mime prefix; `deleteDocument` writes a `document_event` row. **Drops the `DOCUMENT_MIME` whitelist** — `contentType` becomes `z.string().min(1).max(255)`. Size cap raises to 100 MB.
 - `src/lib/orpc/procedures/image.ts` — **unchanged**.
 - `src/lib/orpc/router.ts` — `fileRouter` → `documentRouter`; mount `folderRouter`, `documentSearchRouter`, `binRouter`.
-- `src/lib/queue/handlers/blurhash.ts` — `'document'` branch payload changes from `{ fileId }` to `{ documentId }`; calls `documentService.findActiveById` then `fileService.setBlurhash`. `'avatar'` branch unchanged.
+- `src/lib/queue/handlers/blurhash.ts` — `'document'` branch payload changes from `{ fileId }` to `{ documentId }`; calls `documentService.findActiveById` then `fileService.setBlurhash`. `'avatar'` branch unchanged. [Did not happen — payload stayed `{ fileId, kind }`; see Amendment 2.]
 - `src/lib/effects/queue.ts` — register topics `image_thumbnail`, `pdf_thumbnail`.
-- `src/lib/effects/realtime/types.ts` — `file.changed` becomes `document.changed`; add `folder.changed`.
+- `src/lib/effects/realtime/types.ts` — `file.changed` becomes `document.changed`; add `folder.changed` (and `bin.changed` — see Amendment 2).
 - `src/routes/api/files/download.$id.ts` — `$id` is now a `document.id`; calls `documentService.findActiveById`; drops the `access !== 'private'` guard (documents are always private by construction).
-- `src/routes/_authenticated/documents.tsx` — tree-aware routing, bulk upload, search bar.
+- `src/routes/_authenticated/documents.index.tsx` + `src/routes/_authenticated/documents.$.tsx` — tree-aware routing, bulk upload, search bar (the single `documents.tsx` split per Amendment 1).
 - `src/components/document/DocumentUpload.tsx` — bulk + drag-and-drop; oRPC calls move from `orpc.file.*` → `orpc.document.*`.
 - `src/components/document/DocumentList.tsx` — replaced by `DocumentGrid.tsx` (or kept as the table-view variant). Imported type changes to `DocumentWithFile` from `~/lib/services/document`.
 - `CLAUDE.md` — skill table, code map, decisions made (note "1:1 document/file" pattern, "avatars stay on file alone").
@@ -672,7 +679,7 @@ Manual smoke tests:
 - Two event tables means cross-entity history queries are a `UNION ALL`. The read shape is documented in `documentEvent.ts`; not a hot path.
 - `from_value` / `to_value` as `jsonb` lose typed-column ergonomics for filtering by old name. Not a use case we have today.
 - `search_haystack` is denormalized. The invariant ("haystack always reflects current folder path") is maintained by services; a hand-written `UPDATE folder SET path = ...` would silently break search until the next rename. The verification grep above flags this — but a future contributor has to honour it.
-- The 0007 migration drops the existing `file.folder text` column (unused) and `file.name text` column (avatars currently store the original upload filename here, unused). Documented here so a future archeologist doesn't wonder.
+- The 0010 migration drops the existing `file.folder text` column (unused) and `file.name text` column (avatars currently store the original upload filename here, unused). Documented here so a future archeologist doesn't wonder.
 - No upload mime whitelist means a user could upload any mime Postgres can store a string for (executables, scripts, archives). At our trusted-userbase scale this is fine; the risk is bounded by storage being private-by-default and download requiring auth. If we later need to reject specific mimes, add a blacklist gate in `mintDocumentUpload` (open question below).
 
 **Revisit triggers**:
@@ -690,8 +697,8 @@ Manual smoke tests:
 
 - **Search across deleted rows for admins** — should admin search also surface bin contents (with a flag)? Not required by the requirements; leave for a follow-up.
 - **Thumbnail regeneration trigger** — admin action to re-run the thumbnail worker for a document (in case the renderer was upgraded). Not required day one; add as a small admin endpoint if needed.
-- **Folder-create event** — `folder_event` kind list currently doesn't include `create`. Add for symmetry with `document_event.upload`? Probably yes — answers "who created this folder" symmetrically. Confirm during the schema-write pass.
-- **Avatar history during migration** — `file.name` for avatars (e.g. `IMG_1234.jpg`) is dropped by 0007. It's not rendered anywhere, but if any logging path includes it, the log line goes blank. Audit `grep -rn 'file.name\|name:' src/lib/orpc/procedures/image.ts src/lib/services/file/` during execution.
+- **Folder-create event** — `folder_event` kind list currently doesn't include `create`. Add for symmetry with `document_event.upload`? Probably yes — answers "who created this folder" symmetrically. Confirm during the schema-write pass. [Resolved: shipped — see Amendment 2.]
+- **Avatar history during migration** — `file.name` for avatars (e.g. `IMG_1234.jpg`) is dropped by 0010. It's not rendered anywhere, but if any logging path includes it, the log line goes blank. Audit `grep -rn 'file.name\|name:' src/lib/orpc/procedures/image.ts src/lib/services/file/` during execution.
 - **Mime blacklist** — should specific mimes be rejected (e.g. `application/x-msdownload`, `application/x-sh`)? Not required for the trusted internal user base, but easy to add when concrete examples surface. Track but don't implement v1.
 - **Thumbnail backfill / re-run** — if the worker fails repeatedly (bad input, sharp/pdfjs rejection) the document permanently lacks a thumbnail. The `thumbnail_pathname = ''` sentinel prevents re-enqueue churn; a manual admin-only re-run endpoint is a natural follow-up.
 
@@ -708,8 +715,47 @@ The original design routed folders with an opaque query param: `/documents?folde
 
 **Why.** The UUID is opaque and ugly in the address bar. It was never a security boundary either — access is gated by the `_authenticated` layout and per-folder service rules, not URL secrecy — so the only thing the UUID bought was unreadability.
 
-**How — zero server/schema change.** This rides entirely on the existing denormalized `folder.path` column (the same column this ADR introduced for subtree queries). The splat (`params._splat`, already URI-decoded) is matched against `folder.path` in the already-cached `folder.tree` — no new query, service, procedure, or migration. Resolution lives in the route **component** (`resolveFolderBySplat` in `documentHelpers.ts`), not the loader, so a realtime tree refetch after a rename/move re-resolves automatically. Links are built with `folderPathToSplat(folder.path)`; the router percent-encodes each segment (spaces, å/ä/ö). Comparison is NFC-normalized on both ends — `encodeURIComponent`/`decodeURIComponent` are byte-faithful and won't reconcile precomposed vs decomposed diacritics.
+**How — zero server/schema change.** This rides entirely on the existing denormalized `folder.path` column (the same column this ADR introduced for subtree queries). The splat (`params._splat`, already URI-decoded) is matched against `folder.path` in the already-cached `folder.tree` — no new query, service, procedure, or migration. Resolution (`resolveFolderBySplat` in `documentHelpers.ts`) runs in **both** the loader and the route component: the loader resolves the splat so `defaultPreload: 'intent'` prefetches *that folder's* document list on hover (an unresolvable splat prefetches root — harmless); the component re-resolves on every render, so a realtime tree refetch after a rename/move re-resolves automatically. Links are built with `folderPathToSplat(folder.path)`; the router percent-encodes each segment (spaces, å/ä/ö). Comparison is NFC-normalized on both ends — `encodeURIComponent`/`decodeURIComponent` are byte-faithful and won't reconcile precomposed vs decomposed diacritics.
 
 **Tradeoff (accepted).** A folder's URL is derived from its path, so renaming/moving a folder changes its URL. A stale URL (bookmark, old tab) no longer matches any `path` → the splat route redirects to root (`/documents`) rather than 404 — the document library's natural empty state. For a single-boat-club user base this is fine; if stable cross-rename links are ever needed, add a short stable id column and resolve on that instead (the splat plumbing stays).
 
 This does **not** reopen the ltree rejection (§ "Tree model — ltree (rejected)"): that was about *internal label storage*, and the internal `path` denormalization is unchanged.
+
+### Amendment 2 (2026-06-10) — as implemented
+
+The ADR shipped across `1e10b94` (folders, search, bin, management UI — 2026-06-04) through `c286b30` (component-tree restructure — 2026-06-09), plus a hardening pass on 2026-06-10. The architecture held: 1:1 `document` over `file`, adjacency list + denormalized path, two sibling event tables with `correlation_id`, pg_trgm haystack search, transactional cascade soft-delete, separate-WebP thumbnails. The deltas:
+
+**UI**
+
+- **The "UI surface" component list was superseded wholesale.** `DocumentTree` and `DocumentGrid` were never built. The shipped tree is `src/components/document/{actions,card,dialogs,shared,table,upload,views}/`. Desktop is an OS-style **table** (`views/DocumentsDesktop` + `table/DocumentTable*`): multi-select, right-click context menu, and dnd-kit drag-and-drop whose drop semantics are planned by the pure `planMixedDrop` helper (`shared/documentHelpers.ts`). Mobile is a Drive-style touch view (`views/DocumentsMobile`: tap to open, long-press to select). `views/DocumentsView` picks between them by pointer type (`useIsCoarsePointer`), which only resolves after mount — so it renders a hydration-safe skeleton on the server and first client paint.
+- **Bin route moved under admin**: `/admin/documents/bin` (`src/routes/_authenticated/admin/documents.bin.tsx`), not `/documents/bin` — it's an admin-only surface and the URL says so.
+- **Bulk upload is sequential, not "N in parallel".** An app-wide, navigation-persistent queue (`upload/UploadQueueProvider`, mounted in the `_authenticated` layout so it survives in-app navigation) drains files on Pacer's `useAsyncQueuer` with `concurrency: 1` and exponential retry (`maxAttempts: 3`) — one upload in flight so slow connections aren't flooded.
+- **Search UI**: 250 ms trailing debounce (Pacer `useDebouncedValue`), a cmdk command palette (`shared/DocumentSearch.tsx`) opened on `Mod+K` via `@tanstack/react-hotkeys`, server-side filtering only (cmdk's client filter disabled). Search hits carry `mime` + `extension` so the palette renders file-type icons.
+- **File-type icons**: `fileTypeAppearance` (`shared/documentHelpers.ts`) maps mime with an extension fallback to a family (pdf/word/excel/csv/presentation/archive/text) with **brand colors** (PDF red, Word blue, Excel/CSV green, PowerPoint orange, archive amber) — an explicit, documented exception to the semantic-colors-only rule: file-type colors are recognized iconography, not theme accents.
+- **Tile images**: a new lazy per-tile `documentRouter.thumbnail` procedure replaces the body's `thumbnailUrl ?? originalUrl` plan. The grid renders immediately on a blurhash CSS placeholder; each image tile then resolves its rendered WebP's stable public URL (`staleTime: Infinity` — it never expires) only when a real `thumbnailPathname` exists. **Tiles never load the original byte.**
+
+**Search query**
+
+- Shipped as `word_similarity(q, search_haystack) > 0.2` — an **intentional seq scan** at our hundreds-of-rows scale, with the indexable `<%` operator (+ `pg_trgm.word_similarity_threshold`) as the documented query-only upgrade path; the GIN indexes already exist. The body's pseudocode and its `<%>`/"uses the GIN index" claims were wrong and have been corrected in place.
+- The haystack is **lowercased on write** (both `document` and `folder` services) and the query is lowercased to match, making pg_trgm hits case-insensitive.
+
+**Realtime**
+
+- A **third event kind `bin.changed`** (no ids) joins `document.changed`/`folder.changed`. Published only by soft-delete / restore / hard-delete mutations; invalidates `orpc.bin`, so unrelated edits leave the admin bin query untouched.
+- As of 2026-06-10, `document.changed` also invalidates `orpc.documentSearch` — uploads, renames, and deletes add/rewrite/remove haystacks, so an open search palette must refetch (`folder.changed` did this from the start).
+- `document.thumbnail` is **deliberately never invalidated**: public thumbnail URLs are stable, and a newly rendered thumbnail surfaces via the list refetch (new `thumbnailPathname` → the tile's first fetch).
+
+**Procedures & services**
+
+- **`binRouter.hardDeleteFolder` is deferred.** Admins restore folder subtrees from the bin; only individual documents can be permanently purged.
+- `folderRouter.restoreFolder` takes `{ correlationId }` only (not the planned `{ id | correlationId }`); the service fn is `restoreByCorrelationAsAdmin` — a cascade restore is keyed by the admin decision, not a folder id.
+- `confirmDocumentUpload` takes **no `contentType`** — the mime is derived server-side from `storage.head()`, so the client can't lie about it. And as of 2026-06-10 the pathname shape check is `stripEnvPrefix(pathname).startsWith('documents/')`: the bare `startsWith` rejected **every** production upload because the vercelBlob adapter env-prefixes pathnames (`prod/documents/…` — see ADR-0006).
+- The blurhash payload **stayed `{ fileId, kind }`** (the handler reads via `fileService.findActiveById`); the planned `{ documentId }` change didn't happen — blurhash lives on `file` and never needs the document row. The thumbnail topic payload is `{ documentId }` as planned.
+- Error-code unions shifted: `FolderDomainError` is `NOT_FOUND | NOT_ADMIN | NAME_TAKEN_IN_PARENT | INVALID_NAME | PARENT_NOT_FOUND | CANNOT_MOVE_INTO_DESCENDANT | ALREADY_DELETED | PARENT_DELETED` (gains the `PARENT_*` codes, drops `NOT_DELETED`); `DocumentDomainError` adds `NOT_ADMIN` (and keeps `NOT_DELETED`). The bin router reuses the shared **exhaustive** `rethrowDocumentErrorAsORPC` exported from `procedures/document.ts` — no default case, so a new code breaks the build at the mapper.
+- `documentService` surface as shipped: `listDocumentsByFolderId` (per-folder, not a global `listAllDocuments`), plus **tx-composable** `cascadeSoftDelete`/`cascadeRestore` that take the caller's transaction so `folderService`'s cascade composes them without a cross-service tx seam. `listAllDocuments` and `searchByIds` were never built.
+
+**Schema & migrations**
+
+- Migrations landed as `drizzle/0010_add_document_table.sql` + `0011_document_management.sql` (+ `0012_add_document_extension.sql`) — the 0007/0008 numbers in the body had been taken by interim migrations. Corrected in place.
+- The folder name-uniqueness index **coalesces NULL `parent_id` to a sentinel uuid** — Postgres treats each NULL as distinct, so the body snippet's plain `.on(parentId, name)` would have allowed duplicate root-folder names (snippet annotated; see `src/lib/db/schema/folder.ts`).
+- Resolved open question: the **folder-create event shipped** — `'create'` is in `folder_event_kind` and `createFolder` emits it, answering "who created this folder" symmetrically with `document_event.upload`.
