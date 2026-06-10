@@ -1,7 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { z } from 'zod'
-import { Button } from '~/components/ui/button'
 import {
   Dialog,
   DialogContent,
@@ -123,15 +122,8 @@ function UnassignShareDialogBody({
           />
           <form.AppField name="on" children={(field) => <field.DateField label="Gäller från" />} />
           <DialogFooter className="mt-2">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => onOpenChange(false)}
-              disabled={form.state.isSubmitting}
-            >
-              Avbryt
-            </Button>
             <form.AppForm>
+              <form.CancelButton onClick={() => onOpenChange(false)}>Avbryt</form.CancelButton>
               <form.SubmitButton label="Ta bort" pendingLabel="Tar bort…" />
             </form.AppForm>
           </DialogFooter>

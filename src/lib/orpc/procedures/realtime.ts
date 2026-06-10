@@ -22,8 +22,11 @@ export const realtimeRouter = {
       context.log.info('realtime subscriber connected')
       const self = context.user.id
       const becameOnline = await presence.acquire(self)
-      if (becameOnline) await realtime.publish({ kind: 'presence.changed' })
       try {
+        // Inside the try: if this publish ever throws (a future distributed
+        // adapter), the finally still releases — the invariant is "release
+        // runs iff acquire ran", or the refcount leaks the user as online.
+        if (becameOnline) await realtime.publish({ kind: 'presence.changed' })
         for await (const { event, source } of realtime.subscribe({ signal, log: context.log })) {
           if (shouldDeliver(source, self)) yield event
         }

@@ -24,6 +24,33 @@ export interface HeadResult {
   size: number
 }
 
+/**
+ * Environment prefix the vercelBlob adapter prepends to every pathname
+ * (`prod/` / `preview/` / `dev/`); the s3 and devLog adapters don't prefix.
+ * Lives here so adapter prefixing and `stripEnvPrefix` can't drift apart.
+ */
+export function envPrefix(): string {
+  switch (process.env.VERCEL_ENV) {
+    case 'production':
+      return 'prod/'
+    case 'preview':
+      return 'preview/'
+    default:
+      return 'dev/'
+  }
+}
+
+/**
+ * Reduce an adapter-final pathname back to its logical form for validation.
+ * `mintUploadToken` returns the final (possibly env-prefixed) pathname and the
+ * browser round-trips it to the confirm procedure, so ownership/shape checks
+ * (`startsWith('avatars/<id>/')`, `startsWith('documents/')`) must strip the
+ * prefix first or they reject every production upload.
+ */
+export function stripEnvPrefix(pathname: string): string {
+  return pathname.replace(/^(?:prod|preview|dev)\//, '')
+}
+
 export type MintUploadResult = {
   pathname: string
   upload:
@@ -104,6 +131,12 @@ export interface StorageEffects {
 }
 
 const getAdapter = lazy(async (): Promise<StorageEffects> => {
+  // Tests must never reach live storage; `test/setup.ts` loads `.env` via
+  // dotenv, so without this short-circuit a test touching storage would pick
+  // the s3 adapter and write to RustFS. Mirrors the email/queue selectors.
+  if (process.env.VITEST === 'true') {
+    return (await import('./adapters/devLog')).devLog
+  }
   if (process.env.STORAGE_ADAPTER === 'devLog') {
     return (await import('./adapters/devLog')).devLog
   }

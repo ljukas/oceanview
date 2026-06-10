@@ -60,6 +60,9 @@ function isNotFound(err: unknown): boolean {
  * on every read.
  */
 export const s3: StorageEffects = {
+  // `maxBytes` is accepted but unenforceable here: a presigned PUT cannot cap
+  // the object size (unlike Vercel Blob's `maximumSizeInBytes`). Dev-only
+  // gap — size limits are still validated at the mint/confirm boundaries.
   async mintUploadToken({ access, pathname, contentType }) {
     const url = await getSignedUrl(
       client,

@@ -1,5 +1,4 @@
 export type ShareDomainErrorCode =
-  | 'PART_NOT_FOUND'
   | 'USER_NOT_FOUND'
   | 'ALREADY_CURRENT_OWNER'
   | 'FROM_DATE_NOT_AFTER_CURRENT'

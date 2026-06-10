@@ -15,7 +15,9 @@ export const Route = createFileRoute('/api/log')({
     handlers: {
       POST: async ({ request }: { request: Request }) => {
         const text = await request.text()
-        if (text.length > MAX_BODY_BYTES) {
+        // Byte-accurate: `text.length` counts UTF-16 code units, so a multibyte
+        // body could be ~3× the intended cap before tripping it.
+        if (Buffer.byteLength(text, 'utf8') > MAX_BODY_BYTES) {
           return new Response(null, { status: 413 })
         }
         let raw: unknown

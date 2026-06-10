@@ -9,11 +9,9 @@ import { SHARE_CODES, type ShareCode } from '~/lib/shares/codes'
 
 const shareCodeSchema = z.enum(SHARE_CODES)
 
-function rethrowAsORPC(err: unknown, _action: 'assign' | 'unassign'): never {
+function rethrowAsORPC(err: unknown): never {
   if (!(err instanceof ShareDomainError)) throw err
   switch (err.code) {
-    case 'PART_NOT_FOUND':
-      throw new ORPCError('NOT_FOUND', { message: 'Andelen hittades inte' })
     case 'USER_NOT_FOUND':
       throw new ORPCError('NOT_FOUND', {
         message: 'Användaren hittades inte eller är borttagen',
@@ -179,7 +177,7 @@ export const shareRouter = {
       try {
         await shareService.assignShareAsAdmin(input, { actorUserId: context.user.id })
       } catch (err) {
-        rethrowAsORPC(err, 'assign')
+        rethrowAsORPC(err)
       }
       context.log.info('admin assigned share', {
         shareCode: input.shareCode,
@@ -203,7 +201,7 @@ export const shareRouter = {
       try {
         await shareService.unassignShareAsAdmin(input)
       } catch (err) {
-        rethrowAsORPC(err, 'unassign')
+        rethrowAsORPC(err)
       }
       context.log.info('admin unassigned share', {
         shareCode: input.shareCode,

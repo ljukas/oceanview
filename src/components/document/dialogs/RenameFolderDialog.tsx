@@ -1,7 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { z } from 'zod'
-import { Button } from '~/components/ui/button'
 import {
   Dialog,
   DialogContent,
@@ -76,15 +75,8 @@ export function RenameFolderDialog({ open, onOpenChange, folder }: Props) {
           </form.AppField>
 
           <DialogFooter className="mt-6">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => onOpenChange(false)}
-              disabled={form.state.isSubmitting}
-            >
-              Avbryt
-            </Button>
             <form.AppForm>
+              <form.CancelButton onClick={() => onOpenChange(false)}>Avbryt</form.CancelButton>
               <form.SubmitButton label="Spara" />
             </form.AppForm>
           </DialogFooter>

@@ -2,7 +2,6 @@ import { useMutation, useQueryClient, useSuspenseQuery } from '@tanstack/react-q
 import { Suspense } from 'react'
 import { toast } from 'sonner'
 import { z } from 'zod'
-import { Button } from '~/components/ui/button'
 import {
   Dialog,
   DialogContent,
@@ -125,10 +124,8 @@ function EditSeasonDialogBody({ year, onDone }: { year: number; onDone: () => vo
       </FieldGroup>
 
       <DialogFooter className="mt-6">
-        <Button type="button" variant="outline" onClick={onDone} disabled={form.state.isSubmitting}>
-          Avbryt
-        </Button>
         <form.AppForm>
+          <form.CancelButton onClick={onDone}>Avbryt</form.CancelButton>
           <form.SubmitButton label="Spara" />
         </form.AppForm>
       </DialogFooter>

@@ -171,16 +171,11 @@ function RenamePasskeyForm({ passkey, onDone }: { passkey: Passkey; onDone: () =
               </Button>
             )}
           />
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            aria-label="Avbryt"
-            onClick={onDone}
-            disabled={form.state.isSubmitting}
-          >
-            <XIcon />
-          </Button>
+          <form.AppForm>
+            <form.CancelButton variant="ghost" size="icon-sm" aria-label="Avbryt" onClick={onDone}>
+              <XIcon />
+            </form.CancelButton>
+          </form.AppForm>
         </div>
       </FieldGroup>
     </form>

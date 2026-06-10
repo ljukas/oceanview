@@ -32,8 +32,8 @@ export function DocumentSearch() {
   const [debounced] = useDebouncedValue(query, { wait: 250 })
   // cmdk keeps the previously selected item highlighted across searches and
   // scrolls it into view, leaving a new result set mid-scroll. We control the
-  // selected value and clear it on every edit / new result set so cmdk re-picks
-  // the first item and scrolls *that* (the top) into view.
+  // selected value and clear it on every edit (in the input's onValueChange)
+  // so cmdk re-picks the first item and scrolls *that* (the top) into view.
   const [selected, setSelected] = useState('')
   // formatForDisplay reads navigator, so resolve the label after mount to avoid
   // an SSR/client hydration mismatch (empty until then → kbd hint not rendered).
@@ -93,7 +93,12 @@ export function DocumentSearch() {
         <Command shouldFilter={false} value={selected} onValueChange={setSelected}>
           <CommandInput
             value={query}
-            onValueChange={setQuery}
+            onValueChange={(value) => {
+              setQuery(value)
+              // Clearing makes cmdk re-pick (and scroll to) the first item once
+              // the new result set lands — see the `selected` comment above.
+              setSelected('')
+            }}
             placeholder="Sök efter mappar och dokument…"
             loading={isFetching}
           />

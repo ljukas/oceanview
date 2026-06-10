@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { ORPCError } from '@orpc/server'
 import { z } from 'zod'
 import { queue, realtime, storage } from '~/lib/effects'
+import { stripEnvPrefix } from '~/lib/effects/storage'
 import { SHARP_DECODABLE_MIME_SET } from '~/lib/image/blurhash'
 import { adminProcedure, protectedProcedure } from '~/lib/orpc/context'
 import * as documentService from '~/lib/services/document'
@@ -20,7 +21,9 @@ const DOCUMENT_MAX_BYTES = 100_000_000
 // URLs but the adapter signature still requires one.
 const THUMBNAIL_URL_TTL_SECONDS = 3600
 
-function rethrowAsORPC(err: unknown): never {
+// Exhaustive over DocumentDomainErrorCode (no default case, so a new code
+// breaks the build here). Shared with the bin router.
+export function rethrowDocumentErrorAsORPC(err: unknown): never {
   if (!(err instanceof DocumentDomainError)) throw err
   switch (err.code) {
     case 'NOT_FOUND':
@@ -72,7 +75,10 @@ export const documentRouter = {
       }),
     )
     .handler(async ({ input, context }) => {
-      if (!input.pathname.startsWith('documents/')) {
+      // The round-tripped pathname is adapter-final — env-prefixed in prod
+      // (`prod/documents/...`), so the shape check must strip the prefix or
+      // every production upload gets rejected here.
+      if (!stripEnvPrefix(input.pathname).startsWith('documents/')) {
         throw new ORPCError('FORBIDDEN', { message: 'Ogiltig sökväg' })
       }
       const blob = await storage.head('private', input.pathname)
@@ -90,7 +96,7 @@ export const documentRouter = {
           folderId: input.folderId ?? null,
         })
       } catch (err) {
-        rethrowAsORPC(err)
+        rethrowDocumentErrorAsORPC(err)
       }
       context.log.info('document uploaded', {
         documentId: inserted.document.id,
@@ -180,7 +186,7 @@ export const documentRouter = {
           actorRole: context.user.role ?? null,
         })
       } catch (err) {
-        rethrowAsORPC(err)
+        rethrowDocumentErrorAsORPC(err)
       }
       // Rename the stored byte so its basename — the prod (Vercel Blob) download
       // filename — tracks the new display name. Copy → repoint file.pathname →
@@ -230,7 +236,7 @@ export const documentRouter = {
           actorRole: context.user.role ?? null,
         })
       } catch (err) {
-        rethrowAsORPC(err)
+        rethrowDocumentErrorAsORPC(err)
       }
       await realtime.publish(
         { kind: 'document.changed', ids: [updated.document.id] },
@@ -250,7 +256,7 @@ export const documentRouter = {
           actingUserRole: context.user.role ?? null,
         })
       } catch (err) {
-        rethrowAsORPC(err)
+        rethrowDocumentErrorAsORPC(err)
       }
       context.log.info('document deleted', {
         documentId: deleted.document.id,
@@ -277,7 +283,7 @@ export const documentRouter = {
           actorRole: context.user.role ?? null,
         })
       } catch (err) {
-        rethrowAsORPC(err)
+        rethrowDocumentErrorAsORPC(err)
       }
       await realtime.publish(
         { kind: 'document.changed', ids: [restored.document.id] },

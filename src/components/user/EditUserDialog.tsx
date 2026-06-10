@@ -1,7 +1,6 @@
 import { useMutation, useQueryClient, useSuspenseQuery } from '@tanstack/react-query'
 import { Suspense } from 'react'
 import { toast } from 'sonner'
-import { Button } from '~/components/ui/button'
 import {
   Dialog,
   DialogContent,
@@ -94,10 +93,8 @@ function EditUserDialogBody({ userId, onDone }: { userId: string; onDone: () => 
       <UserFormFields form={form} fields={userFieldsMap} />
 
       <DialogFooter className="mt-6">
-        <Button type="button" variant="outline" onClick={onDone} disabled={form.state.isSubmitting}>
-          Avbryt
-        </Button>
         <form.AppForm>
+          <form.CancelButton onClick={onDone}>Avbryt</form.CancelButton>
           <form.SubmitButton label="Spara" />
         </form.AppForm>
       </DialogFooter>

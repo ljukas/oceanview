@@ -3,7 +3,18 @@ import { z } from 'zod'
 import { realtime } from '~/lib/effects'
 import { adminProcedure, protectedProcedure } from '~/lib/orpc/context'
 import * as seasonService from '~/lib/services/season'
+import { SeasonDomainError } from '~/lib/services/season'
 import { SHARE_CODES, WEEKS_PER_SEASON } from '~/lib/shares/codes'
+
+function rethrowAsORPC(err: unknown): never {
+  if (!(err instanceof SeasonDomainError)) throw err
+  switch (err.code) {
+    case 'ALREADY_EXISTS':
+      throw new ORPCError('CONFLICT', { message: 'Säsongen finns redan' })
+    case 'NOT_FOUND':
+      throw new ORPCError('NOT_FOUND', { message: 'Säsongen hittades inte' })
+  }
+}
 
 const seasonYearSchema = z.object({ year: z.number().int().min(2020).max(2100) })
 
@@ -68,20 +79,15 @@ export const seasonRouter = {
   }),
 
   create: adminProcedure.input(createSeasonSchema).handler(async ({ input, context }) => {
+    let created: Awaited<ReturnType<typeof seasonService.createSeason>>
     try {
-      const created = await seasonService.createSeason(input)
-      context.log.info('admin created season', { year: created.year })
-      await realtime.publish({ kind: 'season.changed' }, { source: context.user.id })
-      return created
+      created = await seasonService.createSeason(input)
     } catch (err) {
-      // Unique-constraint collision on `year` — two admins racing, or an
-      // admin overriding the auto-incremented default to a year that
-      // already exists. Surface a clean Swedish message.
-      if (err instanceof Error && /duplicate key|unique constraint/i.test(err.message)) {
-        throw new ORPCError('CONFLICT', { message: 'Säsongen finns redan' })
-      }
-      throw err
+      rethrowAsORPC(err)
     }
+    context.log.info('admin created season', { year: created.year })
+    await realtime.publish({ kind: 'season.changed' }, { source: context.user.id })
+    return created
   }),
 
   getByYear: adminProcedure.input(seasonYearSchema).handler(async ({ input }) => {
@@ -91,10 +97,15 @@ export const seasonRouter = {
   }),
 
   update: adminProcedure.input(updateSeasonSchema).handler(async ({ input, context }) => {
-    const updated = await seasonService.updateSeason(input.year, {
-      startWeek: input.startWeek,
-      startShare: input.startShare,
-    })
+    let updated: Awaited<ReturnType<typeof seasonService.updateSeason>>
+    try {
+      updated = await seasonService.updateSeason(input.year, {
+        startWeek: input.startWeek,
+        startShare: input.startShare,
+      })
+    } catch (err) {
+      rethrowAsORPC(err)
+    }
     context.log.info('admin updated season', { year: input.year })
     await realtime.publish({ kind: 'season.changed' }, { source: context.user.id })
     return updated

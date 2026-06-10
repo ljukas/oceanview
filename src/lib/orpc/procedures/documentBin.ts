@@ -1,23 +1,9 @@
-import { ORPCError } from '@orpc/server'
 import { z } from 'zod'
 import { realtime, storage } from '~/lib/effects'
 import { adminProcedure } from '~/lib/orpc/context'
+import { rethrowDocumentErrorAsORPC } from '~/lib/orpc/procedures/document'
 import * as documentService from '~/lib/services/document'
-import { DocumentDomainError } from '~/lib/services/document'
 import * as folderService from '~/lib/services/folder'
-
-function rethrowAsORPC(err: unknown): never {
-  if (!(err instanceof DocumentDomainError)) throw err
-  switch (err.code) {
-    case 'NOT_FOUND':
-      throw new ORPCError('NOT_FOUND', { message: 'Dokumentet hittades inte' })
-    case 'NOT_ADMIN':
-      throw new ORPCError('FORBIDDEN', { message: 'Endast administratörer kan göra detta' })
-    default:
-      // Other DocumentDomainError codes are unreachable from hardDeleteDocument.
-      throw new ORPCError('INTERNAL_SERVER_ERROR', { message: 'Oväntat fel' })
-  }
-}
 
 export const binRouter = {
   list: adminProcedure.handler(() => folderService.listBin()),
@@ -35,7 +21,7 @@ export const binRouter = {
           actorRole: context.user.role ?? null,
         })
       } catch (err) {
-        rethrowAsORPC(err)
+        rethrowDocumentErrorAsORPC(err)
       }
       // Row + history are committed; now drop the bytes. Best-effort — a failed
       // storage delete leaves an orphaned blob but the DB is already consistent.

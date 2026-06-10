@@ -78,6 +78,21 @@ test('updateSeason patches the provided fields and leaves others alone', async (
   expect(repointed.startShare).toBe('E')
 })
 
+test('createSeason throws ALREADY_EXISTS when the year is taken', async () => {
+  await createSeason({ year: 2026, startWeek: 21, startShare: 'D' })
+  await expect(createSeason({ year: 2026, startWeek: 22, startShare: 'A' })).rejects.toMatchObject({
+    name: 'SeasonDomainError',
+    code: 'ALREADY_EXISTS',
+  })
+})
+
+test('updateSeason throws NOT_FOUND for a year with no season', async () => {
+  await expect(updateSeason(2099, { startWeek: 22 })).rejects.toMatchObject({
+    name: 'SeasonDomainError',
+    code: 'NOT_FOUND',
+  })
+})
+
 test('deleteSeason removes the row', async () => {
   await createSeason({ year: 2027, startWeek: 20, startShare: 'A' })
   await deleteSeason(2027)

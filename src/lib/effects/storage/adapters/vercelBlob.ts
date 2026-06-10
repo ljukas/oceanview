@@ -8,7 +8,7 @@ import {
   put,
 } from '@vercel/blob'
 import { generateClientTokenFromReadWriteToken } from '@vercel/blob/client'
-import type { StorageEffects } from '../storage'
+import { envPrefix, type StorageEffects } from '../storage'
 
 const TOKEN_TTL_MS = 5 * 60 * 1000
 
@@ -23,17 +23,6 @@ function tokenFor(access: 'public' | 'private'): string {
     )
   }
   return token
-}
-
-function envPrefix(): string {
-  switch (process.env.VERCEL_ENV) {
-    case 'production':
-      return 'prod/'
-    case 'preview':
-      return 'preview/'
-    default:
-      return 'dev/'
-  }
 }
 
 const PREFIX = envPrefix()
