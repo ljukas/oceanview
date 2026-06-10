@@ -26,6 +26,20 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm check:ci
 
+  audit:
+    name: Audit (dependencies)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+      # Known high/critical advisories in production deps fail the run; dev
+      # deps are excluded (build-time only, not shipped).
+      - run: pnpm audit --prod --audit-level high
+
   build:
     name: Build
     runs-on: ubuntu-latest

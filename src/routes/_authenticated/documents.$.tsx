@@ -3,13 +3,14 @@ import { createFileRoute, Navigate } from '@tanstack/react-router'
 import { resolveFolderBySplat } from '~/components/document/shared/documentHelpers'
 import { DocumentsView } from '~/components/document/views/DocumentsView'
 import { orpc } from '~/lib/orpc/client'
+import { m } from '~/paraglide/messages'
 import { seo } from '~/utils/seo'
 
 export const Route = createFileRoute('/_authenticated/documents/$')({
   head: () => ({
     meta: seo({
-      title: 'Dokument | Oceanview',
-      description: 'Delade dokument för båtens samägare',
+      title: `${m.meta_documents_title()} | Oceanview`,
+      description: m.meta_documents_description(),
     }),
   }),
   // Resolve the folder from the splat here so `defaultPreload: 'intent'` (router)

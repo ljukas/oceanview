@@ -11,6 +11,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '~/components/ui/select'
+import { m } from '~/paraglide/messages'
 
 export function DocumentTablePagination({
   table,
@@ -27,16 +28,22 @@ export function DocumentTablePagination({
   return (
     <div className="flex flex-col items-center justify-between gap-3 sm:flex-row">
       <p className="text-muted-foreground text-sm tabular-nums">
-        {`Visar ${from}–${to} av ${total}`}
+        {m.document_pagination_showing({ from, to, total })}
       </p>
       <div className="flex items-center gap-4">
         <div className="flex items-center gap-2">
-          <span className="text-muted-foreground text-sm">Rader per sida</span>
+          <span className="text-muted-foreground text-sm">
+            {m.document_pagination_rows_per_page()}
+          </span>
           <Select
             value={String(pageSize)}
             onValueChange={(value) => table.setPageSize(Number(value))}
           >
-            <SelectTrigger size="sm" className="w-[4.5rem]" aria-label="Rader per sida">
+            <SelectTrigger
+              size="sm"
+              className="w-[4.5rem]"
+              aria-label={m.document_pagination_rows_per_page()}
+            >
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -52,12 +59,12 @@ export function DocumentTablePagination({
         </div>
         <div className="flex items-center gap-2">
           <span className="text-muted-foreground text-sm tabular-nums">
-            {`Sida ${pageIndex + 1} / ${pageCount}`}
+            {m.document_pagination_page({ page: pageIndex + 1, pages: pageCount })}
           </span>
           <Button
             variant="outline"
             size="icon-sm"
-            aria-label="Föregående sida"
+            aria-label={m.document_pagination_previous()}
             disabled={!table.getCanPreviousPage()}
             onClick={() => table.previousPage()}
           >
@@ -66,7 +73,7 @@ export function DocumentTablePagination({
           <Button
             variant="outline"
             size="icon-sm"
-            aria-label="Nästa sida"
+            aria-label={m.document_pagination_next()}
             disabled={!table.getCanNextPage()}
             onClick={() => table.nextPage()}
           >

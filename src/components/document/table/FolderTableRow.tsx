@@ -18,6 +18,7 @@ import {
 } from '~/components/document/table/documentColumns'
 import { TableCell, TableRow } from '~/components/ui/table'
 import { cn } from '~/lib/utils'
+import { m } from '~/paraglide/messages'
 
 // Folder and "up one level" rows pinned above the file rows, behaving like a
 // regular OS file browser: a single click selects the row, a double click (or
@@ -123,7 +124,7 @@ export function FolderTableRow({
           isSelected ? 'text-selected-foreground/80' : 'text-muted-foreground',
         )}
       >
-        Mapp
+        {m.folder_kind_label()}
       </TableCell>
       <TableCell className={DATE_CELL} />
       <TableCell className={OWNER_CELL} />
@@ -154,7 +155,7 @@ export function FolderUpRow({
 }) {
   const navigate = useNavigate()
   const { setNodeRef, isOver } = useDroppable({ id: folderUpDropId(parentId) })
-  const destinationName = parent?.name ?? 'Hem'
+  const destinationName = parent?.name ?? m.folder_root_name()
   const goUp = () =>
     parent
       ? navigate({ to: '/documents/$', params: { _splat: folderPathToSplat(parent.path) } })
@@ -164,7 +165,7 @@ export function FolderUpRow({
     <TableRow
       ref={setNodeRef}
       tabIndex={0}
-      aria-label={`Upp en nivå (till ${destinationName})`}
+      aria-label={m.folder_up_one_level({ name: destinationName })}
       onClick={(e) => {
         if (e.detail > 1) return
         onClear()

@@ -5,6 +5,8 @@
 - **Deciders**: Lukas
 - **Decision in one line**: Add a 1:1 `document` table over `file` so management concerns (name, folder, thumbnail, search, soft-delete) live separately from the universal byte handle; then layer nested folders (adjacency list + denormalized path), a natural-language pg_trgm search box over a concatenated `folder_path || name` haystack, cascade soft-delete with an admin-only bin, full audit history in two sibling event tables (`document_event` + `folder_event`) joined by `correlation_id`, and per-mime-type thumbnail workers reusing the ADR-0007 queue.
 
+> **Amendment (2026-06-10) — access model is read-everything, write-own.** The 2026-06-10 security audit flagged "any authenticated user can list/search/download any document" as an IDOR. It is not: the document library is the *shared* records of one boat (minutes, manuals, insurance) and every co-owner is meant to read all of it. Reads (list, search, history, thumbnail, download) are gated on authentication only; mutations are owner-or-admin (`CANNOT_EDIT_OTHERS_DOCUMENT` et al.); bin and folder mutations are admin-only. Per-document/per-folder visibility is deliberately out of scope — revisit only if a real "private documents" need appears, at which point Alternative N (RLS) is *not* the answer; add a visibility check in the service reads like every other domain rule.
+
 ---
 
 ## Context

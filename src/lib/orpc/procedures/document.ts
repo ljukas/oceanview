@@ -9,6 +9,7 @@ import * as documentService from '~/lib/services/document'
 import { DocumentDomainError } from '~/lib/services/document'
 import * as documentEventService from '~/lib/services/documentEvent'
 import * as fileService from '~/lib/services/file'
+import { m } from '~/paraglide/messages'
 import { joinFilename, replacePathnameBasename, safeFilename } from '~/utils/filename'
 
 // No mime whitelist (ADR-0010 §M): any contentType is accepted; the grid renders
@@ -27,23 +28,23 @@ export function rethrowDocumentErrorAsORPC(err: unknown): never {
   if (!(err instanceof DocumentDomainError)) throw err
   switch (err.code) {
     case 'NOT_FOUND':
-      throw new ORPCError('NOT_FOUND', { message: 'Dokumentet hittades inte' })
+      throw new ORPCError('NOT_FOUND', { message: m.document_error_not_found() })
     case 'NOT_ADMIN':
-      throw new ORPCError('FORBIDDEN', { message: 'Endast administratörer kan göra detta' })
+      throw new ORPCError('FORBIDDEN', { message: m.common_error_admin_only() })
     case 'NOT_DELETED':
-      throw new ORPCError('BAD_REQUEST', { message: 'Dokumentet är inte borttaget' })
+      throw new ORPCError('BAD_REQUEST', { message: m.document_error_not_deleted() })
     case 'CANNOT_DELETE_OTHERS_DOCUMENT':
       throw new ORPCError('FORBIDDEN', {
-        message: 'Du kan bara radera dina egna dokument',
+        message: m.document_error_delete_others(),
       })
     case 'CANNOT_EDIT_OTHERS_DOCUMENT':
       throw new ORPCError('FORBIDDEN', {
-        message: 'Du kan bara redigera dina egna dokument',
+        message: m.document_error_edit_others(),
       })
     case 'FOLDER_NOT_FOUND':
-      throw new ORPCError('NOT_FOUND', { message: 'Mappen hittades inte' })
+      throw new ORPCError('NOT_FOUND', { message: m.folder_error_not_found() })
     case 'FOLDER_DELETED':
-      throw new ORPCError('BAD_REQUEST', { message: 'Mappen är borttagen' })
+      throw new ORPCError('BAD_REQUEST', { message: m.folder_error_deleted() })
   }
 }
 
@@ -79,11 +80,11 @@ export const documentRouter = {
       // (`prod/documents/...`), so the shape check must strip the prefix or
       // every production upload gets rejected here.
       if (!stripEnvPrefix(input.pathname).startsWith('documents/')) {
-        throw new ORPCError('FORBIDDEN', { message: 'Ogiltig sökväg' })
+        throw new ORPCError('FORBIDDEN', { message: m.document_error_invalid_path() })
       }
       const blob = await storage.head('private', input.pathname)
       if (!blob) {
-        throw new ORPCError('NOT_FOUND', { message: 'Filen hittades inte i lagringen' })
+        throw new ORPCError('NOT_FOUND', { message: m.file_error_not_in_storage() })
       }
       let inserted: Awaited<ReturnType<typeof documentService.confirmUpload>>
       try {

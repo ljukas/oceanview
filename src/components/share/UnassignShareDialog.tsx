@@ -13,6 +13,7 @@ import { useAppForm } from '~/hooks/form'
 import { orpc } from '~/lib/orpc/client'
 import type { AdminPartRow } from '~/lib/orpc/procedures/share'
 import type { ShareCode } from '~/lib/shares/codes'
+import { m } from '~/paraglide/messages'
 
 type Props = {
   open: boolean
@@ -71,11 +72,11 @@ function UnassignShareDialogBody({
           queryClient.invalidateQueries({ queryKey: orpc.share.key() }),
           queryClient.invalidateQueries({ queryKey: orpc.user.listContacts.key() }),
         ])
-        toast.success('Tilldelningen togs bort')
+        toast.success(m.share_unassigned())
         onOpenChange(false)
       },
       onError: (err) => {
-        toast.error(err.message || 'Kunde inte ta bort tilldelningen')
+        toast.error(err.message || m.share_unassign_error())
       },
     }),
   )
@@ -93,7 +94,7 @@ function UnassignShareDialogBody({
   })
 
   const partsOptions = [
-    ...(has1 && has2 ? [{ value: 'both', label: 'Båda' }] : []),
+    ...(has1 && has2 ? [{ value: 'both', label: m.share_unassign_both() }] : []),
     ...(has1 ? [{ value: '1', label: `${shareCode}1` }] : []),
     ...(has2 ? [{ value: '2', label: `${shareCode}2` }] : []),
   ]
@@ -102,10 +103,8 @@ function UnassignShareDialogBody({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Ta bort tilldelning för {shareCode}</DialogTitle>
-          <DialogDescription>
-            Stänger den valda tilldelningen från och med det valda datumet. Historiken bevaras.
-          </DialogDescription>
+          <DialogTitle>{m.share_unassign_title({ code: shareCode })}</DialogTitle>
+          <DialogDescription>{m.share_unassign_description()}</DialogDescription>
         </DialogHeader>
         <form
           onSubmit={(e) => {
@@ -117,14 +116,22 @@ function UnassignShareDialogBody({
           <form.AppField
             name="parts"
             children={(field) => (
-              <field.ToggleField label="Vad ska tas bort" options={partsOptions} />
+              <field.ToggleField label={m.share_unassign_parts_label()} options={partsOptions} />
             )}
           />
-          <form.AppField name="on" children={(field) => <field.DateField label="Gäller från" />} />
+          <form.AppField
+            name="on"
+            children={(field) => <field.DateField label={m.share_field_from()} />}
+          />
           <DialogFooter className="mt-2">
             <form.AppForm>
-              <form.CancelButton onClick={() => onOpenChange(false)}>Avbryt</form.CancelButton>
-              <form.SubmitButton label="Ta bort" pendingLabel="Tar bort…" />
+              <form.CancelButton onClick={() => onOpenChange(false)}>
+                {m.common_cancel()}
+              </form.CancelButton>
+              <form.SubmitButton
+                label={m.share_unassign_submit()}
+                pendingLabel={m.share_unassign_pending()}
+              />
             </form.AppForm>
           </DialogFooter>
         </form>

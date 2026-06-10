@@ -8,15 +8,31 @@ import { email } from './email'
 
 test('sendMagicLink resolves without throwing', async () => {
   await expect(
-    email.sendMagicLink({ to: 'anna@test.oceanview.local', url: 'https://example.test/m/abc' }),
+    email.sendMagicLink({
+      to: 'anna@test.oceanview.local',
+      url: 'https://example.test/m/abc',
+      locale: 'sv',
+    }),
   ).resolves.toBeUndefined()
 })
 
 test('sendMagicLink handles repeated calls without side-effects on the adapter', async () => {
-  await email.sendMagicLink({ to: 'bo@test.oceanview.local', url: 'https://example.test/m/xyz' })
-  await email.sendMagicLink({ to: 'cara@test.oceanview.local', url: 'https://example.test/m/zzz' })
+  await email.sendMagicLink({
+    to: 'bo@test.oceanview.local',
+    url: 'https://example.test/m/xyz',
+    locale: 'sv',
+  })
+  await email.sendMagicLink({
+    to: 'cara@test.oceanview.local',
+    url: 'https://example.test/m/zzz',
+    locale: 'sv',
+  })
   await expect(
-    email.sendMagicLink({ to: 'dan@test.oceanview.local', url: 'https://example.test/m/qqq' }),
+    email.sendMagicLink({
+      to: 'dan@test.oceanview.local',
+      url: 'https://example.test/m/qqq',
+      locale: 'sv',
+    }),
   ).resolves.toBeUndefined()
 })
 
@@ -26,6 +42,10 @@ test('VITEST short-circuit selects devLog even when SMTP_HOST is set', async () 
   // resolves (rather than failing because no SMTP server is on :14522) is
   // proof the devLog adapter won.
   await expect(
-    email.sendMagicLink({ to: 'eve@test.oceanview.local', url: 'https://example.test/m/short' }),
+    email.sendMagicLink({
+      to: 'eve@test.oceanview.local',
+      url: 'https://example.test/m/short',
+      locale: 'sv',
+    }),
   ).resolves.toBeUndefined()
 })

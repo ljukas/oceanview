@@ -6,6 +6,7 @@ import * as shareService from '~/lib/services/share'
 import { ShareDomainError } from '~/lib/services/share'
 import * as userService from '~/lib/services/user'
 import { SHARE_CODES, type ShareCode } from '~/lib/shares/codes'
+import { m } from '~/paraglide/messages'
 
 const shareCodeSchema = z.enum(SHARE_CODES)
 
@@ -14,27 +15,27 @@ function rethrowAsORPC(err: unknown): never {
   switch (err.code) {
     case 'USER_NOT_FOUND':
       throw new ORPCError('NOT_FOUND', {
-        message: 'Användaren hittades inte eller är borttagen',
+        message: m.share_error_user_not_found(),
       })
     case 'ALREADY_CURRENT_OWNER':
       throw new ORPCError('CONFLICT', {
-        message: 'Användaren äger redan andelen',
+        message: m.share_error_already_owner(),
       })
     case 'FROM_DATE_NOT_AFTER_CURRENT':
       throw new ORPCError('CONFLICT', {
-        message: 'Datumet måste vara efter nuvarande tilldelning',
+        message: m.share_error_date_not_after_current(),
       })
     case 'NOT_ASSIGNED':
       throw new ORPCError('CONFLICT', {
-        message: 'Andelen är inte tilldelad',
+        message: m.share_error_not_assigned(),
       })
     case 'DATE_NOT_AFTER_CURRENT':
       throw new ORPCError('CONFLICT', {
-        message: 'Datumet måste vara efter nuvarande tilldelning',
+        message: m.share_error_date_not_after_current(),
       })
     case 'LEAVES_USER_WITH_ONLY_HALVES':
       throw new ORPCError('CONFLICT', {
-        message: 'Användaren skulle bara äga halvor — varje ägare måste ha minst en hel andel',
+        message: m.share_error_only_halves(),
       })
   }
 }

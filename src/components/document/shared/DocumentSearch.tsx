@@ -16,6 +16,7 @@ import {
   CommandList,
 } from '~/components/ui/command'
 import { orpc } from '~/lib/orpc/client'
+import { m } from '~/paraglide/messages'
 
 /**
  * One-input natural-language search (ADR-0010): no filters, no syntax. Folder
@@ -73,10 +74,10 @@ export function DocumentSearch() {
         variant="outline"
         className="w-full justify-start gap-2 text-muted-foreground sm:w-72"
         onClick={() => setOpen(true)}
-        aria-label="Sök dokument"
+        aria-label={m.search_documents_label()}
       >
         <SearchIcon data-icon="inline-start" />
-        <span className="flex-1 text-left">Sök…</span>
+        <span className="flex-1 text-left">{m.search_placeholder_short()}</span>
         {hotkeyLabel ? (
           <kbd className="pointer-events-none hidden h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] text-muted-foreground sm:inline-flex">
             {hotkeyLabel}
@@ -86,8 +87,8 @@ export function DocumentSearch() {
       <CommandDialog
         open={open}
         onOpenChange={setOpen}
-        title="Sök dokument"
-        description="Sök efter mappar och dokument"
+        title={m.search_documents_label()}
+        description={m.search_documents_description()}
         className="sm:max-w-xl"
       >
         <Command shouldFilter={false} value={selected} onValueChange={setSelected}>
@@ -99,21 +100,19 @@ export function DocumentSearch() {
               // the new result set lands — see the `selected` comment above.
               setSelected('')
             }}
-            placeholder="Sök efter mappar och dokument…"
+            placeholder={m.search_input_placeholder()}
             loading={isFetching}
           />
           <CommandList>
             {showExplanation ? (
               <div className="px-4 py-10 text-center">
-                <p className="font-medium text-base">Sök efter mappar och dokument</p>
-                <p className="mt-1 text-muted-foreground text-sm">
-                  Skriv för att söka på namn — stavfel är okej.
-                </p>
+                <p className="font-medium text-base">{m.search_documents_description()}</p>
+                <p className="mt-1 text-muted-foreground text-sm">{m.search_hint()}</p>
               </div>
             ) : null}
-            {showNoResults ? <CommandEmpty>Inga träffar.</CommandEmpty> : null}
+            {showNoResults ? <CommandEmpty>{m.search_no_results()}</CommandEmpty> : null}
             {folders.length > 0 ? (
-              <CommandGroup heading="Mappar">
+              <CommandGroup heading={m.search_group_folders()}>
                 {folders.map((hit) => (
                   <CommandItem
                     key={`folder:${hit.id}`}
@@ -133,7 +132,7 @@ export function DocumentSearch() {
               </CommandGroup>
             ) : null}
             {documents.length > 0 ? (
-              <CommandGroup heading="Dokument">
+              <CommandGroup heading={m.search_group_documents()}>
                 {documents.map((hit) => {
                   const { Icon, className } = fileTypeAppearance({
                     mime: hit.mime,

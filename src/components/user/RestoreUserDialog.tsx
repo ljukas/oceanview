@@ -12,6 +12,7 @@ import {
 } from '~/components/ui/alert-dialog'
 import { Spinner } from '~/components/ui/spinner'
 import { orpc } from '~/lib/orpc/client'
+import { m } from '~/paraglide/messages'
 
 type Props = {
   open: boolean
@@ -19,8 +20,6 @@ type Props = {
   userName?: string
   onOpenChange: (open: boolean) => void
 }
-
-const TITLE = 'Återställ användare?'
 
 export function RestoreUserDialog({ open, userId, userName, onOpenChange }: Props) {
   const queryClient = useQueryClient()
@@ -31,11 +30,11 @@ export function RestoreUserDialog({ open, userId, userName, onOpenChange }: Prop
         await queryClient.invalidateQueries({
           queryKey: orpc.user.list.key(),
         })
-        toast.success('Användaren återställdes')
+        toast.success(m.user_restored())
         onOpenChange(false)
       },
       onError: (err) => {
-        toast.error(err.message || 'Kunde inte återställa användaren')
+        toast.error(err.message || m.user_restore_error())
       },
     }),
   )
@@ -44,15 +43,15 @@ export function RestoreUserDialog({ open, userId, userName, onOpenChange }: Prop
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>{TITLE}</AlertDialogTitle>
+          <AlertDialogTitle>{m.user_restore_title()}</AlertDialogTitle>
           <AlertDialogDescription>
-            {userName
-              ? `${userName} kommer kunna logga in igen via magisk länk.`
-              : 'Användaren kommer kunna logga in igen via magisk länk.'}
+            {userName ? m.user_restore_confirm_named({ name: userName }) : m.user_restore_confirm()}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel disabled={restoreMutation.isPending}>Avbryt</AlertDialogCancel>
+          <AlertDialogCancel disabled={restoreMutation.isPending}>
+            {m.common_cancel()}
+          </AlertDialogCancel>
           <AlertDialogAction
             disabled={restoreMutation.isPending || !userId}
             onClick={(e) => {
@@ -62,7 +61,7 @@ export function RestoreUserDialog({ open, userId, userName, onOpenChange }: Prop
             }}
           >
             {restoreMutation.isPending && <Spinner data-icon="inline-start" />}
-            Återställ
+            {m.common_restore()}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

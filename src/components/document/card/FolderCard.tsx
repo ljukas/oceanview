@@ -4,6 +4,7 @@ import { FolderActions } from '~/components/document/actions/FolderActions'
 import { type FolderRow, folderPathToSplat } from '~/components/document/shared/documentHelpers'
 import { useLongPress } from '~/hooks/useLongPress'
 import { cn } from '~/lib/utils'
+import { m } from '~/paraglide/messages'
 
 const CARD =
   'flex select-none items-center gap-3 rounded-lg border p-3 outline-none focus-visible:ring-2 focus-visible:ring-ring'
@@ -95,7 +96,7 @@ export function FolderCard({
             isSelected ? 'text-selected-foreground/80' : 'text-muted-foreground',
           )}
         >
-          Mapp
+          {m.folder_kind_label()}
         </span>
       </div>
 
@@ -128,7 +129,7 @@ export function FolderUpCard({
   selectMode: boolean
 }) {
   const navigate = useNavigate()
-  const destinationName = parent?.name ?? 'Hem'
+  const destinationName = parent?.name ?? m.folder_root_name()
   const goUp = () =>
     parent
       ? navigate({ to: '/documents/$', params: { _splat: folderPathToSplat(parent.path) } })
@@ -139,7 +140,7 @@ export function FolderUpCard({
     <div
       role="button"
       tabIndex={selectMode ? -1 : 0}
-      aria-label={`Upp en nivå (till ${destinationName})`}
+      aria-label={m.folder_up_one_level({ name: destinationName })}
       onClick={() => {
         if (!selectMode) goUp()
       }}

@@ -10,6 +10,7 @@ import { EditUserDialog } from '~/components/user/EditUserDialog'
 import { type OwnerRow, OwnersTable } from '~/components/user/OwnersTable'
 import { RestoreUserDialog } from '~/components/user/RestoreUserDialog'
 import { orpc } from '~/lib/orpc/client'
+import { m } from '~/paraglide/messages'
 import { seo } from '~/utils/seo'
 
 const ownersSearchSchema = z.object({
@@ -21,8 +22,8 @@ const ownersSearchSchema = z.object({
 export const Route = createFileRoute('/_authenticated/owners')({
   head: () => ({
     meta: seo({
-      title: 'Delägare | Oceanview',
-      description: 'Delägare i Oceanview – kontaktuppgifter och andelar',
+      title: m.meta_owners_title(),
+      description: m.meta_owners_description(),
     }),
   }),
   validateSearch: ownersSearchSchema,
@@ -90,10 +91,8 @@ function Owners() {
   return (
     <div className="flex flex-col gap-6 p-4 md:p-8">
       <header className="flex flex-col gap-2">
-        <h1 className="font-semibold text-2xl tracking-tight md:text-3xl">Delägare</h1>
-        <p className="text-muted-foreground text-sm">
-          Kontaktuppgifter och andelar för delägarna i Oceanview.
-        </p>
+        <h1 className="font-semibold text-2xl tracking-tight md:text-3xl">{m.owners_title()}</h1>
+        <p className="text-muted-foreground text-sm">{m.owners_description()}</p>
       </header>
 
       {isAdmin ? (
@@ -103,7 +102,7 @@ function Owners() {
           ) : (
             <Button onClick={() => navigate({ to: '.', search: { dialog: 'create' } })}>
               <PlusIcon />
-              Ny delägare
+              {m.owners_create_button()}
             </Button>
           )}
 
@@ -115,10 +114,10 @@ function Owners() {
               if (!next || next === filter) return
               navigate({ to: '.', search: { filter: next as 'active' | 'deleted' } })
             }}
-            aria-label="Visa delägare"
+            aria-label={m.owners_filter_label()}
           >
-            <ToggleGroupItem value="active">Aktiva</ToggleGroupItem>
-            <ToggleGroupItem value="deleted">Borttagna</ToggleGroupItem>
+            <ToggleGroupItem value="active">{m.owners_filter_active()}</ToggleGroupItem>
+            <ToggleGroupItem value="deleted">{m.owners_filter_deleted()}</ToggleGroupItem>
           </ToggleGroup>
         </div>
       ) : null}

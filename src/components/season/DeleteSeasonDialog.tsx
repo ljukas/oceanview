@@ -12,14 +12,13 @@ import {
 } from '~/components/ui/alert-dialog'
 import { Spinner } from '~/components/ui/spinner'
 import { orpc } from '~/lib/orpc/client'
+import { m } from '~/paraglide/messages'
 
 type Props = {
   open: boolean
   year?: number
   onOpenChange: (open: boolean) => void
 }
-
-const TITLE = 'Ta bort säsong?'
 
 export function DeleteSeasonDialog({ open, year, onOpenChange }: Props) {
   return (
@@ -39,11 +38,11 @@ function DeleteSeasonFallback() {
   return (
     <>
       <AlertDialogHeader>
-        <AlertDialogTitle>{TITLE}</AlertDialogTitle>
-        <AlertDialogDescription>Laddar…</AlertDialogDescription>
+        <AlertDialogTitle>{m.season_delete_title()}</AlertDialogTitle>
+        <AlertDialogDescription>{m.common_loading()}</AlertDialogDescription>
       </AlertDialogHeader>
       <AlertDialogFooter>
-        <AlertDialogCancel>Avbryt</AlertDialogCancel>
+        <AlertDialogCancel>{m.common_cancel()}</AlertDialogCancel>
       </AlertDialogFooter>
     </>
   )
@@ -56,11 +55,11 @@ function DeleteSeasonBody({ year, onDone }: { year: number; onDone: () => void }
     orpc.season.delete.mutationOptions({
       onSuccess: async () => {
         await queryClient.invalidateQueries({ queryKey: orpc.season.key() })
-        toast.success('Säsongen togs bort')
+        toast.success(m.season_deleted())
         onDone()
       },
       onError: (err) => {
-        toast.error(err.message || 'Kunde inte ta bort säsongen')
+        toast.error(err.message || m.season_delete_error())
       },
     }),
   )
@@ -68,13 +67,13 @@ function DeleteSeasonBody({ year, onDone }: { year: number; onDone: () => void }
   return (
     <>
       <AlertDialogHeader>
-        <AlertDialogTitle>{TITLE}</AlertDialogTitle>
-        <AlertDialogDescription>
-          {`Säsong ${year} och dess fördelning av andelar tas bort. Detta går inte att ångra.`}
-        </AlertDialogDescription>
+        <AlertDialogTitle>{m.season_delete_title()}</AlertDialogTitle>
+        <AlertDialogDescription>{m.season_delete_confirm({ year })}</AlertDialogDescription>
       </AlertDialogHeader>
       <AlertDialogFooter>
-        <AlertDialogCancel disabled={deleteMutation.isPending}>Avbryt</AlertDialogCancel>
+        <AlertDialogCancel disabled={deleteMutation.isPending}>
+          {m.common_cancel()}
+        </AlertDialogCancel>
         <AlertDialogAction
           variant="destructive"
           disabled={deleteMutation.isPending}
@@ -84,7 +83,7 @@ function DeleteSeasonBody({ year, onDone }: { year: number; onDone: () => void }
           }}
         >
           {deleteMutation.isPending && <Spinner data-icon="inline-start" />}
-          Ta bort
+          {m.common_delete()}
         </AlertDialogAction>
       </AlertDialogFooter>
     </>

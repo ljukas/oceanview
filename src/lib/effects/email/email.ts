@@ -1,3 +1,4 @@
+import type { Locale } from '~/paraglide/runtime'
 import { lazy } from '../lazy'
 
 /**
@@ -24,7 +25,7 @@ import { lazy } from '../lazy'
  * See ADR-0008.
  */
 export interface EmailEffects {
-  sendMagicLink(input: { to: string; url: string }): Promise<void>
+  sendMagicLink(input: { to: string; url: string; locale: Locale }): Promise<void>
 }
 
 const getAdapter = lazy(async (): Promise<EmailEffects> => {

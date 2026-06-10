@@ -6,6 +6,7 @@ import { queue, realtime, storage } from '~/lib/effects'
 import { stripEnvPrefix } from '~/lib/effects/storage'
 import { protectedProcedure } from '~/lib/orpc/context'
 import * as fileService from '~/lib/services/file'
+import { m } from '~/paraglide/messages'
 
 const AVATAR_MAX_BYTES = 5_000_000
 const AVATAR_MIME = ['image/jpeg', 'image/png', 'image/webp', 'image/avif'] as const
@@ -46,11 +47,11 @@ export const imageRouter = {
       // Anchored ownership check on the logical pathname — `includes()` would
       // also accept `avatars/<id>/` appearing mid-path under someone else's key.
       if (!stripEnvPrefix(input.pathname).startsWith(`avatars/${context.user.id}/`)) {
-        throw new ORPCError('FORBIDDEN', { message: 'Profilbilden tillhör inte dig' })
+        throw new ORPCError('FORBIDDEN', { message: m.image_error_not_yours() })
       }
       const blob = await storage.head('public', input.pathname)
       if (!blob) {
-        throw new ORPCError('NOT_FOUND', { message: 'Filen hittades inte i lagringen' })
+        throw new ORPCError('NOT_FOUND', { message: m.file_error_not_in_storage() })
       }
 
       const { newRow, previousPathnames } = await fileService.replaceAvatarForUser({

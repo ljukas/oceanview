@@ -4,6 +4,7 @@ import {
   documentDisplayName,
   fileKindLabel,
 } from '~/components/document/shared/documentHelpers'
+import { m } from '~/paraglide/messages'
 
 export const PAGE_SIZES = [20, 50, 100]
 
@@ -20,35 +21,37 @@ export const SIZE_CELL = 'hidden w-24 md:table-cell'
 
 // Only the sortable data columns live in the table model. The actions menu is
 // rendered per row (it needs row-level dialog state), so it isn't a column def.
+// `header` holds a message function rather than a string: module scope
+// evaluates once per process, but the active locale is per request/render.
 export const columns: Array<ColumnDef<DocumentRow>> = [
   {
     id: 'name',
     accessorFn: (d) => documentDisplayName(d),
-    header: 'Namn',
+    header: m.document_col_name,
     sortingFn: 'text',
   },
   {
     id: 'kind',
     accessorFn: (d) => fileKindLabel(d),
-    header: 'Typ',
+    header: m.document_col_kind,
     sortingFn: 'text',
   },
   {
     id: 'uploadedAt',
     accessorFn: (d) => d.uploadedAt,
-    header: 'Uppladdad',
+    header: m.document_col_uploaded,
     sortingFn: 'datetime',
   },
   {
     id: 'ownerName',
     accessorFn: (d) => d.ownerName,
-    header: 'Ägare',
+    header: m.document_col_owner,
     sortingFn: 'text',
   },
   {
     id: 'sizeBytes',
     accessorFn: (d) => d.sizeBytes,
-    header: 'Storlek',
+    header: m.document_col_size,
     sortingFn: 'basic',
   },
 ]

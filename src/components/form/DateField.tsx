@@ -1,5 +1,4 @@
 import { useStore } from '@tanstack/react-form'
-import { sv } from 'date-fns/locale'
 import { CalendarIcon } from 'lucide-react'
 import { useState } from 'react'
 import { Button } from '~/components/ui/button'
@@ -7,18 +6,14 @@ import { Calendar } from '~/components/ui/calendar'
 import { Field, FieldDescription, FieldError, FieldLabel } from '~/components/ui/field'
 import { Popover, PopoverContent, PopoverTrigger } from '~/components/ui/popover'
 import { useFieldContext } from '~/hooks/form'
+import { formatDate, getDateFnsLocale } from '~/lib/i18n/format'
 import { cn } from '~/lib/utils'
+import { m } from '~/paraglide/messages'
 
 type Props = {
   label: string
   description?: string
 }
-
-const dateFormatter = new Intl.DateTimeFormat('sv-SE', {
-  year: 'numeric',
-  month: '2-digit',
-  day: '2-digit',
-})
 
 export function DateField({ label, description }: Props) {
   const field = useFieldContext<Date>()
@@ -42,7 +37,7 @@ export function DateField({ label, description }: Props) {
             className={cn('w-full justify-start font-normal', !value && 'text-muted-foreground')}
           >
             <CalendarIcon data-icon="inline-start" />
-            {value ? dateFormatter.format(value) : 'Välj datum'}
+            {value ? formatDate(value) : m.form_date_placeholder()}
           </Button>
         </PopoverTrigger>
         <PopoverContent className="w-auto p-0" align="start">
@@ -58,7 +53,7 @@ export function DateField({ label, description }: Props) {
                 setOpen(false)
               }
             }}
-            locale={sv}
+            locale={getDateFnsLocale()}
             weekStartsOn={1}
             autoFocus
           />

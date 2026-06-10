@@ -34,11 +34,13 @@ import {
   TableHeader,
   TableRow,
 } from '~/components/ui/table'
+import { formatDate } from '~/lib/i18n/format'
 import type { SharePartRow } from '~/lib/services/share'
 import type { UserRow } from '~/lib/services/user'
 import { collapseShares, type ShareBadgeKind } from '~/lib/shares/collapse'
 import { shareBackgroundClass } from '~/lib/shares/colors'
 import { cn, initials } from '~/lib/utils'
+import { m } from '~/paraglide/messages'
 
 export type OwnerRow = UserRow & { shares: Array<SharePartRow> }
 
@@ -54,12 +56,6 @@ type Props = {
   onRestore: (id: string) => void
 }
 
-const deletedDateFormatter = new Intl.DateTimeFormat('sv-SE', {
-  year: 'numeric',
-  month: '2-digit',
-  day: '2-digit',
-})
-
 // Secondary columns reveal as the viewport widens: Roll + Andelar at `md`,
 // E-post + Telefon at `lg`. Whatever isn't yet a column folds in as a muted
 // sub-line under the name, so nothing is lost on narrow screens.
@@ -69,7 +65,7 @@ const EMAIL_CELL = 'hidden lg:table-cell'
 const PHONE_CELL = 'hidden lg:table-cell'
 
 function roleLabel(role: string | null): string {
-  return role === 'admin' ? 'Admin' : 'Seglare'
+  return role === 'admin' ? m.user_role_admin() : m.user_role_sailor()
 }
 
 // Owner's shares, sorted by (code, part). Used for display and for the primary
@@ -91,12 +87,17 @@ function primaryShareKey(shares: Array<SharePartRow>): string {
 // Only the sortable data columns live in the table model (it drives sort state
 // and the sorted row order); cells are hand-rendered per row below.
 const columns: Array<ColumnDef<OwnerRow>> = [
-  { id: 'name', accessorFn: (u) => u.name, header: 'Namn', sortingFn: 'text' },
-  { id: 'role', accessorFn: (u) => roleLabel(u.role), header: 'Roll', sortingFn: 'text' },
+  { id: 'name', accessorFn: (u) => u.name, header: () => m.user_field_name(), sortingFn: 'text' },
+  {
+    id: 'role',
+    accessorFn: (u) => roleLabel(u.role),
+    header: () => m.user_field_role(),
+    sortingFn: 'text',
+  },
   {
     id: 'shares',
     accessorFn: (u) => primaryShareKey(u.shares),
-    header: 'Andelar',
+    header: () => m.owners_header_shares(),
     sortingFn: 'text',
   },
 ]
@@ -129,20 +130,26 @@ export function OwnersTable({
       <Table>
         <TableHeader>
           <TableRow>
-            <SortableHead column={table.getColumn('name')} label="Namn" />
-            <SortableHead column={table.getColumn('role')} label="Roll" className={ROLE_CELL} />
-            <TableHead className={EMAIL_CELL}>E-post</TableHead>
-            <TableHead className={PHONE_CELL}>{showDeleted ? 'Borttagen' : 'Telefon'}</TableHead>
+            <SortableHead column={table.getColumn('name')} label={m.user_field_name()} />
+            <SortableHead
+              column={table.getColumn('role')}
+              label={m.user_field_role()}
+              className={ROLE_CELL}
+            />
+            <TableHead className={EMAIL_CELL}>{m.user_field_email()}</TableHead>
+            <TableHead className={PHONE_CELL}>
+              {showDeleted ? m.owners_header_deleted() : m.user_field_phone()}
+            </TableHead>
             {showDeleted ? null : (
               <SortableHead
                 column={table.getColumn('shares')}
-                label="Andelar"
+                label={m.owners_header_shares()}
                 className={SHARES_CELL}
               />
             )}
             {isAdmin ? (
               <TableHead className="w-10">
-                <span className="sr-only">Åtgärder</span>
+                <span className="sr-only">{m.common_actions()}</span>
               </TableHead>
             ) : null}
           </TableRow>
@@ -154,7 +161,7 @@ export function OwnersTable({
                 colSpan={columnCount}
                 className="py-8 text-center text-muted-foreground text-sm"
               >
-                {showDeleted ? 'Inga borttagna delägare' : 'Inga delägare än'}
+                {showDeleted ? m.owners_empty_deleted() : m.owners_empty()}
               </TableCell>
             </TableRow>
           ) : (
@@ -198,7 +205,7 @@ function OwnerTableRow({
   onRestore: (id: string) => void
 }) {
   const formattedPhone = owner.phone ? formatPhoneNumberIntl(owner.phone) || owner.phone : null
-  const deletedAt = owner.deletedAt ? deletedDateFormatter.format(owner.deletedAt) : '—'
+  const deletedAt = owner.deletedAt ? formatDate(owner.deletedAt) : '—'
   // Collapse held pairs (A1 + A2 → "A"); lone halves stay "A1"/"A2".
   const shares = collapseShares(owner.shares)
 
@@ -223,7 +230,7 @@ function OwnerTableRow({
                   aria-hidden
                   className="absolute inset-0 animate-ping rounded-full bg-success opacity-75"
                 />
-                <span className="sr-only">Ansluten</span>
+                <span className="sr-only">{m.owners_online()}</span>
               </AvatarBadge>
             ) : null}
           </Avatar>
@@ -233,7 +240,7 @@ function OwnerTableRow({
               <span className="truncate font-medium" title={owner.name}>
                 {owner.name || '—'}
               </span>
-              {isSelf ? <Badge variant="secondary">Du</Badge> : null}
+              {isSelf ? <Badge variant="secondary">{m.owners_badge_you()}</Badge> : null}
             </div>
 
             {/* Roll (+ Andelar) fold in here until they become columns at `md`. */}
@@ -258,7 +265,9 @@ function OwnerTableRow({
                 {owner.email}
               </a>
               {showDeleted ? (
-                <span className="text-muted-foreground tabular-nums">Borttagen {deletedAt}</span>
+                <span className="text-muted-foreground tabular-nums">
+                  {m.owners_deleted_at({ date: deletedAt })}
+                </span>
               ) : formattedPhone ? (
                 <a
                   href={`tel:${owner.phone}`}
@@ -316,7 +325,11 @@ function OwnerTableRow({
         <TableCell className="text-right">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon-sm" aria-label={`Åtgärder för ${owner.name}`}>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label={m.owners_actions_for({ name: owner.name })}
+              >
                 <MoreVerticalIcon />
               </Button>
             </DropdownMenuTrigger>
@@ -324,18 +337,18 @@ function OwnerTableRow({
               {showDeleted ? (
                 <DropdownMenuItem onSelect={() => onRestore(owner.id)}>
                   <RotateCcwIcon />
-                  Återställ
+                  {m.common_restore()}
                 </DropdownMenuItem>
               ) : (
                 <>
                   <DropdownMenuItem onSelect={() => onEdit(owner.id)}>
                     <PencilIcon />
-                    Redigera
+                    {m.common_edit()}
                   </DropdownMenuItem>
                   {isSelf ? null : (
                     <DropdownMenuItem variant="destructive" onSelect={() => onDelete(owner.id)}>
                       <Trash2Icon />
-                      Ta bort
+                      {m.common_delete()}
                     </DropdownMenuItem>
                   )}
                 </>
@@ -382,12 +395,12 @@ function RoleLabel({ role }: { role: string | null }) {
   return role === 'admin' ? (
     <span className="inline-flex items-center gap-1 font-medium text-primary text-sm">
       <StarIcon className="size-3.5 fill-current" aria-hidden="true" />
-      Admin
+      {m.user_role_admin()}
     </span>
   ) : (
     <span className="inline-flex items-center gap-1 text-muted-foreground text-sm">
       <SailboatIcon className="size-3.5" aria-hidden="true" />
-      Seglare
+      {m.user_role_sailor()}
     </span>
   )
 }

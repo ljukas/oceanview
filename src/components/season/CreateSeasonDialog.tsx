@@ -13,6 +13,7 @@ import { FieldGroup } from '~/components/ui/field'
 import { useAppForm } from '~/hooks/form'
 import { orpc } from '~/lib/orpc/client'
 import { SHARE_CODES } from '~/lib/shares/codes'
+import { m } from '~/paraglide/messages'
 
 type Props = {
   open: boolean
@@ -27,17 +28,17 @@ const shareOptions = SHARE_CODES.map((code) => ({ value: code, label: code }))
 const createSeasonFormSchema = z.object({
   year: z
     .string()
-    .regex(/^\d+$/, { error: 'Ange ett giltigt år' })
+    .regex(/^\d+$/, { error: () => m.season_validation_year_invalid() })
     .refine((v) => Number(v) >= 2020 && Number(v) <= 2100, {
-      error: 'År måste vara mellan 2020 och 2100',
+      error: () => m.season_validation_year_range(),
     }),
   startWeek: z
     .string()
-    .regex(/^\d+$/, { error: 'Ange ett giltigt veckonummer' })
+    .regex(/^\d+$/, { error: () => m.season_validation_week_invalid() })
     .refine((v) => Number(v) >= 1 && Number(v) <= 53, {
-      error: 'Vecka måste vara mellan 1 och 53',
+      error: () => m.season_validation_week_range(),
     }),
-  startShare: z.enum(SHARE_CODES, { error: 'Välj en startandel' }),
+  startShare: z.enum(SHARE_CODES, { error: () => m.season_validation_start_share_required() }),
 })
 
 export function CreateSeasonDialog({ open, onOpenChange }: Props) {
@@ -56,11 +57,11 @@ function CreateSeasonDialogInner({ onOpenChange }: { onOpenChange: (open: boolea
     orpc.season.create.mutationOptions({
       onSuccess: async () => {
         await queryClient.invalidateQueries({ queryKey: orpc.season.key() })
-        toast.success('Säsongen skapades')
+        toast.success(m.season_created())
         onOpenChange(false)
       },
       onError: (err) => {
-        toast.error(err.message || 'Kunde inte skapa säsongen')
+        toast.error(err.message || m.season_create_error())
       },
     }),
   )
@@ -85,11 +86,8 @@ function CreateSeasonDialogInner({ onOpenChange }: { onOpenChange: (open: boolea
     <Dialog open onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-sm">
         <DialogHeader>
-          <DialogTitle>Ny säsong</DialogTitle>
-          <DialogDescription>
-            Förvalda värden är ifyllda. Justera vid behov och spara för att lägga till säsongen i
-            Disponeringslistan.
-          </DialogDescription>
+          <DialogTitle>{m.season_create_title()}</DialogTitle>
+          <DialogDescription>{m.season_create_description()}</DialogDescription>
         </DialogHeader>
         <form
           onSubmit={(e) => {
@@ -103,7 +101,11 @@ function CreateSeasonDialogInner({ onOpenChange }: { onOpenChange: (open: boolea
                 <form.AppField
                   name="year"
                   children={(field) => (
-                    <field.TextField label="År" type="number" inputClassName="tabular-nums" />
+                    <field.TextField
+                      label={m.season_field_year()}
+                      type="number"
+                      inputClassName="tabular-nums"
+                    />
                   )}
                 />
               </div>
@@ -112,7 +114,7 @@ function CreateSeasonDialogInner({ onOpenChange }: { onOpenChange: (open: boolea
                   name="startWeek"
                   children={(field) => (
                     <field.TextField
-                      label="Startvecka"
+                      label={m.season_field_start_week()}
                       type="number"
                       inputClassName="tabular-nums"
                     />
@@ -124,8 +126,8 @@ function CreateSeasonDialogInner({ onOpenChange }: { onOpenChange: (open: boolea
               name="startShare"
               children={(field) => (
                 <field.SelectField
-                  label="Startandel"
-                  description="Andelen som äger säsongens första vecka."
+                  label={m.season_field_start_share()}
+                  description={m.season_field_start_share_description()}
                   options={shareOptions}
                 />
               )}
@@ -134,8 +136,10 @@ function CreateSeasonDialogInner({ onOpenChange }: { onOpenChange: (open: boolea
 
           <DialogFooter className="mt-6">
             <form.AppForm>
-              <form.CancelButton onClick={() => onOpenChange(false)}>Avbryt</form.CancelButton>
-              <form.SubmitButton label="Skapa säsong" />
+              <form.CancelButton onClick={() => onOpenChange(false)}>
+                {m.common_cancel()}
+              </form.CancelButton>
+              <form.SubmitButton label={m.season_create_submit()} />
             </form.AppForm>
           </DialogFooter>
         </form>

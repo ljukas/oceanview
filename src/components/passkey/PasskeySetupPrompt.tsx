@@ -9,6 +9,7 @@ import {
   DialogTitle,
 } from '~/components/ui/dialog'
 import { Spinner } from '~/components/ui/spinner'
+import { m } from '~/paraglide/messages'
 
 type Props = {
   open: boolean
@@ -32,17 +33,14 @@ export function PasskeySetupPrompt({ open, pending, onCreate, onDismiss }: Props
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <KeyRoundIcon className="size-5" />
-            Snabbare inloggning
+            {m.passkey_setup_title()}
           </DialogTitle>
-          <DialogDescription>
-            Skapa en passkey så loggar du in direkt med Face ID, Touch ID eller en säkerhetsnyckel
-            nästa gång — utan att vänta på ett mejl.
-          </DialogDescription>
+          <DialogDescription>{m.passkey_setup_description()}</DialogDescription>
         </DialogHeader>
         <DialogFooter className="flex-col gap-2 sm:flex-col">
           <Button type="button" className="w-full" disabled={pending} onClick={onCreate}>
             {pending ? <Spinner data-icon="inline-start" /> : <KeyRoundIcon />}
-            Skapa passkey
+            {m.passkey_setup_create()}
           </Button>
           <Button
             type="button"
@@ -51,7 +49,7 @@ export function PasskeySetupPrompt({ open, pending, onCreate, onDismiss }: Props
             disabled={pending}
             onClick={onDismiss}
           >
-            Inte nu
+            {m.passkey_setup_not_now()}
           </Button>
         </DialogFooter>
       </DialogContent>

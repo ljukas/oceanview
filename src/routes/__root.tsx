@@ -6,12 +6,15 @@ import { ReactQueryDevtoolsPanel } from '@tanstack/react-query-devtools'
 import { createRootRouteWithContext, HeadContent, Scripts } from '@tanstack/react-router'
 import { TanStackRouterDevtoolsPanel } from '@tanstack/react-router-devtools'
 import { Analytics } from '@vercel/analytics/react'
+import { SpeedInsights } from '@vercel/speed-insights/react'
 import type * as React from 'react'
 import { DefaultCatchBoundary } from '~/components/DefaultCatchBoundary'
 import { NotFound } from '~/components/NotFound'
 import { ThemeProvider } from '~/components/ThemeProvider'
 import { Toaster } from '~/components/ui/sonner'
 import { getTheme } from '~/lib/themeFns'
+import { m } from '~/paraglide/messages'
+import { getLocale } from '~/paraglide/runtime'
 import appCss from '~/styles/app.css?url'
 import { seo } from '~/utils/seo'
 
@@ -22,7 +25,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { name: 'viewport', content: 'width=device-width, initial-scale=1' },
       ...seo({
         title: 'Oceanview',
-        description: 'Internt verktyg för Oceanviews båtägare.',
+        description: m.meta_root_description(),
       }),
     ],
     links: [
@@ -63,7 +66,11 @@ const SYSTEM_THEME_SCRIPT =
 function RootDocument({ children }: { children: React.ReactNode }) {
   const theme = Route.useLoaderData()
   return (
-    <html lang="sv" className={theme === 'dark' ? 'dark' : undefined} suppressHydrationWarning>
+    <html
+      lang={getLocale()}
+      className={theme === 'dark' ? 'dark' : undefined}
+      suppressHydrationWarning
+    >
       <head>
         <HeadContent />
         {theme === 'system' && (
@@ -84,6 +91,7 @@ function RootDocument({ children }: { children: React.ReactNode }) {
           ]}
         />
         <Analytics />
+        <SpeedInsights />
         <Scripts />
       </body>
     </html>

@@ -49,9 +49,10 @@ export async function findIdByEmail(email: string): Promise<string | null> {
   return row?.id ?? null
 }
 
-// Live avatar lookup for the public "Välkommen tillbaka" login card. Returns
-// all-null for unknown or soft-deleted emails — indistinguishable from an
-// avatar-less account, so the public procedure leaks nothing about who exists.
+// Live avatar lookup for the "Välkommen tillbaka" login card, called by the
+// getBrowserSession server fn with the email from the browser-session cookie
+// (never a caller-supplied address). Returns all-null for unknown or
+// soft-deleted emails — indistinguishable from an avatar-less account.
 export async function findAvatarByEmail(
   email: string,
 ): Promise<{ image: string | null; imageBlurhash: string | null }> {

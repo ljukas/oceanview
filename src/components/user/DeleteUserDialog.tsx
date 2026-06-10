@@ -13,14 +13,13 @@ import {
 } from '~/components/ui/alert-dialog'
 import { Spinner } from '~/components/ui/spinner'
 import { orpc } from '~/lib/orpc/client'
+import { m } from '~/paraglide/messages'
 
 type Props = {
   open: boolean
   userId?: string
   onOpenChange: (open: boolean) => void
 }
-
-const TITLE = 'Ta bort användare?'
 
 export function DeleteUserDialog({ open, userId, onOpenChange }: Props) {
   return (
@@ -42,11 +41,11 @@ function DeleteUserFallback() {
   return (
     <>
       <AlertDialogHeader>
-        <AlertDialogTitle>{TITLE}</AlertDialogTitle>
-        <AlertDialogDescription>Laddar…</AlertDialogDescription>
+        <AlertDialogTitle>{m.user_delete_title()}</AlertDialogTitle>
+        <AlertDialogDescription>{m.common_loading()}</AlertDialogDescription>
       </AlertDialogHeader>
       <AlertDialogFooter>
-        <AlertDialogCancel>Avbryt</AlertDialogCancel>
+        <AlertDialogCancel>{m.common_cancel()}</AlertDialogCancel>
       </AlertDialogFooter>
     </>
   )
@@ -62,11 +61,11 @@ function DeleteUserBody({ userId, onDone }: { userId: string; onDone: () => void
         await queryClient.invalidateQueries({
           queryKey: orpc.user.list.key(),
         })
-        toast.success('Användaren togs bort')
+        toast.success(m.user_deleted())
         onDone()
       },
       onError: (err) => {
-        toast.error(err.message || 'Kunde inte ta bort användaren')
+        toast.error(err.message || m.user_delete_error())
       },
     }),
   )
@@ -74,13 +73,15 @@ function DeleteUserBody({ userId, onDone }: { userId: string; onDone: () => void
   return (
     <>
       <AlertDialogHeader>
-        <AlertDialogTitle>{TITLE}</AlertDialogTitle>
+        <AlertDialogTitle>{m.user_delete_title()}</AlertDialogTitle>
         <AlertDialogDescription>
-          {`${user.name} kommer inte längre kunna logga in. Användaren finns kvar i historiken.`}
+          {m.user_delete_confirm({ name: user.name })}
         </AlertDialogDescription>
       </AlertDialogHeader>
       <AlertDialogFooter>
-        <AlertDialogCancel disabled={deleteMutation.isPending}>Avbryt</AlertDialogCancel>
+        <AlertDialogCancel disabled={deleteMutation.isPending}>
+          {m.common_cancel()}
+        </AlertDialogCancel>
         <AlertDialogAction
           variant="destructive"
           disabled={deleteMutation.isPending}
@@ -90,7 +91,7 @@ function DeleteUserBody({ userId, onDone }: { userId: string; onDone: () => void
           }}
         >
           {deleteMutation.isPending && <Spinner data-icon="inline-start" />}
-          Ta bort
+          {m.common_delete()}
         </AlertDialogAction>
       </AlertDialogFooter>
     </>

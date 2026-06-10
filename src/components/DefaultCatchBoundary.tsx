@@ -1,6 +1,7 @@
 import type { ErrorComponentProps } from '@tanstack/react-router'
 import { ErrorComponent, Link, rootRouteId, useMatch, useRouter } from '@tanstack/react-router'
 import { logger } from '~/lib/logger/browser'
+import { m } from '~/paraglide/messages'
 
 export function DefaultCatchBoundary({ error }: ErrorComponentProps) {
   const router = useRouter()
@@ -22,14 +23,14 @@ export function DefaultCatchBoundary({ error }: ErrorComponentProps) {
           }}
           className={`rounded-sm bg-gray-600 px-2 py-1 font-extrabold text-white uppercase dark:bg-gray-700`}
         >
-          Försök igen
+          {m.common_try_again()}
         </button>
         {isRoot ? (
           <Link
             to="/"
             className={`rounded-sm bg-gray-600 px-2 py-1 font-extrabold text-white uppercase dark:bg-gray-700`}
           >
-            Startsida
+            {m.common_home()}
           </Link>
         ) : (
           <Link
@@ -40,7 +41,7 @@ export function DefaultCatchBoundary({ error }: ErrorComponentProps) {
               window.history.back()
             }}
           >
-            Tillbaka
+            {m.common_back()}
           </Link>
         )}
       </div>

@@ -177,6 +177,7 @@ Net cost for the foreseeable future: **$0/mo**.
 - **Cold-start path**: only the chosen adapter is imported (lazy `import('./adapters/<name>')`).
 - **Dev workflow**: `pnpm dev:up` brings Mailpit alongside db/queue/storage; login mail is visible at http://localhost:14502.
 - **Deprecation note**: pnpm's deprecation warning on `@react-email/components@1.0.x` led us to use the `react-email` umbrella package directly. Modern recommended path.
+- **Accepted enumeration oracle (2026-06-10 security audit)**: the magic-link request for an unknown, non-allowlisted email answers explicitly "Inget konto finns för denna e-postadress" (`src/lib/auth.ts`, `sendMagicLink` gate) instead of a uniform "if the address exists we've sent a link". A probe can therefore learn whether an email has an account. Deliberate: a co-owner who typos their address gets actionable feedback, membership of a ~15-person boat club is not a secret worth that UX cost, and the 5/min DB-backed rate limit bounds probing. Revisit if the app ever serves a userbase whose membership is sensitive.
 
 ---
 

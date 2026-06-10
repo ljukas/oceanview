@@ -10,27 +10,40 @@ import {
 import { Button } from '~/components/ui/button'
 import { TableHead, TableHeader, TableRow } from '~/components/ui/table'
 import { cn } from '~/lib/utils'
+import { m } from '~/paraglide/messages'
 
 export function DocumentTableHeader({ table }: { table: Table<DocumentRow> }) {
   return (
     <TableHeader>
       <TableRow>
-        <SortableHead column={table.getColumn('name')} label="Namn" className="w-full" />
-        <SortableHead column={table.getColumn('kind')} label="Typ" className={KIND_CELL} />
+        <SortableHead
+          column={table.getColumn('name')}
+          label={m.document_col_name()}
+          className="w-full"
+        />
+        <SortableHead
+          column={table.getColumn('kind')}
+          label={m.document_col_kind()}
+          className={KIND_CELL}
+        />
         <SortableHead
           column={table.getColumn('uploadedAt')}
-          label="Uppladdad"
+          label={m.document_col_uploaded()}
           className={DATE_CELL}
         />
-        <SortableHead column={table.getColumn('ownerName')} label="Ägare" className={OWNER_CELL} />
+        <SortableHead
+          column={table.getColumn('ownerName')}
+          label={m.document_col_owner()}
+          className={OWNER_CELL}
+        />
         <SortableHead
           column={table.getColumn('sizeBytes')}
-          label="Storlek"
+          label={m.document_col_size()}
           align="end"
           className={SIZE_CELL}
         />
         <TableHead className="w-10">
-          <span className="sr-only">Åtgärder</span>
+          <span className="sr-only">{m.document_col_actions()}</span>
         </TableHead>
       </TableRow>
     </TableHeader>

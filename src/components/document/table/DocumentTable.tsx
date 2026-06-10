@@ -21,6 +21,7 @@ import { FolderTableRow, FolderUpRow } from '~/components/document/table/FolderT
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '~/components/ui/empty'
 import { Table, TableBody, TableCell, TableRow } from '~/components/ui/table'
 import { useRowSelection } from '~/hooks/useRowSelection'
+import { m } from '~/paraglide/messages'
 
 type Props = {
   documents: Array<DocumentRow>
@@ -124,11 +125,8 @@ export function DocumentTable({
           <EmptyMedia variant="icon">
             <FileIcon />
           </EmptyMedia>
-          <EmptyTitle>Inga dokument här</EmptyTitle>
-          <EmptyDescription>
-            Ladda upp manualer, försäkringspapper eller annan dokumentation – dra in filer eller
-            använd knappen ovan.
-          </EmptyDescription>
+          <EmptyTitle>{m.document_table_empty()}</EmptyTitle>
+          <EmptyDescription>{m.document_empty_description()}</EmptyDescription>
         </EmptyHeader>
       </Empty>
     )
@@ -163,7 +161,7 @@ export function DocumentTable({
             {documents.length === 0 ? (
               <TableRow className="hover:bg-transparent">
                 <TableCell colSpan={6} className="py-8 text-center text-muted-foreground text-sm">
-                  {showUp ? 'Inga dokument i den här mappen' : 'Inga dokument här'}
+                  {showUp ? m.document_folder_empty() : m.document_table_empty()}
                 </TableCell>
               </TableRow>
             ) : (

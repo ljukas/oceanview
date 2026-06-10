@@ -1,5 +1,6 @@
 import { createFileRoute, redirect, useNavigate } from '@tanstack/react-router'
 import { useState } from 'react'
+import { LocaleSwitcherInline } from '~/components/LocaleSwitcher'
 import { LoginFormCard } from '~/components/login/LoginFormCard'
 import { MagicLinkSentCard } from '~/components/login/MagicLinkSentCard'
 import { WelcomeBackCard } from '~/components/login/WelcomeBackCard'
@@ -27,7 +28,16 @@ export const Route = createFileRoute('/login')({
   },
   loader: async () => {
     const session = await getBrowserSession()
-    return { savedLogin: session?.email ? { email: session.email } : null }
+    return {
+      savedLogin: session?.email
+        ? {
+            email: session.email,
+            hasPasskey: session.hasPasskey,
+            image: session.image,
+            imageBlurhash: session.imageBlurhash,
+          }
+        : null,
+    }
   },
   component: Login,
 })
@@ -70,12 +80,18 @@ function Login() {
   }
 
   return (
-    <div className="grid min-h-svh place-items-center p-4">
+    <div className="relative grid min-h-svh place-items-center p-4">
+      <div className="absolute top-4 right-4">
+        <LocaleSwitcherInline />
+      </div>
       {sentTo ? (
         <MagicLinkSentCard email={sentTo} />
       ) : savedLogin ? (
         <WelcomeBackCard
           email={savedLogin.email}
+          hasPasskey={savedLogin.hasPasskey}
+          image={savedLogin.image}
+          imageBlurhash={savedLogin.imageBlurhash}
           callbackURL={callbackURL}
           onSent={setSentTo}
           onSwitchUser={() => {

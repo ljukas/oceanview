@@ -19,6 +19,7 @@ import {
   DropdownMenuTrigger,
 } from '~/components/ui/dropdown-menu'
 import { useDialogState } from '~/hooks/useDialogState'
+import { m } from '~/paraglide/messages'
 
 type Props = {
   // null id/name = the virtual root: only "new folder here" applies.
@@ -39,7 +40,7 @@ export function FolderActions({ folderId, folderName, isAdmin, triggerClassName 
           <Button
             variant="ghost"
             size="icon-sm"
-            aria-label="Mappåtgärder"
+            aria-label={m.folder_actions_label()}
             className={triggerClassName}
           >
             <MoreVerticalIcon />
@@ -49,7 +50,7 @@ export function FolderActions({ folderId, folderName, isAdmin, triggerClassName 
           <DropdownMenuGroup>
             <DropdownMenuItem onSelect={() => dialog.show('create')}>
               <FolderPlusIcon data-icon="inline-start" />
-              Ny mapp här
+              {m.folder_create_here()}
             </DropdownMenuItem>
           </DropdownMenuGroup>
           {!isRoot && isAdmin ? (
@@ -58,15 +59,15 @@ export function FolderActions({ folderId, folderName, isAdmin, triggerClassName 
               <DropdownMenuGroup>
                 <DropdownMenuItem onSelect={() => dialog.show('rename')}>
                   <PencilIcon data-icon="inline-start" />
-                  Byt namn
+                  {m.document_action_rename()}
                 </DropdownMenuItem>
                 <DropdownMenuItem onSelect={() => dialog.show('move')}>
                   <FolderInputIcon data-icon="inline-start" />
-                  Flytta
+                  {m.document_action_move()}
                 </DropdownMenuItem>
                 <DropdownMenuItem variant="destructive" onSelect={() => dialog.show('delete')}>
                   <Trash2Icon data-icon="inline-start" />
-                  Ta bort
+                  {m.document_action_delete()}
                 </DropdownMenuItem>
               </DropdownMenuGroup>
             </>

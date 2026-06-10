@@ -1,3 +1,4 @@
+import { paraglideVitePlugin } from '@inlang/paraglide-js'
 import tailwindcss from '@tailwindcss/vite'
 import { devtools } from '@tanstack/devtools-vite'
 import { tanstackStart } from '@tanstack/react-start/plugin/vite'
@@ -30,6 +31,16 @@ export default defineConfig({
     ? []
     : [
         devtools(),
+        // Compiles messages/{sv,en}.json into typed functions in src/paraglide/
+        // (gitignored build artifact — `pnpm i18n:compile` covers editor/tests).
+        // Locale strategy is cookie-only: URLs stay English per CLAUDE.md.
+        paraglideVitePlugin({
+          project: './project.inlang',
+          outdir: './src/paraglide',
+          strategy: ['cookie', 'baseLocale'],
+          cookieName: 'oceanview-locale',
+          cookieMaxAge: 60 * 60 * 24 * 365,
+        }),
         tailwindcss(),
         tanstackStart({
           srcDirectory: 'src',
@@ -46,6 +57,21 @@ export default defineConfig({
         // don't accidentally drop those either).
         // See https://github.com/better-auth/better-auth/issues/7463.
         nitro({
+          // Baseline security headers on every response. Deliberately no CSP:
+          // the inline theme script + Blob/Analytics/SSE origins make a
+          // correct policy real work, and the app's XSS surface is minimal
+          // (no user-controlled HTML). Revisit if that changes.
+          routeRules: {
+            '/**': {
+              headers: {
+                'Strict-Transport-Security': 'max-age=63072000; includeSubDomains',
+                'X-Content-Type-Options': 'nosniff',
+                'X-Frame-Options': 'DENY',
+                'Referrer-Policy': 'strict-origin-when-cross-origin',
+                'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
+              },
+            },
+          },
           // TanStack Start manages Nitro's serverDir; declare the queue
           // consumer plugin explicitly so it survives the rolldown bundle.
           // The file uses the `vercel:queue` runtime hook — see

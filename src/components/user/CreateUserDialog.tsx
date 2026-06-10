@@ -16,6 +16,7 @@ import {
 } from '~/components/user/UserFormFields'
 import { useAppForm } from '~/hooks/form'
 import { orpc } from '~/lib/orpc/client'
+import { m } from '~/paraglide/messages'
 
 type Props = {
   open: boolean
@@ -31,11 +32,11 @@ export function CreateUserDialog({ open, onOpenChange }: Props) {
         await queryClient.invalidateQueries({
           queryKey: orpc.user.list.key(),
         })
-        toast.success('Användaren skapades')
+        toast.success(m.user_created())
         onOpenChange(false)
       },
       onError: (err) => {
-        toast.error(err.message || 'Kunde inte skapa användaren')
+        toast.error(err.message || m.user_create_error())
       },
     }),
   )
@@ -53,8 +54,8 @@ export function CreateUserDialog({ open, onOpenChange }: Props) {
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Ny användare</DialogTitle>
-          <DialogDescription>Fyll i uppgifterna för den nya användaren.</DialogDescription>
+          <DialogTitle>{m.user_create_title()}</DialogTitle>
+          <DialogDescription>{m.user_create_description()}</DialogDescription>
         </DialogHeader>
         <form
           onSubmit={(e) => {
@@ -66,8 +67,10 @@ export function CreateUserDialog({ open, onOpenChange }: Props) {
 
           <DialogFooter className="mt-6">
             <form.AppForm>
-              <form.CancelButton onClick={() => onOpenChange(false)}>Avbryt</form.CancelButton>
-              <form.SubmitButton label="Skapa användare" />
+              <form.CancelButton onClick={() => onOpenChange(false)}>
+                {m.common_cancel()}
+              </form.CancelButton>
+              <form.SubmitButton label={m.user_create_submit()} />
             </form.AppForm>
           </DialogFooter>
         </form>

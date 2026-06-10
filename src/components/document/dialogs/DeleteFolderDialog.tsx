@@ -11,6 +11,7 @@ import {
 import { Button } from '~/components/ui/button'
 import { Spinner } from '~/components/ui/spinner'
 import { orpc } from '~/lib/orpc/client'
+import { m } from '~/paraglide/messages'
 
 type Props = {
   open: boolean
@@ -31,11 +32,14 @@ export function DeleteFolderDialog({ open, onOpenChange, folder }: Props) {
           queryClient.invalidateQueries({ queryKey: orpc.bin.key() }),
         ])
         toast.success(
-          `Mappen togs bort (${result.foldersAffected} mappar, ${result.documentsAffected} dokument)`,
+          m.folder_deleted_toast({
+            folders: result.foldersAffected,
+            documents: result.documentsAffected,
+          }),
         )
         onOpenChange(false)
       },
-      onError: (err) => toast.error(err.message || 'Kunde inte ta bort mappen'),
+      onError: (err) => toast.error(err.message || m.folder_delete_error()),
     }),
   )
 
@@ -43,11 +47,10 @@ export function DeleteFolderDialog({ open, onOpenChange, folder }: Props) {
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>Ta bort "{folder.name}"?</AlertDialogTitle>
-          <AlertDialogDescription>
-            Mappen och allt innehåll – undermappar och dokument – flyttas till papperskorgen. En
-            administratör kan återställa det därifrån.
-          </AlertDialogDescription>
+          <AlertDialogTitle>
+            {m.document_delete_confirm_title({ name: folder.name })}
+          </AlertDialogTitle>
+          <AlertDialogDescription>{m.folder_delete_description()}</AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
           <Button
@@ -55,7 +58,7 @@ export function DeleteFolderDialog({ open, onOpenChange, folder }: Props) {
             onClick={() => onOpenChange(false)}
             disabled={deleteMutation.isPending}
           >
-            Avbryt
+            {m.common_cancel()}
           </Button>
           <Button
             variant="destructive"
@@ -63,7 +66,7 @@ export function DeleteFolderDialog({ open, onOpenChange, folder }: Props) {
             disabled={deleteMutation.isPending}
           >
             {deleteMutation.isPending ? <Spinner data-icon="inline-start" /> : null}
-            Ta bort
+            {m.document_action_delete()}
           </Button>
         </AlertDialogFooter>
       </AlertDialogContent>

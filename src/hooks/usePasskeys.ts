@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { authClient } from '~/lib/authClient'
 import { isPasskeyPromptSuppressed, suppressPasskeyPrompt } from '~/lib/passkeyPrompt'
+import { m } from '~/paraglide/messages'
 
 export const passkeysQueryKey = ['passkeys'] as const
 
@@ -31,13 +32,14 @@ function errorMessage(err: unknown, fallback: string): string {
   return (err as { message?: string } | null)?.message ?? fallback
 }
 
-// Client-only feature detection. Returns false on the server and the first client render
-// (so SSR markup matches), then true after mount if the browser can do WebAuthn at all.
-// Used to decide whether to show an explicit "sign in with passkey" button.
+// Client-only feature detection, optimistic: WebAuthn has been universal since ~2019,
+// so assume support during SSR and the first client render (markup matches, no pop-in)
+// and demote after mount on the rare browser without it. Used to decide whether to
+// show an explicit "sign in with passkey" button.
 export function usePasskeySupport(): boolean {
-  const [supported, setSupported] = useState(false)
+  const [supported, setSupported] = useState(true)
   useEffect(() => {
-    setSupported(typeof window !== 'undefined' && !!window.PublicKeyCredential)
+    if (!window.PublicKeyCredential) setSupported(false)
   }, [])
   return supported
 }
@@ -70,7 +72,7 @@ export function useAddPasskey(options?: { onAdded?: () => void; onNotFresh?: () 
         options.onNotFresh()
         return
       }
-      toast.error(errorMessage(err, 'Kunde inte lägga till passkey.'))
+      toast.error(errorMessage(err, m.passkey_add_error()))
     },
   })
 }
@@ -86,7 +88,7 @@ export function useRenamePasskey() {
       void queryClient.invalidateQueries({ queryKey: passkeysQueryKey })
     },
     onError: (err) => {
-      toast.error(errorMessage(err, 'Kunde inte byta namn.'))
+      toast.error(errorMessage(err, m.passkey_rename_error()))
     },
   })
 }
@@ -102,7 +104,7 @@ export function useDeletePasskey() {
       void queryClient.invalidateQueries({ queryKey: passkeysQueryKey })
     },
     onError: (err) => {
-      toast.error(errorMessage(err, 'Kunde inte ta bort passkey.'))
+      toast.error(errorMessage(err, m.passkey_delete_error()))
     },
   })
 }
@@ -120,7 +122,7 @@ export function useSignInPasskey(options: { onSignedIn: () => void }) {
     setPending(false)
     if (result?.error) {
       if (isUserDismissed(result.error)) return
-      toast.error(errorMessage(result.error, 'Kunde inte logga in med passkey.'))
+      toast.error(errorMessage(result.error, m.passkey_signin_error()))
       return
     }
     onSignedIn()
@@ -148,7 +150,7 @@ export function useSignInPasskeyAutofill(options: { onSignedIn: () => void }) {
           },
           onError: ({ error }) => {
             if (error?.code === 'NotAllowedError') return
-            toast.error(error?.message ?? 'Kunde inte logga in med passkey.')
+            toast.error(error?.message ?? m.passkey_signin_error())
           },
         },
       })
@@ -173,7 +175,7 @@ export function usePasskeySetupPrompt(options: { enabled: boolean }) {
 
   const addPasskey = useAddPasskey({
     onAdded: () => {
-      toast.success('Passkey kopplad. Nästa gång loggar du in direkt.')
+      toast.success(m.passkey_added())
       setDismissed(true)
     },
   })

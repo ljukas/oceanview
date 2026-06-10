@@ -12,8 +12,14 @@ import {
 import { useAppForm } from '~/hooks/form'
 import { orpc } from '~/lib/orpc/client'
 import { optimisticPatch } from '~/lib/orpc/optimistic'
+import { m } from '~/paraglide/messages'
 
-const schema = z.object({ name: z.string().min(1, 'Ange ett namn').max(255) })
+const schema = z.object({
+  name: z
+    .string()
+    .min(1, { error: () => m.validation_name_required() })
+    .max(255),
+})
 
 type Props = {
   open: boolean
@@ -35,10 +41,10 @@ export function RenameDocumentDialog({ open, onOpenChange, document }: Props) {
           (d) => ({ ...d, name }),
         ),
       onSuccess: () => {
-        toast.success('Dokumentet bytte namn')
+        toast.success(m.document_renamed_toast())
         onOpenChange(false)
       },
-      onError: (err) => toast.error(err.message || 'Kunde inte byta namn'),
+      onError: (err) => toast.error(err.message || m.document_rename_error()),
       onSettled: () =>
         queryClient.invalidateQueries({ queryKey: orpc.document.listDocuments.key() }),
     }),
@@ -56,11 +62,11 @@ export function RenameDocumentDialog({ open, onOpenChange, document }: Props) {
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Byt namn på dokument</DialogTitle>
+          <DialogTitle>{m.document_rename_title()}</DialogTitle>
           <DialogDescription>
             {document.extension
-              ? 'Ändra namnet. Filändelsen kan inte ändras.'
-              : 'Ändra det visade filnamnet.'}
+              ? m.document_rename_description_extension()
+              : m.document_rename_description()}
           </DialogDescription>
         </DialogHeader>
         <form
@@ -72,7 +78,7 @@ export function RenameDocumentDialog({ open, onOpenChange, document }: Props) {
           <form.AppField name="name">
             {(field) => (
               <field.TextField
-                label="Namn"
+                label={m.document_name_label()}
                 autoComplete="off"
                 autoFocus
                 suffix={document.extension ? `.${document.extension}` : undefined}
@@ -82,8 +88,10 @@ export function RenameDocumentDialog({ open, onOpenChange, document }: Props) {
 
           <DialogFooter className="mt-6">
             <form.AppForm>
-              <form.CancelButton onClick={() => onOpenChange(false)}>Avbryt</form.CancelButton>
-              <form.SubmitButton label="Spara" />
+              <form.CancelButton onClick={() => onOpenChange(false)}>
+                {m.common_cancel()}
+              </form.CancelButton>
+              <form.SubmitButton label={m.common_save()} />
             </form.AppForm>
           </DialogFooter>
         </form>

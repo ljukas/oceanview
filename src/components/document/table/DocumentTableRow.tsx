@@ -11,7 +11,6 @@ import {
 import {
   type CurrentUser,
   type DocumentRow,
-  documentDateFormatter,
   documentDisplayName,
   documentDragId,
   fileKindLabel,
@@ -43,7 +42,9 @@ import {
 } from '~/components/ui/dropdown-menu'
 import { TableCell, TableRow } from '~/components/ui/table'
 import { useDialogState } from '~/hooks/useDialogState'
+import { formatDate } from '~/lib/i18n/format'
 import { cn } from '~/lib/utils'
+import { m } from '~/paraglide/messages'
 
 // The same action list renders into the `⋮` dropdown and the right-click
 // context menu by passing the matching radix primitive set.
@@ -184,7 +185,7 @@ export function DocumentTableRow({
                   href={`/api/files/view/${doc.id}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  aria-label={`Öppna ${name}`}
+                  aria-label={m.document_open_label({ name })}
                   {...swallow}
                   className="shrink-0 rounded-md outline-none ring-1 ring-transparent transition-all duration-200 hover:shadow-md hover:ring-ring/50 focus-visible:ring-2 focus-visible:ring-ring"
                 >
@@ -217,7 +218,7 @@ export function DocumentTableRow({
                       isSelected ? 'text-selected-foreground/80' : 'text-muted-foreground',
                     )}
                   >
-                    {`${documentDateFormatter.format(doc.uploadedAt)} • ${formatSize(doc.sizeBytes)}`}
+                    {`${formatDate(doc.uploadedAt)} • ${formatSize(doc.sizeBytes)}`}
                   </span>
                 </div>
               </div>
@@ -240,7 +241,7 @@ export function DocumentTableRow({
                 isSelected ? 'text-selected-foreground/80' : 'text-muted-foreground',
               )}
             >
-              {documentDateFormatter.format(doc.uploadedAt)}
+              {formatDate(doc.uploadedAt)}
             </TableCell>
             <TableCell
               className={cn(
@@ -264,7 +265,12 @@ export function DocumentTableRow({
             <TableCell className="pl-0 text-right">
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon-sm" aria-label="Dokumentåtgärder" {...swallow}>
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label={m.document_actions_label()}
+                    {...swallow}
+                  >
                     <MoreVerticalIcon />
                   </Button>
                 </DropdownMenuTrigger>

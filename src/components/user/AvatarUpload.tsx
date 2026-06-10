@@ -9,6 +9,7 @@ import { Spinner } from '~/components/ui/spinner'
 import { runUploadFlow, type UploadProgress } from '~/lib/effects/storage/clientUpload'
 import { orpc } from '~/lib/orpc/client'
 import { initials } from '~/lib/utils'
+import { m } from '~/paraglide/messages'
 
 const ACCEPT = 'image/jpeg,image/png,image/webp,image/avif,image/heic,image/heif,.heic,.heif'
 const DIRECT_UPLOAD_MIME = ['image/jpeg', 'image/png', 'image/webp', 'image/avif'] as const
@@ -53,7 +54,7 @@ export function AvatarUpload() {
   async function handleFile(rawFile: File) {
     try {
       if (rawFile.size > MAX_BYTES) {
-        toast.error('Bilden är för stor (max 5 MB)')
+        toast.error(m.avatar_error_too_large())
         return
       }
 
@@ -63,23 +64,23 @@ export function AvatarUpload() {
         try {
           file = await transcodeHeicToJpeg(rawFile)
         } catch {
-          toast.error('Kunde inte tolka HEIC-bilden')
+          toast.error(m.avatar_error_heic_failed())
           return
         } finally {
           setTranscoding(false)
         }
         if (file.size > MAX_BYTES) {
-          toast.error('Bilden är för stor efter konvertering (max 5 MB)')
+          toast.error(m.avatar_error_too_large_after_conversion())
           return
         }
       } else if (!isDirectUploadMime(rawFile.type)) {
-        toast.error('Endast JPG, PNG, WebP, AVIF eller HEIC')
+        toast.error(m.avatar_error_unsupported_format())
         return
       }
 
       const contentType = file.type
       if (!isDirectUploadMime(contentType)) {
-        toast.error('Okänt bildformat')
+        toast.error(m.avatar_error_unknown_format())
         return
       }
 
@@ -103,9 +104,9 @@ export function AvatarUpload() {
         queryClient.invalidateQueries({ queryKey: orpc.user.list.key() }),
         queryClient.invalidateQueries({ queryKey: orpc.user.listContacts.key() }),
       ])
-      toast.success('Profilbilden uppdaterad')
+      toast.success(m.avatar_updated())
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Kunde inte ladda upp bilden')
+      toast.error(err instanceof Error ? err.message : m.avatar_upload_error())
     } finally {
       setProgress(null)
       if (inputRef.current) inputRef.current.value = ''
@@ -146,22 +147,24 @@ export function AvatarUpload() {
           className="w-fit"
         >
           {busy ? <Spinner data-icon="inline-start" /> : <ImageUpIcon />}
-          {me.image ? 'Byt profilbild' : 'Lägg till profilbild'}
+          {me.image ? m.avatar_change_button() : m.avatar_add_button()}
         </Button>
         {transcoding ? (
-          <p className="text-muted-foreground text-xs">Konverterar bild…</p>
+          <p className="text-muted-foreground text-xs">{m.avatar_transcoding()}</p>
         ) : progress !== null ? (
           <div className="flex w-56 flex-col gap-1">
-            <Progress value={progress.percentage} aria-label="Laddar upp profilbild" />
+            <Progress value={progress.percentage} aria-label={m.avatar_uploading_label()} />
             <div className="flex justify-between text-muted-foreground text-xs tabular-nums">
               <span>{progress.percentage} %</span>
-              <span>{formatBytes(Math.max(progress.total - progress.loaded, 0))} kvar</span>
+              <span>
+                {m.avatar_bytes_remaining({
+                  amount: formatBytes(Math.max(progress.total - progress.loaded, 0)),
+                })}
+              </span>
             </div>
           </div>
         ) : (
-          <p className="text-muted-foreground text-xs">
-            JPG, PNG, WebP, AVIF eller HEIC. Max 5 MB.
-          </p>
+          <p className="text-muted-foreground text-xs">{m.avatar_format_hint()}</p>
         )}
       </div>
     </div>

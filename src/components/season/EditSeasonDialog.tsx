@@ -15,6 +15,7 @@ import { Spinner } from '~/components/ui/spinner'
 import { useAppForm } from '~/hooks/form'
 import { orpc } from '~/lib/orpc/client'
 import { SHARE_CODES } from '~/lib/shares/codes'
+import { m } from '~/paraglide/messages'
 
 type Props = {
   open: boolean
@@ -27,11 +28,11 @@ const shareOptions = SHARE_CODES.map((code) => ({ value: code, label: code }))
 const editSeasonFormSchema = z.object({
   startWeek: z
     .string()
-    .regex(/^\d+$/, { error: 'Ange ett giltigt veckonummer' })
+    .regex(/^\d+$/, { error: () => m.season_validation_week_invalid() })
     .refine((v) => Number(v) >= 1 && Number(v) <= 53, {
-      error: 'Vecka måste vara mellan 1 och 53',
+      error: () => m.season_validation_week_range(),
     }),
-  startShare: z.enum(SHARE_CODES, { error: 'Välj en startandel' }),
+  startShare: z.enum(SHARE_CODES, { error: () => m.season_validation_start_share_required() }),
 })
 
 export function EditSeasonDialog({ open, year, onOpenChange }: Props) {
@@ -40,9 +41,9 @@ export function EditSeasonDialog({ open, year, onOpenChange }: Props) {
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>
-            {year !== undefined ? `Redigera säsong ${year}` : 'Redigera säsong'}
+            {year !== undefined ? m.season_edit_title_year({ year }) : m.season_edit_title()}
           </DialogTitle>
-          <DialogDescription>Justera startvecka och startandel.</DialogDescription>
+          <DialogDescription>{m.season_edit_description()}</DialogDescription>
         </DialogHeader>
         {year !== undefined ? (
           <Suspense
@@ -68,11 +69,11 @@ function EditSeasonDialogBody({ year, onDone }: { year: number; onDone: () => vo
     orpc.season.update.mutationOptions({
       onSuccess: async () => {
         await queryClient.invalidateQueries({ queryKey: orpc.season.key() })
-        toast.success('Säsongen uppdaterades')
+        toast.success(m.season_updated())
         onDone()
       },
       onError: (err) => {
-        toast.error(err.message || 'Kunde inte uppdatera säsongen')
+        toast.error(err.message || m.season_update_error())
       },
     }),
   )
@@ -104,9 +105,9 @@ function EditSeasonDialogBody({ year, onDone }: { year: number; onDone: () => vo
           name="startWeek"
           children={(field) => (
             <field.TextField
-              label="Startvecka"
+              label={m.season_field_start_week()}
               type="number"
-              description="ISO-veckonummer för säsongens första vecka."
+              description={m.season_field_start_week_description()}
               inputClassName="tabular-nums"
             />
           )}
@@ -115,8 +116,8 @@ function EditSeasonDialogBody({ year, onDone }: { year: number; onDone: () => vo
           name="startShare"
           children={(field) => (
             <field.SelectField
-              label="Startandel"
-              description="Andelen som äger säsongens första vecka."
+              label={m.season_field_start_share()}
+              description={m.season_field_start_share_description()}
               options={shareOptions}
             />
           )}
@@ -125,8 +126,8 @@ function EditSeasonDialogBody({ year, onDone }: { year: number; onDone: () => vo
 
       <DialogFooter className="mt-6">
         <form.AppForm>
-          <form.CancelButton onClick={onDone}>Avbryt</form.CancelButton>
-          <form.SubmitButton label="Spara" />
+          <form.CancelButton onClick={onDone}>{m.common_cancel()}</form.CancelButton>
+          <form.SubmitButton label={m.common_save()} />
         </form.AppForm>
       </DialogFooter>
     </form>

@@ -4,29 +4,30 @@ import { realtime } from '~/lib/effects'
 import { adminProcedure, protectedProcedure } from '~/lib/orpc/context'
 import * as folderService from '~/lib/services/folder'
 import { FolderDomainError } from '~/lib/services/folder'
+import { m } from '~/paraglide/messages'
 
 function rethrowAsORPC(err: unknown): never {
   if (!(err instanceof FolderDomainError)) throw err
   switch (err.code) {
     case 'NOT_FOUND':
-      throw new ORPCError('NOT_FOUND', { message: 'Mappen hittades inte' })
+      throw new ORPCError('NOT_FOUND', { message: m.folder_error_not_found() })
     case 'NOT_ADMIN':
-      throw new ORPCError('FORBIDDEN', { message: 'Endast administratörer kan göra detta' })
+      throw new ORPCError('FORBIDDEN', { message: m.common_error_admin_only() })
     case 'NAME_TAKEN_IN_PARENT':
-      throw new ORPCError('CONFLICT', { message: 'Det finns redan en mapp med det namnet här' })
+      throw new ORPCError('CONFLICT', { message: m.folder_error_name_taken() })
     case 'INVALID_NAME':
-      throw new ORPCError('BAD_REQUEST', { message: 'Ogiltigt mappnamn' })
+      throw new ORPCError('BAD_REQUEST', { message: m.folder_error_invalid_name() })
     case 'PARENT_NOT_FOUND':
-      throw new ORPCError('NOT_FOUND', { message: 'Föräldermappen hittades inte' })
+      throw new ORPCError('NOT_FOUND', { message: m.folder_error_parent_not_found() })
     case 'CANNOT_MOVE_INTO_DESCENDANT':
       throw new ORPCError('BAD_REQUEST', {
-        message: 'Du kan inte flytta en mapp till sig själv eller en undermapp',
+        message: m.folder_error_move_into_descendant(),
       })
     case 'ALREADY_DELETED':
-      throw new ORPCError('BAD_REQUEST', { message: 'Mappen är redan borttagen' })
+      throw new ORPCError('BAD_REQUEST', { message: m.folder_error_already_deleted() })
     case 'PARENT_DELETED':
       throw new ORPCError('BAD_REQUEST', {
-        message: 'Föräldermappen är borttagen — återställ den först',
+        message: m.folder_error_parent_deleted(),
       })
   }
 }

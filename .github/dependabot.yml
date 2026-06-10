@@ -12,6 +12,13 @@ updates:
       # Node LTS.
       - dependency-name: "@types/node"
         update-types: ["version-update:semver-major"]
+      # TanStack Start is locked to a specific RC until 1.0 (CLAUDE.md
+      # non-negotiable), and the router packages must move in lockstep with
+      # it. Bump these manually as a set instead of via weekly PRs.
+      - dependency-name: "@tanstack/react-start"
+      - dependency-name: "@tanstack/react-router"
+      - dependency-name: "@tanstack/react-router-devtools"
+      - dependency-name: "@tanstack/react-router-with-query"
     groups:
       npm-dependencies:
         patterns:

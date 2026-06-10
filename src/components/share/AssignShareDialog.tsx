@@ -14,6 +14,7 @@ import { useAppForm } from '~/hooks/form'
 import { orpc } from '~/lib/orpc/client'
 import type { AdminPartRow } from '~/lib/orpc/procedures/share'
 import type { ShareCode } from '~/lib/shares/codes'
+import { m } from '~/paraglide/messages'
 
 type Props = {
   open: boolean
@@ -40,14 +41,26 @@ const schema = z
   .superRefine((val, ctx) => {
     if (val.mode === 'whole') {
       if (!val.userId) {
-        ctx.addIssue({ code: 'custom', path: ['userId'], message: 'Välj ägare' })
+        ctx.addIssue({
+          code: 'custom',
+          path: ['userId'],
+          message: m.share_validation_owner_required(),
+        })
       }
     } else {
       if (!val.part1UserId) {
-        ctx.addIssue({ code: 'custom', path: ['part1UserId'], message: 'Välj ägare för part 1' })
+        ctx.addIssue({
+          code: 'custom',
+          path: ['part1UserId'],
+          message: m.share_validation_part_owner_required({ part: 1 }),
+        })
       }
       if (!val.part2UserId) {
-        ctx.addIssue({ code: 'custom', path: ['part2UserId'], message: 'Välj ägare för part 2' })
+        ctx.addIssue({
+          code: 'custom',
+          path: ['part2UserId'],
+          message: m.share_validation_part_owner_required({ part: 2 }),
+        })
       }
     }
   })
@@ -95,11 +108,11 @@ function AssignShareDialogBody({
           queryClient.invalidateQueries({ queryKey: orpc.share.key() }),
           queryClient.invalidateQueries({ queryKey: orpc.user.listContacts.key() }),
         ])
-        toast.success('Andelen tilldelades')
+        toast.success(m.share_assigned())
         onOpenChange(false)
       },
       onError: (err) => {
-        toast.error(err.message || 'Kunde inte tilldela andelen')
+        toast.error(err.message || m.share_assign_error())
       },
     }),
   )
@@ -133,10 +146,8 @@ function AssignShareDialogBody({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Tilldela andel {shareCode}</DialogTitle>
-          <DialogDescription>
-            Tilldelas som hel andel. Slå på "Dela upp" för att tilldela halvorna till olika ägare.
-          </DialogDescription>
+          <DialogTitle>{m.share_assign_title({ code: shareCode })}</DialogTitle>
+          <DialogDescription>{m.share_assign_description()}</DialogDescription>
         </DialogHeader>
         <form
           onSubmit={(e) => {
@@ -147,16 +158,16 @@ function AssignShareDialogBody({
         >
           <form.AppField
             name="from"
-            children={(field) => <field.DateField label="Gäller från" />}
+            children={(field) => <field.DateField label={m.share_field_from()} />}
           />
           <form.AppField
             name="mode"
             children={(field) => (
               <field.ToggleField
-                label="Tilldelning"
+                label={m.share_field_assignment()}
                 options={[
-                  { value: 'whole', label: 'Hel andel' },
-                  { value: 'split', label: 'Dela upp' },
+                  { value: 'whole', label: m.share_assign_whole() },
+                  { value: 'split', label: m.share_assign_split() },
                 ]}
               />
             )}
@@ -167,20 +178,28 @@ function AssignShareDialogBody({
               mode === 'whole' ? (
                 <form.AppField
                   name="userId"
-                  children={(field) => <field.UserSelectField label="Ny ägare" users={users} />}
+                  children={(field) => (
+                    <field.UserSelectField label={m.share_field_new_owner()} users={users} />
+                  )}
                 />
               ) : (
                 <div className="flex flex-col gap-4">
                   <form.AppField
                     name="part1UserId"
                     children={(field) => (
-                      <field.UserSelectField label={`Ägare av ${shareCode}1`} users={users} />
+                      <field.UserSelectField
+                        label={m.share_field_part_owner({ part: `${shareCode}1` })}
+                        users={users}
+                      />
                     )}
                   />
                   <form.AppField
                     name="part2UserId"
                     children={(field) => (
-                      <field.UserSelectField label={`Ägare av ${shareCode}2`} users={users} />
+                      <field.UserSelectField
+                        label={m.share_field_part_owner({ part: `${shareCode}2` })}
+                        users={users}
+                      />
                     )}
                   />
                 </div>
@@ -190,8 +209,13 @@ function AssignShareDialogBody({
 
           <DialogFooter className="mt-2">
             <form.AppForm>
-              <form.CancelButton onClick={() => onOpenChange(false)}>Avbryt</form.CancelButton>
-              <form.SubmitButton label="Tilldela" pendingLabel="Tilldelar…" />
+              <form.CancelButton onClick={() => onOpenChange(false)}>
+                {m.common_cancel()}
+              </form.CancelButton>
+              <form.SubmitButton
+                label={m.share_assign_submit()}
+                pendingLabel={m.share_assign_pending()}
+              />
             </form.AppForm>
           </DialogFooter>
         </form>

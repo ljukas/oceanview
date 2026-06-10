@@ -8,16 +8,12 @@ import { Spinner } from '~/components/ui/spinner'
 import { Tooltip, TooltipContent, TooltipTrigger } from '~/components/ui/tooltip'
 import { useAppForm } from '~/hooks/form'
 import { type Passkey, useRenamePasskey } from '~/hooks/usePasskeys'
+import { formatDate } from '~/lib/i18n/format'
 import { transformer } from '~/lib/image/transformer'
 import { getPasskeyProvider } from '~/lib/passkeyProviders'
+import { m } from '~/paraglide/messages'
 
 const renameSchema = z.object({ name: z.string().trim().min(1) })
-
-const dateFormatter = new Intl.DateTimeFormat('sv-SE', {
-  year: 'numeric',
-  month: '2-digit',
-  day: '2-digit',
-})
 
 export function PasskeyRow({ passkey, onDelete }: { passkey: Passkey; onDelete: () => void }) {
   const renamePasskey = useRenamePasskey()
@@ -70,8 +66,10 @@ export function PasskeyRow({ passkey, onDelete }: { passkey: Passkey; onDelete: 
           )}
           <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-muted-foreground text-xs">
             {showProviderSubtitle ? <span>{provider?.name}</span> : null}
-            <span>{isSynced ? 'Synkad' : 'Endast denna enhet'}</span>
-            {createdAt ? <span>Tillagd {dateFormatter.format(createdAt)}</span> : null}
+            <span>{isSynced ? m.passkey_synced() : m.passkey_this_device_only()}</span>
+            {createdAt ? (
+              <span>{m.passkey_added_date({ date: formatDate(createdAt) })}</span>
+            ) : null}
           </span>
         </div>
       </div>
@@ -83,20 +81,20 @@ export function PasskeyRow({ passkey, onDelete }: { passkey: Passkey; onDelete: 
                 <Button
                   variant="outline"
                   size="icon-sm"
-                  aria-label="Återställ namn"
+                  aria-label={m.passkey_reset_name()}
                   onClick={() => renamePasskey.mutate({ id: passkey.id, name: '' })}
                   disabled={renamePasskey.isPending}
                 >
                   {renamePasskey.isPending ? <Spinner /> : <RotateCcwIcon />}
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>Återställ namn</TooltipContent>
+              <TooltipContent>{m.passkey_reset_name()}</TooltipContent>
             </Tooltip>
           ) : null}
           <Button
             variant="outline"
             size="icon-sm"
-            aria-label="Byt namn"
+            aria-label={m.passkey_rename()}
             onClick={() => setIsEditing(true)}
           >
             <PencilIcon />
@@ -104,7 +102,7 @@ export function PasskeyRow({ passkey, onDelete }: { passkey: Passkey; onDelete: 
           <Button
             variant="outline"
             size="icon-sm"
-            aria-label="Ta bort"
+            aria-label={m.common_delete()}
             className="text-destructive hover:text-destructive"
             onClick={onDelete}
           >
@@ -144,7 +142,7 @@ function RenamePasskeyForm({ passkey, onDone }: { passkey: Passkey; onDone: () =
             name="name"
             children={(field) => (
               <field.TextField
-                label="Namn på passkey"
+                label={m.passkey_name_label()}
                 srOnlyLabel
                 autoFocus
                 inputClassName="h-8"
@@ -164,7 +162,7 @@ function RenamePasskeyForm({ passkey, onDone }: { passkey: Passkey; onDone: () =
                 type="submit"
                 variant="ghost"
                 size="icon-sm"
-                aria-label="Spara"
+                aria-label={m.common_save()}
                 disabled={!canSubmit || isSubmitting}
               >
                 {isSubmitting ? <Spinner /> : <CheckIcon />}
@@ -172,7 +170,12 @@ function RenamePasskeyForm({ passkey, onDone }: { passkey: Passkey; onDone: () =
             )}
           />
           <form.AppForm>
-            <form.CancelButton variant="ghost" size="icon-sm" aria-label="Avbryt" onClick={onDone}>
+            <form.CancelButton
+              variant="ghost"
+              size="icon-sm"
+              aria-label={m.common_cancel()}
+              onClick={onDone}
+            >
               <XIcon />
             </form.CancelButton>
           </form.AppForm>

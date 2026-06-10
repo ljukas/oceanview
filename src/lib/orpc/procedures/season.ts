@@ -5,14 +5,15 @@ import { adminProcedure, protectedProcedure } from '~/lib/orpc/context'
 import * as seasonService from '~/lib/services/season'
 import { SeasonDomainError } from '~/lib/services/season'
 import { SHARE_CODES, WEEKS_PER_SEASON } from '~/lib/shares/codes'
+import { m } from '~/paraglide/messages'
 
 function rethrowAsORPC(err: unknown): never {
   if (!(err instanceof SeasonDomainError)) throw err
   switch (err.code) {
     case 'ALREADY_EXISTS':
-      throw new ORPCError('CONFLICT', { message: 'Säsongen finns redan' })
+      throw new ORPCError('CONFLICT', { message: m.season_error_already_exists() })
     case 'NOT_FOUND':
-      throw new ORPCError('NOT_FOUND', { message: 'Säsongen hittades inte' })
+      throw new ORPCError('NOT_FOUND', { message: m.season_error_not_found() })
   }
 }
 
@@ -92,7 +93,7 @@ export const seasonRouter = {
 
   getByYear: adminProcedure.input(seasonYearSchema).handler(async ({ input }) => {
     const row = await seasonService.findSeason(input.year)
-    if (!row) throw new ORPCError('NOT_FOUND', { message: 'Säsongen hittades inte' })
+    if (!row) throw new ORPCError('NOT_FOUND', { message: m.season_error_not_found() })
     return row
   }),
 

@@ -9,6 +9,8 @@ import {
   SheetIcon,
 } from 'lucide-react'
 import type { RouterOutputs } from '~/lib/orpc/client'
+import { m } from '~/paraglide/messages'
+import { getLocale } from '~/paraglide/runtime'
 import { joinFilename } from '~/utils/filename'
 
 // Row shapes derived from the router — no hand-maintained duplicates.
@@ -52,11 +54,18 @@ export function documentDisplayName(doc: { name: string; extension?: string | nu
 
 export type CurrentUser = { id: string; role?: string | null }
 
-export const documentDateFormatter = new Intl.DateTimeFormat('sv-SE', {
-  year: 'numeric',
-  month: '2-digit',
-  day: '2-digit',
-})
+/**
+ * Date + time line ("26 maj 2026 14:32"-style) for history rows and the bin.
+ * Resolved per call, not at module scope — a module-level formatter would pin
+ * the first request's locale for the whole server process. UI locale `en` maps
+ * to en-GB, mirroring `~/lib/i18n/format`.
+ */
+export function formatDateTime(date: Date): string {
+  return new Intl.DateTimeFormat(getLocale() === 'sv' ? 'sv-SE' : 'en-GB', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(date)
+}
 
 export function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
@@ -83,8 +92,9 @@ export function folderPathToSplat(path: string): string {
  * if its ancestors were later removed.
  */
 export function folderParentBreadcrumb(path: string): string {
+  const root = m.folder_root_name()
   const parents = path.split('/').filter(Boolean).slice(0, -1)
-  return parents.length ? `Hem / ${parents.join(' / ')}` : 'Hem'
+  return parents.length ? `${root} / ${parents.join(' / ')}` : root
 }
 
 /**
@@ -346,31 +356,34 @@ export function fileTypeAppearance(file: { mime: string; extension?: string | nu
   return family ? APPEARANCE_BY_FAMILY[family] : FALLBACK_APPEARANCE
 }
 
-// Human-readable "Kind" labels for the Typ column, Finder-style. These are the
-// only user-facing strings here (Swedish); the family/subtype/extension keys
-// stay English. We reuse the family maps above so type detection lives in one
-// place; archives derive their label straight from the extension so a `.rar`
-// reads "RAR-arkiv", not a generic "Arkiv".
-const KIND_LABEL_BY_FAMILY: Record<Exclude<FileFamily, 'archive'>, string> = {
-  pdf: 'PDF-dokument',
-  word: 'Word-dokument',
-  excel: 'Excel-kalkylblad',
-  csv: 'CSV-fil',
-  presentation: 'PowerPoint-presentation',
-  text: 'Textdokument',
+// Human-readable "Kind" labels for the Typ column, Finder-style. The values are
+// message *functions*, not strings: module scope evaluates once per process,
+// but the active locale is per request/render (same pattern as AppSidebar's nav
+// items). The family/subtype/extension keys stay English. We reuse the family
+// maps above so type detection lives in one place; archives derive their label
+// straight from the extension so a `.rar` reads "RAR-arkiv", not a generic
+// "Arkiv".
+const KIND_LABEL_BY_FAMILY: Record<Exclude<FileFamily, 'archive'>, () => string> = {
+  pdf: m.document_kind_pdf,
+  word: m.document_kind_word,
+  excel: m.document_kind_excel,
+  csv: m.document_kind_csv,
+  presentation: m.document_kind_presentation,
+  text: m.document_kind_text,
 }
 
-const IMAGE_LABEL_BY_SUBTYPE: Record<string, string> = {
-  jpeg: 'JPEG-bild',
-  png: 'PNG-bild',
-  gif: 'GIF-bild',
-  webp: 'WebP-bild',
-  heic: 'HEIC-bild',
-  heif: 'HEIC-bild',
-  avif: 'AVIF-bild',
-  'svg+xml': 'SVG-bild',
-  bmp: 'BMP-bild',
-  tiff: 'TIFF-bild',
+// Display name fed into the localized "{name}-bild" label.
+const IMAGE_NAME_BY_SUBTYPE: Record<string, string> = {
+  jpeg: 'JPEG',
+  png: 'PNG',
+  gif: 'GIF',
+  webp: 'WebP',
+  heic: 'HEIC',
+  heif: 'HEIC',
+  avif: 'AVIF',
+  'svg+xml': 'SVG',
+  bmp: 'BMP',
+  tiff: 'TIFF',
 }
 
 /**
@@ -385,12 +398,17 @@ export function fileKindLabel(file: { mime: string; extension?: string | null })
 
   if (mime.startsWith('image/')) {
     const subtype = mime.slice('image/'.length)
-    return IMAGE_LABEL_BY_SUBTYPE[subtype] ?? (ext ? `${ext.toUpperCase()}-bild` : 'Bild')
+    const name = IMAGE_NAME_BY_SUBTYPE[subtype] ?? (ext ? ext.toUpperCase() : undefined)
+    return name ? m.document_kind_image_named({ name }) : m.document_kind_image()
   }
 
   const family = FAMILY_BY_MIME[mime] ?? (ext ? FAMILY_BY_EXTENSION[ext] : undefined)
-  if (family === 'archive') return ext ? `${ext.toUpperCase()}-arkiv` : 'Arkiv'
-  if (family) return KIND_LABEL_BY_FAMILY[family]
+  if (family === 'archive') {
+    return ext
+      ? m.document_kind_archive_named({ name: ext.toUpperCase() })
+      : m.document_kind_archive()
+  }
+  if (family) return KIND_LABEL_BY_FAMILY[family]()
 
-  return ext ? `${ext.toUpperCase()}-fil` : 'Fil'
+  return ext ? m.document_kind_file_named({ name: ext.toUpperCase() }) : m.document_kind_file()
 }

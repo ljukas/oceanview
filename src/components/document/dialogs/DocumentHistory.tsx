@@ -8,6 +8,7 @@ import {
   Trash2Icon,
   UploadIcon,
 } from 'lucide-react'
+import { formatDateTime } from '~/components/document/shared/documentHelpers'
 import { Empty, EmptyHeader, EmptyTitle } from '~/components/ui/empty'
 import {
   Sheet,
@@ -20,18 +21,21 @@ import { Skeleton } from '~/components/ui/skeleton'
 import type { RouterOutputs } from '~/lib/orpc/client'
 import { orpc } from '~/lib/orpc/client'
 import { cn } from '~/lib/utils'
+import { m } from '~/paraglide/messages'
 
 type HistoryEntry = RouterOutputs['document']['documentHistory'][number]
 
 type Intent = 'neutral' | 'destructive' | 'success'
 
-const KIND_META: Record<string, { label: string; icon: LucideIcon; intent: Intent }> = {
-  upload: { label: 'Uppladdad', icon: UploadIcon, intent: 'neutral' },
-  rename: { label: 'Namnbyte', icon: PencilIcon, intent: 'neutral' },
-  move: { label: 'Flyttad', icon: FolderInputIcon, intent: 'neutral' },
-  soft_delete: { label: 'Borttagen', icon: Trash2Icon, intent: 'destructive' },
-  restore: { label: 'Återställd', icon: RotateCcwIcon, intent: 'success' },
-  hard_delete: { label: 'Permanent raderad', icon: Trash2Icon, intent: 'destructive' },
+// label is a message function rather than a string: module scope evaluates
+// once per process, but the active locale is per request/render.
+const KIND_META: Record<string, { label: () => string; icon: LucideIcon; intent: Intent }> = {
+  upload: { label: m.document_history_upload, icon: UploadIcon, intent: 'neutral' },
+  rename: { label: m.document_history_rename, icon: PencilIcon, intent: 'neutral' },
+  move: { label: m.document_history_move, icon: FolderInputIcon, intent: 'neutral' },
+  soft_delete: { label: m.document_history_soft_delete, icon: Trash2Icon, intent: 'destructive' },
+  restore: { label: m.document_history_restore, icon: RotateCcwIcon, intent: 'success' },
+  hard_delete: { label: m.document_history_hard_delete, icon: Trash2Icon, intent: 'destructive' },
 }
 
 const INTENT_NODE: Record<Intent, string> = {
@@ -39,11 +43,6 @@ const INTENT_NODE: Record<Intent, string> = {
   destructive: 'bg-destructive/10 text-destructive',
   success: 'bg-success/10 text-success',
 }
-
-const timeFormatter = new Intl.DateTimeFormat('sv-SE', {
-  dateStyle: 'medium',
-  timeStyle: 'short',
-})
 
 type Props = {
   open: boolean
@@ -62,7 +61,7 @@ export function DocumentHistory({ open, onOpenChange, documentId, documentName }
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="flex flex-col gap-4 sm:max-w-md">
         <SheetHeader>
-          <SheetTitle>Historik</SheetTitle>
+          <SheetTitle>{m.document_history_title()}</SheetTitle>
           <SheetDescription className="truncate">{documentName}</SheetDescription>
         </SheetHeader>
 
@@ -76,7 +75,7 @@ export function DocumentHistory({ open, onOpenChange, documentId, documentName }
           ) : !data || data.length === 0 ? (
             <Empty>
               <EmptyHeader>
-                <EmptyTitle>Ingen historik</EmptyTitle>
+                <EmptyTitle>{m.document_history_empty()}</EmptyTitle>
               </EmptyHeader>
             </Empty>
           ) : (
@@ -114,17 +113,19 @@ function HistoryRow({ entry, isLast }: { entry: HistoryEntry; isLast: boolean })
       </span>
       <div className="flex min-w-0 flex-1 flex-col gap-0.5 pt-1.5">
         <div className="flex items-baseline justify-between gap-2">
-          <span className="font-medium text-sm">{meta?.label ?? entry.kind}</span>
+          <span className="font-medium text-sm">{meta ? meta.label() : entry.kind}</span>
           <time
             dateTime={entry.occurredAt.toISOString()}
             className="shrink-0 text-muted-foreground text-xs"
           >
-            {timeFormatter.format(entry.occurredAt)}
+            {formatDateTime(entry.occurredAt)}
           </time>
         </div>
         <HistoryDetail entry={entry} />
         {entry.actorName ? (
-          <span className="text-muted-foreground text-xs">av {entry.actorName}</span>
+          <span className="text-muted-foreground text-xs">
+            {m.document_history_by({ name: entry.actorName })}
+          </span>
         ) : null}
       </div>
     </li>
@@ -153,7 +154,7 @@ function HistoryDetail({ entry }: { entry: HistoryEntry }) {
     if (from && to && 'name' in from && 'name' in to) {
       return (
         <span className="text-muted-foreground text-xs">
-          {from.name ?? 'Hem'} → {to.name ?? 'Hem'}
+          {from.name ?? m.folder_root_name()} → {to.name ?? m.folder_root_name()}
         </span>
       )
     }

@@ -46,9 +46,14 @@ Load on demand, not eagerly. The `pnpm dlx @tanstack/intent` block at the bottom
 ## Code map
 
 ```
+messages/                       i18n source: sv.json (source of truth) + en.json; flat keys
+project.inlang/                 Paraglide/inlang project config (baseLocale sv)
 src/
   router.tsx                    createRouter + devtools + error/notFound bindings
   routeTree.gen.ts              codegen — DO NOT hand-edit
+  server.ts                     custom server entry; wraps every request in the
+                                Paraglide ALS locale scope (getLocale() per request)
+  paraglide/                    compiled messages — generated, gitignored; DO NOT hand-edit
   routes/
     __root.tsx                  root layout; session guard (public: /, /api/auth/*)
     login.tsx                   magic-link + passkey sign-in
@@ -62,7 +67,8 @@ src/
     authClient.ts               createAuthClient() for the browser
     getSession.ts               server fn wrapping auth.api.getSession()
     adminAllowlist.ts           isAllowlistedAdmin() reading ADMIN_EMAILS
-    zodLocale.ts                z.config(z.locales.sv()) — imported from router.tsx
+    zodLocale.ts                locale-delegating Zod error map (sv/en via getLocale())
+    i18n/format.ts              formatDate()/getDateFnsLocale() — per-call locale resolution
     passkeyProviders.ts         AAGUID → provider lookup
     utils.ts                    cn() + tiny helpers
     orpc/
@@ -141,7 +147,9 @@ Five architectural rules (full rationale in each ADR — read it before adjustin
 
 **Adding a UI component**: `pnpm dlx shadcn@latest add <name>` (writes into `src/components/ui/`). Follow `.claude/skills/shadcn/SKILL.md` — semantic colors only, `gap-*` not `space-y-*`, `size-*` for equal dimensions.
 
-**Input validation**: Zod v4 at the boundary (`.input(...)`, server function args, route loaders). Swedish error messages come from `z.config(z.locales.sv())` in `src/lib/zodLocale.ts` — only override per-field for wording tighter than the locale default.
+**Input validation**: Zod v4 at the boundary (`.input(...)`, server function args, route loaders). Localized error messages come from the locale-delegating error map in `src/lib/zodLocale.ts` (resolves `getLocale()` per parse). Per-field overrides must be lazy message callbacks — `{ error: () => m.validation_email_invalid() }`, never a string literal.
+
+**i18n (Paraglide)**: user-facing strings live in `messages/{sv,en}.json` (sv is source of truth; en must stay key-complete). Components call `m.<key>()` from `~/paraglide/messages`; never hardcode UI strings. Module-level constants store the message *function* (`label: m.nav_owners`) and call it at render — module scope outlives the request's locale. Locale = `oceanview-locale` cookie only (no URL prefix); switching reloads the page. Server code inside a request gets the right locale via ALS (`src/server.ts`); emails take an explicit `locale` prop instead. After editing `messages/*.json` outside `pnpm dev`: `pnpm i18n:compile`.
 
 ---
 
@@ -161,6 +169,7 @@ Five architectural rules (full rationale in each ADR — read it before adjustin
 | `pnpm storage:{up,down}` | RustFS S3 on :14523 + console :14503 + bucket bootstrap |
 | `pnpm mail:{up,down}` | Mailpit SMTP :14522 + UI :14502 |
 | `pnpm email:dev` | React Email preview server on :14501 |
+| `pnpm i18n:compile` | Compile `messages/{sv,en}.json` → `src/paraglide/` (auto via `prepare`/`pretest`/vite) |
 | `pnpm dev:worker` | Local BullMQ worker (consumes `blurhash` + `image_thumbnail` topics) |
 | `pnpm test` / `test:watch` | Vitest; per-test schema (CREATE/migrate/DROP) on Neon Local session-pool URL |
 | `pnpm check` | Biome format + lint + organize imports (writes). Daily driver |
@@ -175,7 +184,7 @@ Five architectural rules (full rationale in each ADR — read it before adjustin
 
 - **Auto-provisioned by Vercel ↔ Neon Marketplace** (do not add manually): `DATABASE_URL`, `DATABASE_URL_UNPOOLED`, `NEON_PROJECT_ID`, plus `POSTGRES_*` / `PG*` aliases.
 - **Local-only for Neon Local** (`.env`, gitignored): `NEON_API_KEY`, `PARENT_BRANCH_ID`.
-- **Set in Vercel + `.env`**: `BETTER_AUTH_SECRET` (32+ chars; `openssl rand -base64 32`), `BETTER_AUTH_URL`, `ADMIN_EMAILS` (CSV allowlist).
+- **Set in Vercel + `.env`**: `BETTER_AUTH_SECRET` (32+ chars; `openssl rand -base64 32`), `BETTER_AUTH_URL`, `ADMIN_EMAILS` (CSV allowlist). `ADMIN_EMAILS` is consulted only when a user row is *created* (signup hook in `auth.ts`) — editing it later does **not** change existing users. To promote/demote an existing user, update their `role` via the admin UI at `/admin` (or the Better Auth admin API); to revoke access immediately, also revoke their sessions (role is cookie-cached up to 5 min, sessions live 30 days).
 - **Vercel Blob (auto-provisioned via Marketplace)**: `BLOB_PUBLIC_READ_WRITE_TOKEN` (avatars), `BLOB_PRIVATE_READ_WRITE_TOKEN` (documents). Leave blank locally; use `S3_*` instead. Override: `STORAGE_ADAPTER=devLog` (tests).
 - **Local S3** (backs `pnpm storage:up`): `S3_ENDPOINT` (default `http://localhost:14523`), `S3_REGION=eu-north-1`, `S3_ACCESS_KEY_ID`/`S3_SECRET_ACCESS_KEY` (default `oceanview-dev`/`oceanview-dev-secret-key`), `S3_BUCKET_PUBLIC=oceanview-public`, `S3_BUCKET_PRIVATE=oceanview-private`. When `S3_ENDPOINT` is set, the storage adapter picks `s3` over `BLOB_*`. See ADR-0006.
 - **Resend (after DNS verification)**: `RESEND_API_KEY`, `EMAIL_FROM`. Activates when `RESEND_API_KEY` is set and `SMTP_HOST` is unset. Until then, prod runs through `devLog`. See ADR-0008.
@@ -237,7 +246,7 @@ WebFetch before guessing APIs.
 - **Lock TanStack Start to a specific RC version** in `package.json` until 1.0.
 - **Free tier first.** Confirm any third-party service covers ~20 users on a free tier.
 - **Every screen must be responsive.** Desktop + mobile + tablet; use Tailwind responsive utilities + shadcn primitives; no fixed pixel widths.
-- **User-facing text is Swedish, informal "du".** "Oceanview" stays untranslated. Code identifiers, comments, logs, commits, DB enum values, and **route URL paths** stay English (`/owners`, `/account` — not `/delagare`, `/konto`). `<html lang="sv">` in `__root.tsx`.
+- **User-facing text is localized via Paraglide** — never hardcoded. Strings live in `messages/{sv,en}.json`; Swedish (informal "du") is the source of truth and the default locale, English is the alternative. "Oceanview" stays untranslated. Code identifiers, comments, logs, commits, DB enum values, and **route URL paths** stay English (`/owners`, `/account` — not `/delagare`, `/konto`). `<html lang={getLocale()}>` in `__root.tsx`.
 
 ---
 
@@ -267,6 +276,7 @@ One line each. Reasoning in `git log CLAUDE.md` and in the linked ADR.
 - **Organization rules live in ADR-0009** (2026-05-27). Social rules the schema can't express (e.g. "every owner holds at least one whole share") are documented there and enforced as typed `<Entity>DomainError` raised pre-commit by services. New rules append to that ADR.
 - **Document management per ADR-0010** (2026-06-04, amended 2026-06-10). 1:1 `document`/`file` split; folders as adjacency list + denormalized path; sibling event tables with `correlation_id`; pg_trgm one-input search (deliberate seq scan at this scale); sequential Pacer upload queue; bin under `/admin/documents/bin`; thumbnails as separate public-store WebP assets.
 - **Domain invariants are check-first** (2026-06-10). Explicit read → `<Entity>DomainError` inside the guarded op's tx; never SQLSTATE/message parsing; DB constraints stay as silent backstops; check-then-write races accepted at this scale. See ADR-0002 "Check first".
+- **i18n: Paraglide JS, sv default + en, cookie-only** (2026-06-10). Compile-time typed `m.*()` messages from `messages/{sv,en}.json`; `oceanview-locale` cookie, no URL prefix; per-request server locale via ALS in `src/server.ts`; switching reloads the page. Rejected: i18next (40 kB runtime, weak typing), Lingui (TanStack Start SSR issues), typesafe-i18n (unmaintained).
 - **UI**: shadcn/ui (style `radix-nova`, base `slate`) + Tailwind v4. CSS vars in `src/styles/app.css`; `components.json` source of truth.
 - **Dark mode**: cookie-based (`oceanview-theme`), read in the root loader and applied to `<html>` during SSR; light/dark scriptless, `system` resolved by a small owned inline script + a `matchMedia` listener. Own `ThemeProvider`/`useTheme` (no next-themes). Manual toggle + system; no FOUC.
 - **Package manager**: pnpm.
