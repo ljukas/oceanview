@@ -165,6 +165,7 @@ Five architectural rules (full rationale in each ADR — read it before adjustin
 | `pnpm dev:up` / `dev:down` | Whole dev stack: db + queue + mail + storage; `up` also runs migrations |
 | `pnpm db:{up,down,generate,migrate,studio}` | Neon Local on :14520; generate / apply migrations; Drizzle Studio |
 | `pnpm auth:schema` | Regenerate `betterAuth.ts` + patch `timestamptz`. Idempotent |
+| `pnpm neon:prune` | Delete Neon Local's cloud branches for merged/deleted git branches (free-tier storage hygiene). Dev stack must be down |
 | `pnpm queue:{up,down,studio}` | Redis broker :14521; Bull Studio :14504 (needs `queue:up`) |
 | `pnpm storage:{up,down}` | RustFS S3 on :14523 + console :14503 + bucket bootstrap |
 | `pnpm mail:{up,down}` | Mailpit SMTP :14522 + UI :14502 |
