@@ -1,4 +1,5 @@
 import { createFormHook, createFormHookContexts } from '@tanstack/react-form'
+import { CancelButton } from '~/components/form/CancelButton'
 import { DateField } from '~/components/form/DateField'
 import { PhoneField } from '~/components/form/PhoneField'
 import { SelectField } from '~/components/form/SelectField'
@@ -14,5 +15,5 @@ export const { useAppForm, withForm, withFieldGroup } = createFormHook({
   fieldContext,
   formContext,
   fieldComponents: { TextField, SelectField, PhoneField, ToggleField, DateField, UserSelectField },
-  formComponents: { SubmitButton },
+  formComponents: { SubmitButton, CancelButton },
 })

@@ -5,6 +5,8 @@
 - **Deciders**: Lukas
 - **Decision in one line**: Heavy / deferred work runs on a queue. Producers call `queue.publish(topic, payload)` through `~/lib/effects/queue/`; the same handler in `src/lib/queue/handlers/<topic>.ts` runs in production (Vercel Queues → Nitro `vercel:queue` hook) and in local dev (BullMQ + Redis worker). The adapter is chosen at runtime from env; tests use a `devLog` no-op. **Supersedes the tier-3 / outbox passages in [ADR-0001](./0001-side-effects-architecture.md).**
 
+> **Amended 2026-06-10.** Vercel Queues re-verified: it is **GA**, no longer public beta. Billing is per operation, metered in 4 KiB chunks, across five operation types (Send / Receive / Delete / Visibility change / Notify); operations are regionally priced against plan credits; sends with an idempotency key and push deliveries with max concurrency bill at 2× for that operation; functions invoked in push mode are billed as normal Fluid compute. Default message retention is 24 h (max 7 days) — which *simplifies* the swap path documented below: unprocessed messages for recomputable jobs like blurhash self-expire, so there is nothing to migrate. At ~20 users our volume is trivially inside Hobby plan credits. The "exits beta with surprising pricing" revisit trigger is retired and restated in measurable terms below. Sources: [vercel.com/docs/queues](https://vercel.com/docs/queues), [vercel.com/docs/queues/pricing](https://vercel.com/docs/queues/pricing).
+
 ---
 
 ## Context
@@ -65,7 +67,7 @@ This is a **deep seam**: a one-method interface (`publish`) with real leverage b
 - ➕ Producer behind the existing `~/lib/effects/` seam — procedures stay thin.
 - ➕ Two adapters from day one (devLog + vercelQueue); the BullMQ adapter for dev makes the seam a three-adapter reality.
 - ➕ Shared handler in `~/lib/queue/handlers/` means prod and dev execute the *same* code path.
-- ➖ Vercel Queues is in public beta — SLA / pricing risk bounded by the swap-to-Redis escape hatch documented below.
+- ➖ Vercel Queues was in public beta at decision time — SLA / pricing risk bounded by the swap-to-Redis escape hatch documented below. (Now GA; see the 2026-06-10 amendment.)
 - **Verdict**: yes.
 
 ---
@@ -95,15 +97,15 @@ export interface QueueEffects {
 
 > **Amended 2026-06-04.** `blurhash` is the canonical example throughout this ADR, but it is no longer the only live topic. **`image_thumbnail`** landed as the second real topic for [ADR-0010 — Document Management](./0010-document-management.md): handler `src/lib/queue/handlers/imageThumbnail.ts` (reads the private original, renders a WebP, writes it to the *public* store at `thumbnails/{documentId}.webp`, publishes `document.changed`), produced from `src/lib/orpc/procedures/document.ts`, registered in `vite.config.ts` triggers and the `vercel:queue` plugin switch, and consumed by a second BullMQ `Worker` in `scripts/devQueueWorker.ts`. It is the working proof of the *How to add a new topic* recipe below. **`pdf_thumbnail`** is forward-declared in the union only — no producer publishes it and no handler consumes it yet (PDFs render a mime-type icon); it stays reserved until the renderer's serverless-dependency story is proven. See ADR-0010.
 
-Adapter selection happens on first `publish()` via dynamic import, cached for the rest of the process:
+Adapter selection happens on first `publish()` via dynamic import, cached for the rest of the process (the branching is wrapped in the shared `lazy()` memoizer from `src/lib/effects/lazy.ts` — same semantics, shared with the other effect selectors):
 
 ```ts
-async function getAdapter(): Promise<QueueEffects> {
+const getAdapter = lazy(async (): Promise<QueueEffects> => {
   if (process.env.VITEST === 'true') return (await import('./adapters/devLog')).devLog
   if (process.env.REDIS_URL)        return (await import('./adapters/bullmqQueue')).bullmqQueue
   if (!process.env.VERCEL)          return (await import('./adapters/devLog')).devLog
   return (await import('./adapters/vercelQueue')).vercelQueue
-}
+})
 ```
 
 Three properties this gets us:
@@ -115,17 +117,22 @@ Three properties this gets us:
 Canonical producer call sites:
 
 ```ts
-// src/lib/orpc/procedures/image.ts:69
+// `confirmAvatarUpload` — src/lib/orpc/procedures/image.ts
 await queue
   .publish('blurhash', { fileId: newRow.id, kind: 'avatar', userId: context.user.id })
   .catch((error) => {
     context.log.warn('failed to enqueue avatar blurhash', { fileId: newRow.id, error })
   })
 
-// src/lib/orpc/procedures/file.ts:91
-if (SHARP_DECODABLE_MIME_SET.has(inserted.mime)) {
+// `confirmDocumentUpload` — src/lib/orpc/procedures/document.ts
+// Behind the same SHARP_DECODABLE_MIME_SET gate, it enqueues `image_thumbnail`
+// alongside `blurhash`.
+if (SHARP_DECODABLE_MIME_SET.has(inserted.file.mime)) {
   await queue
-    .publish('blurhash', { fileId: inserted.id, kind: 'document' })
+    .publish('blurhash', { fileId: inserted.file.id, kind: 'document' })
+    .catch((error) => { /* log and continue */ })
+  await queue
+    .publish('image_thumbnail', { documentId: inserted.document.id })
     .catch((error) => { /* log and continue */ })
 }
 ```
@@ -158,7 +165,7 @@ nitro({
   plugins: ['./server/plugins/queueConsumer.ts'],
   vercel: {
     config: {
-      queues: { triggers: [{ topic: 'blurhash' }] },
+      queues: { triggers: [{ topic: 'blurhash' }, { topic: 'image_thumbnail' }] },
     },
   },
 })
@@ -237,11 +244,11 @@ pnpm dev
 pnpm queue:studio
 ```
 
-To skip the queue path entirely (e.g. iterating on UI), leave `REDIS_URL` unset and skip `pnpm dev:worker`; the producer falls through to `devLog`, the upload procedure logs `queue publish (devLog)`, and the image renders without a placeholder.
+To skip the queue path entirely (e.g. iterating on UI), blank out `REDIS_URL` and skip `pnpm dev:worker`; the producer falls through to `devLog`, the upload procedure logs `queue publish (devLog)`, and the image renders without a placeholder. Note the current posture: `.env.example` ships `REDIS_URL=redis://localhost:14521` pre-filled, so a freshly copied `.env` opts *into* the BullMQ adapter — skipping the queue path is an opt-out, not the opt-in this section originally described.
 
 ### Test setup
 
-`VITEST === 'true'` is checked **first** in `getAdapter()`, so every test routes through `devLog` regardless of any other env. No broker is started; no worker runs; nothing crosses a process boundary. The contract test in `src/lib/effects/queue/queue.test.ts` asserts only that `publish` resolves without throwing — exactly the property the producer's `.catch()` blocks rely on at the call site. Handler tests, if added, would live next to the handler and import it directly without involving the seam.
+`VITEST === 'true'` is checked **first** in `getAdapter()`, so every test routes through `devLog` regardless of any other env. No broker is started; no worker runs; nothing crosses a process boundary. The contract test in `src/lib/effects/queue/queue.test.ts` asserts only that `publish` resolves without throwing — exactly the property the producer's `.catch()` blocks rely on at the call site. Handler tests live next to the handler and import it directly without involving the seam — `src/lib/queue/handlers/imageThumbnail.test.ts` is the existing example.
 
 This matches the rest of the `effects/` namespace: tests prove the *contract*, not the transport.
 
@@ -249,7 +256,7 @@ This matches the rest of the `effects/` namespace: tests prove the *contract*, n
 
 ## Swappability: Vercel Queues → Redis in production
 
-On record because the swap was an explicit design goal: Vercel Queues is in public beta, and we want a documented exit if pricing, quotas, or features force one.
+On record because the swap was an explicit design goal: Vercel Queues was in public beta when this ADR landed (GA since — see the 2026-06-10 amendment), and we want a documented exit if pricing, quotas, or features force one.
 
 **Producer side is trivial.** The selector checks `REDIS_URL` *before* the `!VERCEL` check, so setting `REDIS_URL` in Vercel env (pointing at a managed Redis — Upstash, Render, etc.) is all it takes for producers to route through `bullmqQueue` in production. No code changes.
 
@@ -258,10 +265,10 @@ On record because the swap was an explicit design goal: Vercel Queues is in publ
 **What to budget when the swap happens:**
 - One managed-Redis account (Upstash has a free tier covering our scale).
 - One worker host (Fly.io free tier covers it; the worker process is small).
-- Migrating any unprocessed Vercel Queues messages — there should be few; blurhash is idempotent and recomputable.
+- Migrating any unprocessed Vercel Queues messages — in practice nothing: messages self-expire at the default 24 h retention (max 7 days), and blurhash/thumbnails are idempotent and recomputable, so unprocessed backlog can simply be left to expire.
 
 **Revisit triggers** for actually pulling this lever:
-- Vercel Queues exits beta with surprising pricing.
+- Per-operation billing (GA model — see the 2026-06-10 amendment) starts consuming a meaningful share of plan credits. Implausible at ~20 users, but it keeps the trigger measurable.
 - We hit a quota wall we can't paper over.
 - A topic appears that needs features Vercel Queues doesn't offer (priority lanes, delayed jobs, schedules, dead-letter introspection beyond the dashboard).
 
@@ -282,7 +289,7 @@ After this ADR's pattern lands or is touched:
 - `grep -rn "vercel:queue" server/` — only `server/plugins/queueConsumer.ts` should match (no other hook subscribers).
 - `pnpm test` — `src/lib/effects/queue/queue.test.ts` passes; selects the `devLog` adapter regardless of `REDIS_URL`.
 - Manual smoke (dev, `REDIS_URL` unset + no worker): upload an avatar → 200; log shows `queue publish (devLog)`; avatar renders without a placeholder.
-- Manual smoke (dev, `REDIS_URL` set + `pnpm dev:worker` running): upload an avatar → 200; within a few seconds the worker logs `blurhash: stored`, the user row gains a `blurhash`, and Bull Studio (`:14504`) lists the completed job.
+- Manual smoke (dev, `REDIS_URL` set + `pnpm dev:worker` running): upload an avatar → 200; within a few seconds the worker logs `blurhash: stored` followed by `job completed` (`scripts/devQueueWorker.ts`), and the user row gains a `blurhash`. Don't look for the job in Bull Studio (`:14504`) — the producer enqueues with `removeOnComplete: true` (`src/lib/effects/queue/adapters/bullmqQueue.ts`), so completed jobs vanish from Redis; only failed jobs (kept at 100 via `removeOnFail`) show up there.
 - Manual smoke (preview deploy): upload an avatar in a preview URL → Vercel Runtime Logs show `queue publish` on the producer Function and `blurhash: stored` on the consumer Function.
 
 ---
@@ -301,8 +308,8 @@ After this ADR's pattern lands or is touched:
 - `scripts/devQueueWorker.ts` — local BullMQ consumer; run via `pnpm dev:worker`.
 - `compose.yaml` — `queue` and `queue-studio` services.
 - `vite.config.ts` — Nitro plugin registration + `vercel.config.queues.triggers`.
-- `.env.example` — `REDIS_URL` with the opt-in semantics described.
-- `src/lib/orpc/procedures/image.ts`, `src/lib/orpc/procedures/file.ts` — current producer call sites.
+- `.env.example` — ships `REDIS_URL=redis://localhost:14521` pre-filled (opt-out posture: blank it to fall back to `devLog`).
+- `src/lib/orpc/procedures/image.ts` (`confirmAvatarUpload`), `src/lib/orpc/procedures/document.ts` (`confirmDocumentUpload`) — current producer call sites.
 
 ---
 
@@ -317,11 +324,11 @@ After this ADR's pattern lands or is touched:
 
 **Negative**:
 - End-to-end blurhash exercise in dev requires Docker + a second terminal — friction when you want to test the full flow.
-- Vercel Queues' SLA in public beta is a real risk surface — bounded by the swap escape hatch.
-- Adding a new topic touches three places (the `QueueTopic` / `QueuePayloadMap` union, a handler file, and the Nitro plugin's `topicName` switch *or* a new plugin). Cheap, but not zero.
+- Vercel Queues is a single-vendor managed dependency (GA since the 2026-06-10 amendment, which retired the beta-SLA concern) — still bounded by the swap escape hatch.
+- Adding a new topic touches five places: the `QueueTopic` / `QueuePayloadMap` union (`queue.ts`), a handler file, the Nitro plugin's `topicName` switch (`queueConsumer.ts`), a `vercel.config.queues.triggers` entry (`vite.config.ts`), and a dev-worker `Worker` (`devQueueWorker.ts`). Cheap, but not zero — and forgetting the trigger fails silently in prod.
 
 **Revisit triggers** — re-open this ADR if any of these change:
-- Vercel Queues exits beta with pricing that breaks the free-tier-first guideline.
+- Vercel Queues' per-operation billing (see the 2026-06-10 amendment) grows to break the free-tier-first guideline — not plausible at ~20 users, but kept as the measurable restatement of the retired "exits beta with surprising pricing" trigger.
 - A second topic needs cross-topic ordering, fan-out, or scheduling that the current shape doesn't model cleanly.
 - A future effect genuinely needs DB-atomic enqueue (outbox layered on the queue, per "Outbox is not dead, just dormant").
 - The worker bundle grows enough that the dev `tsx` script approach becomes a build issue.
@@ -332,7 +339,7 @@ After this ADR's pattern lands or is touched:
 
 1. Extend the `QueueTopic` union in `src/lib/effects/queue/queue.ts` and add the payload shape to `QueuePayloadMap`.
 2. Create `src/lib/queue/handlers/<topic>.ts` exporting `handle<Topic>Message(msg, metadata)`. Keep it idempotent — handler invariants from the blurhash example apply.
-3. Wire the prod consumer: either extend the `metadata.topicName` switch in `server/plugins/queueConsumer.ts` (cheap) or add a new plugin file and register it in `vite.config.ts`'s `nitro({ plugins: [...] })` and `vercel.config.queues.triggers`.
-4. Wire the dev consumer: add a second `Worker` in `scripts/` or extend `devQueueWorker.ts` (rename if it grows beyond blurhash).
+3. Wire the prod consumer — **two halves, both mandatory**: extend the `metadata.topicName` switch in `server/plugins/queueConsumer.ts` *and* add a `{ topic: '<topic>' }` entry to `vercel.config.queues.triggers` in `vite.config.ts`. Every topic needs its own trigger even when you only extend the existing switch (`image_thumbnail` is the precedent); a topic without a trigger is silently never delivered in prod — the publish succeeds and nothing consumes it.
+4. Wire the dev consumer: add a `Worker` for the topic to the `workers` array in `scripts/devQueueWorker.ts` (already multi-topic).
 5. Call `queue.publish('<topic>', payload)` from the oRPC procedure, after the service call succeeds, with `.catch()` for the fire-and-forget guarantee.
 6. No producer test is required beyond the existing contract test; add a handler test next to the handler if its logic warrants one.

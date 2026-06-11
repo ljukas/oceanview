@@ -10,8 +10,8 @@ function getClient(): Resend {
 }
 
 export const resend: EmailEffects = {
-  async sendMagicLink({ to, url }) {
-    const { subject, html, text } = await renderMagicLink({ url })
+  async sendMagicLink({ to, url, locale }) {
+    const { subject, html, text } = await renderMagicLink({ url, locale })
     const from = process.env.EMAIL_FROM
     if (!from) throw new Error('EMAIL_FROM is required when RESEND_API_KEY is set')
     const result = await getClient().emails.send({ from, to, subject, html, text })

@@ -14,11 +14,19 @@ import {
 import { Spinner } from '~/components/ui/spinner'
 import { usePasskeySupport } from '~/hooks/usePasskeys'
 import { authClient } from '~/lib/authClient'
+import { initials } from '~/lib/utils'
+import { m } from '~/paraglide/messages'
 
 type Props = {
   email: string
+  // Cookie hint from the last authenticated visit; undefined means unknown
+  // (pre-hint cookie) and gets the optimistic passkey-first treatment.
+  hasPasskey: boolean | undefined
+  // Resolved server-side by the login loader from the cookie's email — kept
+  // out of the cookie itself so it never goes stale.
+  name: string | null
   image: string | null
-  imageBlurhash?: string | null
+  imageBlurhash: string | null
   onSent: (email: string) => void
   onSwitchUser: () => void
   onPasskeySignIn: () => void
@@ -28,6 +36,8 @@ type Props = {
 
 export function WelcomeBackCard({
   email,
+  hasPasskey,
+  name,
   image,
   imageBlurhash,
   onSent,
@@ -47,17 +57,49 @@ export function WelcomeBackCard({
     })
     setIsSending(false)
     if (error) {
-      toast.error(error.message ?? 'Kunde inte skicka inloggningslänken')
+      toast.error(error.message ?? m.login_send_error())
       return
     }
     onSent(email)
   }
 
+  // Lead with the passkey unless we know the account doesn't have one — then the
+  // magic link is the path that actually works and the passkey button steps back.
+  const passkeyFirst = hasPasskey !== false
+
+  const passkeyButton = passkeySupported ? (
+    <Button
+      type="button"
+      variant={passkeyFirst ? 'default' : 'outline'}
+      className="w-full"
+      disabled={passkeyPending}
+      onClick={onPasskeySignIn}
+    >
+      {passkeyPending ? <Spinner data-icon="inline-start" /> : <KeyRoundIcon />}
+      {m.login_passkey_button()}
+    </Button>
+  ) : null
+
+  const magicLinkButton = (
+    <Button
+      type="button"
+      variant={passkeySupported && passkeyFirst ? 'outline' : 'default'}
+      className="w-full"
+      disabled={isSending}
+      onClick={() => {
+        void sendMagicLink()
+      }}
+    >
+      {isSending && <Spinner data-icon="inline-start" />}
+      {isSending ? m.login_submit_pending() : m.login_submit()}
+    </Button>
+  )
+
   return (
     <Card className="w-full max-w-sm">
       <CardHeader>
-        <CardTitle>Välkommen tillbaka</CardTitle>
-        <CardDescription>Fortsätt med ditt senaste konto.</CardDescription>
+        <CardTitle>{m.login_welcome_back_title()}</CardTitle>
+        <CardDescription>{m.login_welcome_back_description()}</CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col items-center gap-3">
         <Avatar className="size-16">
@@ -65,36 +107,23 @@ export function WelcomeBackCard({
             <AvatarImage src={image} alt={email} width={64} height={64} blurhash={imageBlurhash} />
           ) : null}
           <AvatarFallback className="font-semibold text-2xl">
-            {email[0]?.toUpperCase() ?? '?'}
+            {name?.trim() ? initials(name) : (email[0]?.toUpperCase() ?? '?')}
           </AvatarFallback>
         </Avatar>
         <div className="break-all text-center font-medium text-sm">{email}</div>
       </CardContent>
       <CardFooter className="flex-col gap-3">
-        {passkeySupported && (
-          <Button
-            type="button"
-            className="w-full"
-            disabled={passkeyPending}
-            onClick={onPasskeySignIn}
-          >
-            {passkeyPending ? <Spinner data-icon="inline-start" /> : <KeyRoundIcon />}
-            Logga in med passkey
-          </Button>
+        {passkeyFirst ? (
+          <>
+            {passkeyButton}
+            {magicLinkButton}
+          </>
+        ) : (
+          <>
+            {magicLinkButton}
+            {passkeyButton}
+          </>
         )}
-
-        <Button
-          type="button"
-          variant={passkeySupported ? 'outline' : 'default'}
-          className="w-full"
-          disabled={isSending}
-          onClick={() => {
-            void sendMagicLink()
-          }}
-        >
-          {isSending && <Spinner data-icon="inline-start" />}
-          {isSending ? 'Skickar…' : 'Skicka inloggningslänk'}
-        </Button>
 
         <Button
           type="button"
@@ -102,7 +131,7 @@ export function WelcomeBackCard({
           className="h-auto p-0 text-muted-foreground text-sm"
           onClick={onSwitchUser}
         >
-          Logga in som annan användare
+          {m.login_switch_user()}
         </Button>
       </CardFooter>
     </Card>

@@ -63,6 +63,7 @@ test('findAvatarByEmail returns the avatar for a user with an image', async () =
     imageBlurhash: 'LKO2?U%2Tw=w]~RBVZRi};RPxuwH',
   })
   expect(await findAvatarByEmail('alice@test.oceanview.local')).toEqual({
+    name: 'Alice',
     image: 'https://example.com/avatar.webp',
     imageBlurhash: 'LKO2?U%2Tw=w]~RBVZRi};RPxuwH',
   })
@@ -70,6 +71,7 @@ test('findAvatarByEmail returns the avatar for a user with an image', async () =
 
 test('findAvatarByEmail returns all-null for an unknown email', async () => {
   expect(await findAvatarByEmail('ghost@test.oceanview.local')).toEqual({
+    name: null,
     image: null,
     imageBlurhash: null,
   })
@@ -83,6 +85,7 @@ test('findAvatarByEmail returns all-null for a soft-deleted user', async () => {
     deletedAt: new Date('2020-01-01'),
   })
   expect(await findAvatarByEmail('old@test.oceanview.local')).toEqual({
+    name: null,
     image: null,
     imageBlurhash: null,
   })

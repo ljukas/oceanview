@@ -1,7 +1,6 @@
 import { useMutation, useQueryClient, useSuspenseQuery } from '@tanstack/react-query'
 import { Suspense } from 'react'
 import { toast } from 'sonner'
-import { Button } from '~/components/ui/button'
 import {
   Dialog,
   DialogContent,
@@ -19,6 +18,7 @@ import {
 } from '~/components/user/UserFormFields'
 import { useAppForm } from '~/hooks/form'
 import { orpc } from '~/lib/orpc/client'
+import { m } from '~/paraglide/messages'
 
 type Props = {
   open: boolean
@@ -31,8 +31,8 @@ export function EditUserDialog({ open, userId, onOpenChange }: Props) {
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Redigera användare</DialogTitle>
-          <DialogDescription>Uppdatera uppgifterna nedan.</DialogDescription>
+          <DialogTitle>{m.user_edit_title()}</DialogTitle>
+          <DialogDescription>{m.user_edit_description()}</DialogDescription>
         </DialogHeader>
         {userId ? (
           <Suspense
@@ -60,11 +60,11 @@ function EditUserDialogBody({ userId, onDone }: { userId: string; onDone: () => 
         await queryClient.invalidateQueries({
           queryKey: orpc.user.key(),
         })
-        toast.success('Användaren uppdaterades')
+        toast.success(m.user_updated())
         onDone()
       },
       onError: (err) => {
-        toast.error(err.message || 'Kunde inte uppdatera användaren')
+        toast.error(err.message || m.user_update_error())
       },
     }),
   )
@@ -94,11 +94,9 @@ function EditUserDialogBody({ userId, onDone }: { userId: string; onDone: () => 
       <UserFormFields form={form} fields={userFieldsMap} />
 
       <DialogFooter className="mt-6">
-        <Button type="button" variant="outline" onClick={onDone} disabled={form.state.isSubmitting}>
-          Avbryt
-        </Button>
         <form.AppForm>
-          <form.SubmitButton label="Spara" />
+          <form.CancelButton onClick={onDone}>{m.common_cancel()}</form.CancelButton>
+          <form.SubmitButton label={m.common_save()} />
         </form.AppForm>
       </DialogFooter>
     </form>

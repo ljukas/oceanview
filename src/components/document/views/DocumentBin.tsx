@@ -6,6 +6,7 @@ import {
   type BinEntry,
   fileTypeAppearance,
   folderParentBreadcrumb,
+  formatDateTime,
   partitionBinEntries,
 } from '~/components/document/shared/documentHelpers'
 import {
@@ -22,11 +23,7 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '~/
 import { orpc } from '~/lib/orpc/client'
 import { optimisticRemove } from '~/lib/orpc/optimistic'
 import { cn } from '~/lib/utils'
-
-const dateTimeFormatter = new Intl.DateTimeFormat('sv-SE', {
-  dateStyle: 'medium',
-  timeStyle: 'short',
-})
+import { m } from '~/paraglide/messages'
 
 function useBinInvalidate() {
   const queryClient = useQueryClient()
@@ -50,8 +47,8 @@ export function DocumentBin() {
           <EmptyMedia variant="icon">
             <Trash2Icon />
           </EmptyMedia>
-          <EmptyTitle>Papperskorgen är tom</EmptyTitle>
-          <EmptyDescription>Borttagna mappar och dokument hamnar här.</EmptyDescription>
+          <EmptyTitle>{m.bin_empty_title()}</EmptyTitle>
+          <EmptyDescription>{m.bin_empty_description()}</EmptyDescription>
         </EmptyHeader>
       </Empty>
     )
@@ -83,10 +80,20 @@ function batchRoot(items: Array<BinEntry>): BinEntry | null {
 function batchContents(subfolderCount: number, documentCount: number): string {
   const parts: Array<string> = []
   if (subfolderCount > 0) {
-    parts.push(`${subfolderCount} ${subfolderCount === 1 ? 'undermapp' : 'undermappar'}`)
+    parts.push(
+      subfolderCount === 1
+        ? m.bin_subfolder_count_single({ count: subfolderCount })
+        : m.bin_subfolder_count_multi({ count: subfolderCount }),
+    )
   }
-  if (documentCount > 0) parts.push(`${documentCount} dokument`)
-  return parts.length ? parts.join(', ') : 'Tom mapp'
+  if (documentCount > 0) {
+    parts.push(
+      documentCount === 1
+        ? m.bin_document_count_single({ count: documentCount })
+        : m.bin_document_count_multi({ count: documentCount }),
+    )
+  }
+  return parts.length ? parts.join(', ') : m.bin_empty_folder()
 }
 
 function BatchCard({ correlationId, items }: { correlationId: string; items: Array<BinEntry> }) {
@@ -108,8 +115,8 @@ function BatchCard({ correlationId, items }: { correlationId: string; items: Arr
           orpc.bin.list.queryKey(),
           (e) => e.correlationId === correlationId,
         ),
-      onSuccess: () => toast.success('Återställd'),
-      onError: (err) => toast.error(err.message || 'Kunde inte återställa'),
+      onSuccess: () => toast.success(m.bin_restored_toast()),
+      onError: (err) => toast.error(err.message || m.bin_restore_error()),
       onSettled: invalidate,
     }),
   )
@@ -119,14 +126,14 @@ function BatchCard({ correlationId, items }: { correlationId: string; items: Arr
       <div className="flex min-w-0 items-center gap-2">
         <FolderIcon aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
         <div className="flex min-w-0 flex-col">
-          <span className="truncate font-medium text-sm">{root?.name ?? 'Borttagen mapp'}</span>
+          <span className="truncate font-medium text-sm">
+            {root?.name ?? m.bin_deleted_folder()}
+          </span>
           <span className="truncate text-muted-foreground text-xs">
             {root?.path ? `${folderParentBreadcrumb(root.path)} · ${contents}` : contents}
           </span>
           {deletedAt ? (
-            <span className="text-muted-foreground text-xs">
-              {dateTimeFormatter.format(deletedAt)}
-            </span>
+            <span className="text-muted-foreground text-xs">{formatDateTime(deletedAt)}</span>
           ) : null}
         </div>
       </div>
@@ -137,7 +144,7 @@ function BatchCard({ correlationId, items }: { correlationId: string; items: Arr
         disabled={restore.isPending}
       >
         <RotateCcwIcon data-icon="inline-start" />
-        Återställ
+        {m.bin_restore()}
       </Button>
     </div>
   )
@@ -160,8 +167,8 @@ function LooseRow({ entry }: { entry: BinEntry }) {
   const restore = useMutation(
     orpc.document.restoreDocument.mutationOptions({
       onMutate: removeFromBin,
-      onSuccess: () => toast.success('Dokumentet återställdes'),
-      onError: (err) => toast.error(err.message || 'Kunde inte återställa'),
+      onSuccess: () => toast.success(m.bin_document_restored_toast()),
+      onError: (err) => toast.error(err.message || m.bin_restore_error()),
       onSettled: invalidate,
     }),
   )
@@ -169,10 +176,10 @@ function LooseRow({ entry }: { entry: BinEntry }) {
     orpc.bin.hardDeleteDocument.mutationOptions({
       onMutate: removeFromBin,
       onSuccess: () => {
-        toast.success('Dokumentet raderades permanent')
+        toast.success(m.bin_document_purged_toast())
         setConfirmHard(false)
       },
-      onError: (err) => toast.error(err.message || 'Kunde inte radera'),
+      onError: (err) => toast.error(err.message || m.bin_purge_error()),
       onSettled: invalidate,
     }),
   )
@@ -192,11 +199,9 @@ function LooseRow({ entry }: { entry: BinEntry }) {
         />
         <div className="flex min-w-0 flex-col">
           <span className="truncate font-medium text-sm">{entry.name}</span>
-          <span className="text-muted-foreground text-xs">
-            {dateTimeFormatter.format(entry.deletedAt)}
-          </span>
+          <span className="text-muted-foreground text-xs">{formatDateTime(entry.deletedAt)}</span>
         </div>
-        {isFolder ? <Badge variant="secondary">Mapp</Badge> : null}
+        {isFolder ? <Badge variant="secondary">{m.folder_kind_label()}</Badge> : null}
       </div>
       <div className="flex shrink-0 items-center gap-2">
         {/* Folder restore here is rare (folders normally arrive in a batch); the
@@ -211,12 +216,12 @@ function LooseRow({ entry }: { entry: BinEntry }) {
               disabled={restore.isPending}
             >
               <RotateCcwIcon data-icon="inline-start" />
-              Återställ
+              {m.bin_restore()}
             </Button>
             <Button
               variant="ghost"
               size="icon-sm"
-              aria-label="Radera permanent"
+              aria-label={m.bin_purge()}
               className="text-destructive hover:text-destructive"
               onClick={() => setConfirmHard(true)}
             >
@@ -229,10 +234,8 @@ function LooseRow({ entry }: { entry: BinEntry }) {
       <AlertDialog open={confirmHard} onOpenChange={setConfirmHard}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Radera "{entry.name}" permanent?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Filen tas bort för gott och kan inte återställas. Historiken bevaras.
-            </AlertDialogDescription>
+            <AlertDialogTitle>{m.bin_purge_confirm_title({ name: entry.name })}</AlertDialogTitle>
+            <AlertDialogDescription>{m.bin_purge_confirm_description()}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <Button
@@ -240,14 +243,14 @@ function LooseRow({ entry }: { entry: BinEntry }) {
               onClick={() => setConfirmHard(false)}
               disabled={hardDelete.isPending}
             >
-              Avbryt
+              {m.common_cancel()}
             </Button>
             <Button
               variant="destructive"
               onClick={() => hardDelete.mutate({ id: entry.id })}
               disabled={hardDelete.isPending}
             >
-              Radera permanent
+              {m.bin_purge()}
             </Button>
           </AlertDialogFooter>
         </AlertDialogContent>

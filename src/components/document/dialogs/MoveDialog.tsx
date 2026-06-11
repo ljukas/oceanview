@@ -1,6 +1,5 @@
 import { useMutation, useQueryClient, useSuspenseQuery } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { Button } from '~/components/ui/button'
 import {
   Dialog,
   DialogContent,
@@ -12,6 +11,7 @@ import {
 import { useAppForm } from '~/hooks/form'
 import { client, orpc } from '~/lib/orpc/client'
 import { optimisticPatch, optimisticRemove } from '~/lib/orpc/optimistic'
+import { m } from '~/paraglide/messages'
 
 const ROOT_VALUE = '__root__'
 
@@ -50,10 +50,10 @@ export function MoveDialog({ open, onOpenChange, target }: Props) {
   const { data: folders } = useSuspenseQuery(orpc.folder.tree.queryOptions())
 
   const onSuccess = () => {
-    toast.success('Flyttad')
+    toast.success(m.document_moved_toast())
     onOpenChange(false)
   }
-  const onError = (err: Error) => toast.error(err.message || 'Kunde inte flytta')
+  const onError = (err: Error) => toast.error(err.message || m.document_move_error())
   // Both moves shift folder paths and document lists; reconcile both on settle.
   const onSettled = () =>
     Promise.all([
@@ -92,7 +92,7 @@ export function MoveDialog({ open, onOpenChange, target }: Props) {
       ? folders.filter((f) => movingFolderIds.includes(f.id)).map((f) => f.path)
       : []
   const options = [
-    { value: ROOT_VALUE, label: 'Hem' },
+    { value: ROOT_VALUE, label: m.folder_root_name() },
     ...folders
       .filter((f) => {
         if (self) return f.id !== self.id && !f.path.startsWith(self.path)
@@ -127,10 +127,10 @@ export function MoveDialog({ open, onOpenChange, target }: Props) {
         await onSettled()
         const failed = results.filter((r) => r.status === 'rejected').length
         if (failed > 0) {
-          toast.error(`${failed} av ${target.count} kunde inte flyttas`)
+          toast.error(m.document_move_failed_partial({ failed, count: target.count }))
           return
         }
-        toast.success(`${target.count} dokument flyttades`)
+        toast.success(m.document_moved_count_toast({ count: target.count }))
         target.onMoved?.()
         onOpenChange(false)
       } else if (target.kind === 'items') {
@@ -157,10 +157,10 @@ export function MoveDialog({ open, onOpenChange, target }: Props) {
         await onSettled()
         const failed = results.filter((r) => r.status === 'rejected').length
         if (failed > 0) {
-          toast.error(`${failed} av ${target.count} kunde inte flyttas`)
+          toast.error(m.document_move_failed_partial({ failed, count: target.count }))
           return
         }
-        toast.success(`${target.count} objekt flyttades`)
+        toast.success(m.document_items_moved_toast({ count: target.count }))
         target.onMoved?.()
         onOpenChange(false)
       } else {
@@ -175,12 +175,12 @@ export function MoveDialog({ open, onOpenChange, target }: Props) {
         <DialogHeader>
           <DialogTitle>
             {target.kind === 'documents'
-              ? `Flytta ${target.count} dokument`
+              ? m.document_move_title_documents({ count: target.count })
               : target.kind === 'items'
-                ? `Flytta ${target.count} objekt`
-                : `Flytta "${target.name}"`}
+                ? m.document_move_title_items({ count: target.count })
+                : m.document_move_title_named({ name: target.name })}
           </DialogTitle>
-          <DialogDescription>Välj målmapp.</DialogDescription>
+          <DialogDescription>{m.document_move_description()}</DialogDescription>
         </DialogHeader>
         <form
           onSubmit={(e) => {
@@ -189,20 +189,17 @@ export function MoveDialog({ open, onOpenChange, target }: Props) {
           }}
         >
           <form.AppField name="destination">
-            {(field) => <field.SelectField label="Målmapp" options={options} />}
+            {(field) => (
+              <field.SelectField label={m.document_move_destination_label()} options={options} />
+            )}
           </form.AppField>
 
           <DialogFooter className="mt-6">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => onOpenChange(false)}
-              disabled={form.state.isSubmitting}
-            >
-              Avbryt
-            </Button>
             <form.AppForm>
-              <form.SubmitButton label="Flytta" />
+              <form.CancelButton onClick={() => onOpenChange(false)}>
+                {m.common_cancel()}
+              </form.CancelButton>
+              <form.SubmitButton label={m.document_action_move()} />
             </form.AppForm>
           </DialogFooter>
         </form>

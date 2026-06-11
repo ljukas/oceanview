@@ -17,6 +17,7 @@ import {
   BreadcrumbSeparator,
 } from '~/components/ui/breadcrumb'
 import { cn } from '~/lib/utils'
+import { m } from '~/paraglide/messages'
 
 type Props = {
   folders: Array<FolderRow>
@@ -31,11 +32,11 @@ export function FolderBreadcrumb({ folders, activeFolderId }: Props) {
       <BreadcrumbList>
         <BreadcrumbItem>
           {trail.length === 0 ? (
-            <BreadcrumbPage>Hem</BreadcrumbPage>
+            <BreadcrumbPage>{m.folder_root_name()}</BreadcrumbPage>
           ) : (
             <CrumbDrop dropId={ROOT_DROP_ID}>
               <BreadcrumbLink asChild>
-                <Link to="/documents">Hem</Link>
+                <Link to="/documents">{m.folder_root_name()}</Link>
               </BreadcrumbLink>
             </CrumbDrop>
           )}

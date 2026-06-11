@@ -9,6 +9,7 @@ import { UnassignShareDialog } from '~/components/share/UnassignShareDialog'
 import { orpc } from '~/lib/orpc/client'
 import type { AdminPartRow } from '~/lib/orpc/procedures/share'
 import { SHARE_CODES, type ShareCode } from '~/lib/shares/codes'
+import { m } from '~/paraglide/messages'
 import { seo } from '~/utils/seo'
 
 const shareCodeSchema = z.enum(SHARE_CODES)
@@ -21,8 +22,8 @@ const sharesSearchSchema = z.object({
 export const Route = createFileRoute('/_authenticated/admin/shares')({
   head: () => ({
     meta: seo({
-      title: 'Hantera andelar | Oceanview',
-      description: 'Tilldela och ta bort ägarandelar',
+      title: m.meta_shares_title(),
+      description: m.meta_shares_description(),
     }),
   }),
   validateSearch: sharesSearchSchema,
@@ -84,12 +85,13 @@ function AdminShares() {
   return (
     <div className="flex flex-col gap-6 p-4 md:p-8">
       <header className="flex flex-col gap-2">
-        <span className="font-semibold text-primary text-xs uppercase tracking-wider">Admin</span>
-        <h1 className="font-semibold text-3xl tracking-tight md:text-4xl">Hantera andelar</h1>
-        <p className="text-muted-foreground text-sm">
-          Tilldela en hel andel som standard. Slå på "Dela upp" i dialogen för att tilldela halvorna
-          till olika ägare.
-        </p>
+        <span className="font-semibold text-primary text-xs uppercase tracking-wider">
+          {m.user_role_admin()}
+        </span>
+        <h1 className="font-semibold text-3xl tracking-tight md:text-4xl">
+          {m.share_manage_title()}
+        </h1>
+        <p className="text-muted-foreground text-sm">{m.share_manage_description()}</p>
       </header>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">

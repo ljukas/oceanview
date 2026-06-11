@@ -10,6 +10,7 @@ import {
 } from '~/components/ui/alert-dialog'
 import { Spinner } from '~/components/ui/spinner'
 import { useDeletePasskey } from '~/hooks/usePasskeys'
+import { m } from '~/paraglide/messages'
 
 type Props = {
   passkeyId: string | null
@@ -28,14 +29,13 @@ export function DeletePasskeyDialog({ passkeyId, onClose }: Props) {
     >
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>Ta bort passkey?</AlertDialogTitle>
-          <AlertDialogDescription>
-            Du kommer inte längre kunna logga in med den här passkey-en på den enhet där den
-            skapades. Du kan alltid lägga till en ny.
-          </AlertDialogDescription>
+          <AlertDialogTitle>{m.passkey_delete_title()}</AlertDialogTitle>
+          <AlertDialogDescription>{m.passkey_delete_description()}</AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel disabled={deletePasskey.isPending}>Avbryt</AlertDialogCancel>
+          <AlertDialogCancel disabled={deletePasskey.isPending}>
+            {m.common_cancel()}
+          </AlertDialogCancel>
           <AlertDialogAction
             variant="destructive"
             disabled={deletePasskey.isPending || !passkeyId}
@@ -46,7 +46,7 @@ export function DeletePasskeyDialog({ passkeyId, onClose }: Props) {
             }}
           >
             {deletePasskey.isPending && <Spinner data-icon="inline-start" />}
-            Ta bort
+            {m.common_delete()}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

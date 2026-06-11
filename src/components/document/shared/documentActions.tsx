@@ -7,6 +7,7 @@ import {
   Trash2Icon,
 } from 'lucide-react'
 import { Fragment } from 'react'
+import { m } from '~/paraglide/messages'
 
 // Single source of truth for the document row actions, rendered identically by
 // the `⋮` dropdown and the right-click context menu. Radix DropdownMenu and
@@ -49,14 +50,14 @@ export function buildDocActions(opts: {
         items: [
           {
             key: 'move',
-            label: 'Flytta till…',
+            label: m.document_action_move_to(),
             icon: FolderInputIcon,
             onSelect: opts.onMove,
             disabled: !opts.canEdit,
           },
           {
             key: 'delete',
-            label: 'Ta bort',
+            label: m.document_action_delete(),
             icon: Trash2Icon,
             variant: 'destructive',
             onSelect: opts.onDelete,
@@ -69,10 +70,20 @@ export function buildDocActions(opts: {
 
   const view: Array<DocActionItem> = []
   if (opts.downloadHref) {
-    view.push({ key: 'download', label: 'Ladda ner', icon: DownloadIcon, href: opts.downloadHref })
+    view.push({
+      key: 'download',
+      label: m.document_action_download(),
+      icon: DownloadIcon,
+      href: opts.downloadHref,
+    })
   }
   if (opts.onHistory) {
-    view.push({ key: 'history', label: 'Historik', icon: HistoryIcon, onSelect: opts.onHistory })
+    view.push({
+      key: 'history',
+      label: m.document_history_title(),
+      icon: HistoryIcon,
+      onSelect: opts.onHistory,
+    })
   }
 
   const groups: Array<DocActionGroup> = [{ key: 'view', items: view }]
@@ -80,11 +91,21 @@ export function buildDocActions(opts: {
     groups.push({
       key: 'edit',
       items: [
-        { key: 'rename', label: 'Byt namn', icon: PencilIcon, onSelect: opts.onRename },
-        { key: 'move', label: 'Flytta till…', icon: FolderInputIcon, onSelect: opts.onMove },
+        {
+          key: 'rename',
+          label: m.document_action_rename(),
+          icon: PencilIcon,
+          onSelect: opts.onRename,
+        },
+        {
+          key: 'move',
+          label: m.document_action_move_to(),
+          icon: FolderInputIcon,
+          onSelect: opts.onMove,
+        },
         {
           key: 'delete',
-          label: 'Ta bort',
+          label: m.document_action_delete(),
           icon: Trash2Icon,
           variant: 'destructive',
           onSelect: opts.onDelete,

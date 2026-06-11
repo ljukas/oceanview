@@ -14,6 +14,7 @@ import { Spinner } from '~/components/ui/spinner'
 import { useAwaitFreshSession } from '~/hooks/useAwaitFreshSession'
 import { useAddPasskey } from '~/hooks/usePasskeys'
 import { authClient } from '~/lib/authClient'
+import { m } from '~/paraglide/messages'
 
 type Props = {
   open: boolean
@@ -42,10 +43,10 @@ export function PasskeyReauthDialog({ open, email, onClose }: Props) {
 
   const addPasskey = useAddPasskey({
     onAdded: () => {
-      toast.success('Passkey kopplad. Nästa gång loggar du in direkt.')
+      toast.success(m.passkey_added())
       onClose()
     },
-    onNotFresh: () => setHint('Inte bekräftad än — öppna länken vi skickade först.'),
+    onNotFresh: () => setHint(m.passkey_reauth_not_fresh_hint()),
   })
 
   // Cosmetic: flip the status copy once the magic link re-freshens the session in the other tab.
@@ -62,7 +63,7 @@ export function PasskeyReauthDialog({ open, email, onClose }: Props) {
     })
     setSending(false)
     if (error) {
-      toast.error(error.message ?? 'Kunde inte skicka inloggningslänken')
+      toast.error(error.message ?? m.login_send_error())
       return
     }
     setState('sent')
@@ -79,20 +80,19 @@ export function PasskeyReauthDialog({ open, email, onClose }: Props) {
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <ShieldCheckIcon className="size-5" />
-            Bekräfta din identitet
+            {m.passkey_reauth_title()}
           </DialogTitle>
           <DialogDescription>
             {state === 'prompt' ? (
               <>
-                Av säkerhetsskäl behöver du logga in igen innan du lägger till en passkey. Vi
-                skickar en inloggningslänk till <strong className="text-foreground">{email}</strong>
-                .
+                {m.passkey_reauth_prompt_prefix()}{' '}
+                <strong className="text-foreground">{email}</strong>.
               </>
             ) : (
               <>
-                Vi skickade en länk till <strong className="text-foreground">{email}</strong>. Öppna
-                den (kolla inkorgen eller serverloggen tills vidare), kom tillbaka hit och tryck på
-                Lägg till passkey.
+                {m.passkey_reauth_sent_prefix()}{' '}
+                <strong className="text-foreground">{email}</strong>.{' '}
+                {m.passkey_reauth_sent_suffix()}
               </>
             )}
           </DialogDescription>
@@ -103,12 +103,12 @@ export function PasskeyReauthDialog({ open, email, onClose }: Props) {
             {fresh ? (
               <>
                 <CheckIcon className="size-4 text-primary" />
-                Identitet bekräftad.
+                {m.passkey_reauth_confirmed()}
               </>
             ) : (
               <>
                 <Spinner className="size-4" />
-                Väntar på bekräftelse…
+                {m.passkey_reauth_waiting()}
               </>
             )}
           </div>
@@ -120,7 +120,7 @@ export function PasskeyReauthDialog({ open, email, onClose }: Props) {
           {state === 'prompt' ? (
             <Button type="button" className="w-full" disabled={sending} onClick={sendLink}>
               {sending ? <Spinner data-icon="inline-start" /> : <MailIcon />}
-              Skicka inloggningslänk
+              {m.login_submit()}
             </Button>
           ) : (
             <Button
@@ -133,7 +133,7 @@ export function PasskeyReauthDialog({ open, email, onClose }: Props) {
               }}
             >
               {addPasskey.isPending ? <Spinner data-icon="inline-start" /> : <KeyRoundIcon />}
-              Lägg till passkey
+              {m.passkey_add_button()}
             </Button>
           )}
         </DialogFooter>

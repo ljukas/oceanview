@@ -10,6 +10,7 @@ import {
 } from '~/components/ui/select'
 import { useFieldContext } from '~/hooks/form'
 import { initials } from '~/lib/utils'
+import { m } from '~/paraglide/messages'
 
 export type UserOption = {
   id: string
@@ -38,7 +39,7 @@ export function UserSelectField({ label, description, placeholder, users }: Prop
         disabled={isSubmitting}
       >
         <SelectTrigger id={field.name} aria-invalid={isInvalid} className="w-full">
-          <SelectValue placeholder={placeholder ?? 'Välj användare'} />
+          <SelectValue placeholder={placeholder ?? m.form_user_placeholder()} />
         </SelectTrigger>
         <SelectContent>
           {users.map((u) => (

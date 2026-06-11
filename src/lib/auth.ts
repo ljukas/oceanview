@@ -5,7 +5,10 @@ import { betterAuth } from 'better-auth'
 import { APIError } from 'better-auth/api'
 import { admin, magicLink } from 'better-auth/plugins'
 import { tanstackStartCookies } from 'better-auth/tanstack-start'
+import { m } from '~/paraglide/messages'
+import { getLocale } from '~/paraglide/runtime'
 import { isAllowlistedAdmin, normalizeEmail } from './adminAllowlist'
+import { rememberUser } from './browserSession'
 import { db } from './db'
 import * as schema from './db/schema'
 import { email as emailEffect } from './effects'
@@ -86,11 +89,13 @@ export const auth = betterAuth({
         if (!existingId && !isAllowlistedAdmin(normalized)) {
           logger.info('magic-link denied (unknown email)', { email: normalized })
           throw new APIError('BAD_REQUEST', {
-            message:
-              'Inget konto finns för denna e-postadress. Kontakta en administratör för att läggas till.',
+            message: m.login_unknown_email_error(),
           })
         }
-        await emailEffect.sendMagicLink({ to: email, url })
+        // sendMagicLink runs inside the request's Paraglide scope (the
+        // /api/auth/* route goes through src/server.ts), so getLocale()
+        // reflects the requester's cookie.
+        await emailEffect.sendMagicLink({ to: email, url, locale: getLocale() })
         logger.info('magic-link sent', { email: normalized, userId: existingId ?? null })
       },
     }),
@@ -136,6 +141,18 @@ export const auth = betterAuth({
             ip: session.ipAddress ?? null,
             userAgent: session.userAgent ?? null,
           })
+          // Stamp the welcome-back cookie at the moment of sign-in — both
+          // magic-link and passkey flows continue with client-side navigation,
+          // so the _authenticated beforeLoad write would otherwise not run
+          // until the next full-page load. tanstackStartCookies() guarantees
+          // this request runs inside TanStack Start's request context, which
+          // is what writeBrowserSession's setCookie needs.
+          try {
+            const row = await userService.findRowById(session.userId)
+            if (row) await rememberUser(session.userId, row.email)
+          } catch (error) {
+            logger.warn('welcome-back cookie write failed', { error })
+          }
         },
       },
     },

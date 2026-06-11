@@ -13,6 +13,7 @@ import { Button } from '~/components/ui/button'
 import { Spinner } from '~/components/ui/spinner'
 import { client, orpc } from '~/lib/orpc/client'
 import { optimisticRemove } from '~/lib/orpc/optimistic'
+import { m } from '~/paraglide/messages'
 
 type Props = {
   open: boolean
@@ -81,7 +82,7 @@ export function DeleteItemsDialog({
       docResults.filter((r) => r.status === 'rejected').length +
       folderResults.filter((r) => r.status === 'rejected').length
     if (failed > 0) {
-      toast.error(`${failed} av ${count} kunde inte tas bort`)
+      toast.error(m.document_delete_failed_partial({ failed, count }))
       setPending(false)
       onOpenChange(false)
       return
@@ -97,7 +98,7 @@ export function DeleteItemsDialog({
       }
     }
     toast.success(
-      `Togs bort (${foldersAffected} mappar, ${documentsAffected} dokument) – kan återställas av admin`,
+      m.document_items_deleted_toast({ folders: foldersAffected, documents: documentsAffected }),
     )
     onDeleted?.()
     setPending(false)
@@ -108,19 +109,16 @@ export function DeleteItemsDialog({
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>Ta bort {count} objekt?</AlertDialogTitle>
-          <AlertDialogDescription>
-            Markerade filer flyttas till papperskorgen. Markerade mappar tas bort med allt innehåll
-            – undermappar och dokument. En administratör kan återställa det därifrån.
-          </AlertDialogDescription>
+          <AlertDialogTitle>{m.document_delete_items_title({ count })}</AlertDialogTitle>
+          <AlertDialogDescription>{m.document_delete_items_description()}</AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={pending}>
-            Avbryt
+            {m.common_cancel()}
           </Button>
           <Button variant="destructive" onClick={onConfirm} disabled={pending}>
             {pending ? <Spinner data-icon="inline-start" /> : null}
-            Ta bort
+            {m.document_action_delete()}
           </Button>
         </AlertDialogFooter>
       </AlertDialogContent>

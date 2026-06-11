@@ -1,7 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { z } from 'zod'
-import { Button } from '~/components/ui/button'
 import {
   Dialog,
   DialogContent,
@@ -13,8 +12,14 @@ import {
 import { useAppForm } from '~/hooks/form'
 import { orpc } from '~/lib/orpc/client'
 import { optimisticPatch } from '~/lib/orpc/optimistic'
+import { m } from '~/paraglide/messages'
 
-const schema = z.object({ name: z.string().min(1, 'Ange ett namn').max(255) })
+const schema = z.object({
+  name: z
+    .string()
+    .min(1, { error: () => m.validation_name_required() })
+    .max(255),
+})
 
 type Props = {
   open: boolean
@@ -38,10 +43,10 @@ export function RenameFolderDialog({ open, onOpenChange, folder }: Props) {
           (f) => ({ ...f, name }),
         ),
       onSuccess: () => {
-        toast.success('Mappen bytte namn')
+        toast.success(m.folder_renamed_toast())
         onOpenChange(false)
       },
-      onError: (err) => toast.error(err.message || 'Kunde inte byta namn på mappen'),
+      onError: (err) => toast.error(err.message || m.folder_rename_error()),
       onSettled: () =>
         Promise.all([
           queryClient.invalidateQueries({ queryKey: orpc.folder.key() }),
@@ -62,8 +67,8 @@ export function RenameFolderDialog({ open, onOpenChange, folder }: Props) {
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Byt namn på mapp</DialogTitle>
-          <DialogDescription>Undermappars sökvägar uppdateras automatiskt.</DialogDescription>
+          <DialogTitle>{m.folder_rename_title()}</DialogTitle>
+          <DialogDescription>{m.folder_rename_description()}</DialogDescription>
         </DialogHeader>
         <form
           onSubmit={(e) => {
@@ -72,20 +77,17 @@ export function RenameFolderDialog({ open, onOpenChange, folder }: Props) {
           }}
         >
           <form.AppField name="name">
-            {(field) => <field.TextField label="Namn" autoComplete="off" autoFocus />}
+            {(field) => (
+              <field.TextField label={m.document_name_label()} autoComplete="off" autoFocus />
+            )}
           </form.AppField>
 
           <DialogFooter className="mt-6">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => onOpenChange(false)}
-              disabled={form.state.isSubmitting}
-            >
-              Avbryt
-            </Button>
             <form.AppForm>
-              <form.SubmitButton label="Spara" />
+              <form.CancelButton onClick={() => onOpenChange(false)}>
+                {m.common_cancel()}
+              </form.CancelButton>
+              <form.SubmitButton label={m.common_save()} />
             </form.AppForm>
           </DialogFooter>
         </form>

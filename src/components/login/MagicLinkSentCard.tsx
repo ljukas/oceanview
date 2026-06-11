@@ -1,4 +1,5 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '~/components/ui/card'
+import { m } from '~/paraglide/messages'
 
 type Props = { email: string }
 
@@ -7,11 +8,11 @@ export function MagicLinkSentCard({ email }: Props) {
     <Card className="w-full max-w-sm">
       <CardHeader>
         <CardTitle>Oceanview</CardTitle>
-        <CardDescription>Inloggningslänken är på väg.</CardDescription>
+        <CardDescription>{m.login_sent_description()}</CardDescription>
       </CardHeader>
       <CardContent className="text-muted-foreground text-sm">
-        Vi har skickat en inloggningslänk till <strong className="text-foreground">{email}</strong>.
-        Kolla din inkorg (eller serverloggen tills vidare) och följ länken för att fortsätta.
+        {m.login_sent_to()} <strong className="text-foreground">{email}</strong>.{' '}
+        {m.login_sent_instructions()}
       </CardContent>
     </Card>
   )

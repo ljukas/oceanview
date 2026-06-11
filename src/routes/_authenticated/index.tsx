@@ -11,6 +11,7 @@ import { EditSeasonDialog } from '~/components/season/EditSeasonDialog'
 import { Button } from '~/components/ui/button'
 import { usePasskeySetupPrompt } from '~/hooks/usePasskeys'
 import { orpc } from '~/lib/orpc/client'
+import { m } from '~/paraglide/messages'
 
 const indexSearchSchema = z.object({
   passkey: z.enum(['setup']).optional(),
@@ -73,12 +74,12 @@ function Calendar() {
 
   return (
     <div className="flex flex-col gap-6 p-4 md:p-8">
-      <h1 className="font-semibold text-2xl tracking-tight md:text-3xl">Kalender</h1>
+      <h1 className="font-semibold text-2xl tracking-tight md:text-3xl">{m.nav_calendar()}</h1>
       {isAdmin && (
         <div className="flex justify-end">
           <Button onClick={() => navigate({ to: '.', search: { dialog: 'createSeason' } })}>
             <PlusIcon />
-            Ny säsong
+            {m.season_create_title()}
           </Button>
         </div>
       )}

@@ -19,6 +19,7 @@ import { Button } from '~/components/ui/button'
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '~/components/ui/empty'
 import { useDocumentSelection } from '~/hooks/useDocumentSelection'
 import { useDocumentsData } from '~/hooks/useDocumentsData'
+import { m } from '~/paraglide/messages'
 
 type Props = {
   /** Resolved folder id from the URL, or null for the virtual root. */
@@ -88,10 +89,8 @@ export function DocumentsMobile({ activeFolderId, currentUser }: Props) {
     <div className="flex flex-col gap-4 p-4">
       <header className="flex flex-col gap-3">
         <div className="flex flex-col gap-1">
-          <h1 className="font-semibold text-3xl tracking-tight">Dokument</h1>
-          <p className="text-muted-foreground text-sm">
-            Delat bibliotek för båtens samägare. Tryck för att öppna, håll inne för att markera.
-          </p>
+          <h1 className="font-semibold text-3xl tracking-tight">{m.nav_documents()}</h1>
+          <p className="text-muted-foreground text-sm">{m.document_page_description_mobile()}</p>
         </div>
         <DocumentSearch />
       </header>
@@ -113,11 +112,11 @@ export function DocumentsMobile({ activeFolderId, currentUser }: Props) {
           <div className="flex items-center gap-2">
             <Button variant="outline" size="sm" onClick={() => setCreateOpen(true)}>
               <FolderPlusIcon data-icon="inline-start" />
-              Ny mapp
+              {m.folder_create_title()}
             </Button>
             <Button size="sm" onClick={() => uploadRef.current?.open()}>
               <UploadIcon data-icon="inline-start" />
-              Ladda upp
+              {m.upload_button_short()}
             </Button>
           </div>
         </div>
@@ -130,11 +129,8 @@ export function DocumentsMobile({ activeFolderId, currentUser }: Props) {
               <EmptyMedia variant="icon">
                 <FileIcon />
               </EmptyMedia>
-              <EmptyTitle>Inga dokument här</EmptyTitle>
-              <EmptyDescription>
-                Ladda upp manualer, försäkringspapper eller annan dokumentation – dra in filer eller
-                använd knappen ovan.
-              </EmptyDescription>
+              <EmptyTitle>{m.document_table_empty()}</EmptyTitle>
+              <EmptyDescription>{m.document_empty_description()}</EmptyDescription>
             </EmptyHeader>
           </Empty>
         ) : (
@@ -153,7 +149,7 @@ export function DocumentsMobile({ activeFolderId, currentUser }: Props) {
             ))}
             {visibleDocuments.length === 0 && showUp ? (
               <p className="py-8 text-center text-muted-foreground text-sm">
-                Inga dokument i den här mappen
+                {m.document_folder_empty()}
               </p>
             ) : (
               visibleDocuments.map((doc) => (

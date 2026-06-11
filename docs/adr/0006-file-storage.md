@@ -20,6 +20,14 @@
 > - **No env-prefix in the S3 adapter** — RustFS's dev bucket *is* the env boundary; one less moving part.
 > - **Public bucket → anonymous read** — `compose.yaml`'s `storage-init` sidecar runs `mc anonymous set download local/oceanview-public` so avatar URLs stored in `user.image` remain fetchable long-term without re-signing (parity with Vercel Blob's public-store behaviour). Private bucket stays auth-only and is presigned per read.
 > - **Adapter selector is now lazy** — `storage.ts` dynamically imports adapters on first use (mirrors `queue.ts`), so neither the AWS SDK nor `@vercel/blob` lands in the cold-start path of the other.
+>
+> **Amended 2026-06-10.** Partially superseded by **ADR-0010 (Document Management)**, which split document organization (name, folder, search, soft-delete/bin, history, thumbnails) into a 1:1 `document` table over `file` with its own routers. Read these sections as historical:
+>
+> - **Metadata service (`src/lib/services/file/`)** — the `file` table sketch is stale: `name` and `folder` moved to the `document` table; `file` gained `blurhash`, a `size_bytes >= 0` CHECK, and `timestamptz` timestamps. Document-shaped operations (`listAllDocuments`, owner-or-admin `softDelete`, …) now live in the document service.
+> - **`FileDomainError` codes** — reduced to just `NOT_FOUND`; the delete-permission rules moved with the operations (`DocumentDomainError`, e.g. `CANNOT_DELETE_OTHERS_DOCUMENT`).
+> - **The Documents section and `fileRouter`** — `src/lib/orpc/procedures/file.ts` is gone, replaced by the `document`, `bin`, `folder`, and `documentSearch` routers (`procedures/{document,documentBin,documentSearch,folder}.ts`).
+>
+> The byte-path itself (mint → direct PUT → confirm), the avatar flow, and the storage seam remain authoritative here — ADR-0010 consumes the seam, it doesn't change it. Separately on the same date: the seam widened to six methods (`put`, `copy` — see The seam), the adapter selector gained a `VITEST` short-circuit, and pathname env-prefixing got a single exported source of truth (`envPrefix`/`stripEnvPrefix`) after a production bug — details updated in the body below.
 
 ---
 
@@ -55,11 +63,11 @@ Concretely:
   1. Client calls `orpc.image.mintAvatarUpload` / `orpc.file.mintDocumentUpload` — server generates the pathname, calls `storage.mintUploadToken`, returns `{ clientToken, pathname }`.
   2. Client calls `put(pathname, file, { access, token: clientToken })` from `@vercel/blob/client` — bytes go direct to Blob.
   3. Client calls `orpc.image.confirmAvatarUpload` / `orpc.file.confirmDocumentUpload` — server runs `storage.head` to verify the blob exists, writes the metadata row (and `user.image` via `auth.api.updateUser` for avatars), publishes a realtime event.
-- Bytes never traverse a Vercel Function — same architectural property as the R2 plan. Only the *coordination* runs server-side, through typed oRPC procedures.
+- Bytes never traverse a Vercel Function on the user upload/download paths — same architectural property as the R2 plan. Only the *coordination* runs server-side, through typed oRPC procedures. (Derived-asset workers are the sanctioned exception — see The byte-path.)
 - File metadata (`id`, `owner_id`, `pathname`, `name`, `mime`, `size_bytes`, `folder`, `access`, `uploaded_at`, `deleted_at`) lives in Postgres in a `file` table owned by `src/lib/services/file/` (ADR-0002).
 - Avatars use `access: 'public'`, are stored at `avatars/{userId}/{uuid}` (per-upload UUID), and render against the raw Blob CDN URL — no Image Optimization indirection (see Architecture → Image Optimization).
 
-The seam is the deep module: small interface (`mintUploadToken`, `head`, `delete`, `getReadUrl`), real swap-in implementations, hidden adapter-specific plumbing. The browser-side `put` from `@vercel/blob/client` is the only place outside the adapter that touches Vercel-specific code — everything else flows through `~/lib/effects`.
+The seam is the deep module: small interface (`mintUploadToken`, `head`, `delete`, `put`, `copy`, `getReadUrl`), real swap-in implementations, hidden adapter-specific plumbing. The browser-side `put` from `@vercel/blob/client` is the only place outside the adapter that touches Vercel-specific code — everything else flows through `~/lib/effects`.
 
 ---
 
@@ -71,10 +79,10 @@ The seam is the deep module: small interface (`mintUploadToken`, `head`, `delete
 - ➕ S3-compatible API — vendor-portable. Moving off Vercel later doesn't touch the storage layer.
 - ➕ **Won't stop serving** when the free tier is exceeded — bills you instead. Better for a "this app must work" posture than Hobby Blob's hard cutoff.
 - ➖ **Second provider account.** Another set of API keys (`R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET`) to rotate, audit, and document.
-- ➖ **More code to write**: AWS SDK v3 (or `aws4fetch`) presigner, completion endpoint, signed-read URLs for private documents. There is no R2-native client-upload helper — the two-step (mint URL → confirm) flow is yours to build.
+- ➖ **More code to write**: AWS SDK v3 (or `aws4fetch`) presigner, completion endpoint, signed-read URLs for private documents. There is no R2-native client-upload helper — the two-step (mint URL → confirm) flow is yours to build. *(Largely evaporated since 2026-05-25: `adapters/s3.ts` is exactly that AWS-SDK presigner, built for the local RustFS dev path.)*
 - ➖ Manual env-var setup (not auto-provisioned by the Vercel Marketplace).
 - ➖ No first-class dashboard inside Vercel for usage/inspection.
-- **Verdict**: correct for a workload where egress would actually matter. Wrong tradeoff for 20 users. Kept available as a fallback adapter; documented trigger conditions below.
+- **Verdict**: correct for a workload where egress would actually matter. Wrong tradeoff for 20 users. Kept available as a fallback; documented trigger conditions below. **Refreshed 2026-06-10**: since `adapters/s3.ts` is a working AWS-SDK presigner, the R2 swap is now mostly endpoint/credential config rather than new code. Known gaps in the s3 path if promoted to prod: no upload progress events (plain `fetch` PUT in `clientUpload.ts`), no env-prefixing (the dev bucket is the env boundary), and a presigned PUT cannot enforce `maxBytes` (noted in the adapter; size is still validated at the mint/confirm boundaries).
 
 ### B. Vercel Blob (chosen)
 - ➕ **One provider, one bill, one dashboard surface.** Marketplace integration auto-provisions a `BLOB_READ_WRITE_TOKEN` per store; we rename to `BLOB_PUBLIC_*` / `BLOB_PRIVATE_*` to support the two-store split (see Decision).
@@ -117,14 +125,25 @@ src/lib/effects/
   index.ts                          barrel — re-exports effects.email, effects.storage, …
   storage/
     index.ts                        barrel
-    storage.ts                      typed interface + adapter selector
+    storage.ts                      typed interface + adapter selector + envPrefix/stripEnvPrefix
+    clientUpload.ts                 browser dispatcher — uploadFileToStorage + runUploadFlow (mint → PUT → confirm)
     adapters/
       vercelBlob.ts                 production adapter — talks to both Blob stores (per-access token), env-prefixes pathnames
+      s3.ts                         S3-compatible adapter (RustFS local dev; AWS-SDK presigner)
+      s3.test.ts                    s3 adapter tests
       devLog.ts                     no-op adapter (logs + stub return values; used in tests + offline dev)
     storage.test.ts                 interface contract test against devLog
 ```
 
-The adapter selector picks `vercelBlob` when both `BLOB_PUBLIC_READ_WRITE_TOKEN` and `BLOB_PRIVATE_READ_WRITE_TOKEN` are set, `devLog` otherwise. The future R2 adapter would land as `adapters/r2.ts` with no other changes; the selector would prefer R2 when `R2_*` env vars are set.
+The adapter selector resolves in this order:
+
+1. **`VITEST === 'true'` → `devLog`** (added 2026-06-10). Tests must never reach live storage; `test/setup.ts` loads `.env` via dotenv, so without this short-circuit a test touching storage would pick the `s3` adapter and write to RustFS. This supersedes the earlier "tests use devLog via `STORAGE_ADAPTER=devLog`" arrangement — the env var is no longer needed for tests.
+2. **`STORAGE_ADAPTER=devLog` → `devLog`** — explicit override for ad-hoc offline runs.
+3. **`S3_ENDPOINT` set → `s3`** — local dev against RustFS; takes precedence over `BLOB_*` so a `vercel env pull` accident doesn't route dev uploads at the real Blob CDN.
+4. **Both `BLOB_PUBLIC_READ_WRITE_TOKEN` and `BLOB_PRIVATE_READ_WRITE_TOKEN` set → `vercelBlob`**.
+5. **Fallback → `devLog`**.
+
+The future R2 adapter would land as `adapters/r2.ts` with no other changes; the selector would prefer R2 when `R2_*` env vars are set — and since `adapters/s3.ts` already implements the presigned-PUT shape against an S3-compatible API, R2 is closer to a config variant of that adapter than a new one.
 
 ### The seam
 
@@ -160,14 +179,42 @@ export interface StorageEffects {
 
   delete(access: 'public' | 'private', pathname: string): Promise<void>
 
-  /** Download URL. `private` is signed + time-limited; `public` is canonical (Vercel Blob) or stable bucket URL (S3 dev). */
-  getReadUrl(access: 'public' | 'private', pathname: string, ttlSeconds: number): Promise<string>
+  /**
+   * Write bytes from a server-side context — background workers producing
+   * derived assets (e.g. the thumbnail worker storing a WebP), NOT the oRPC
+   * upload path; browsers still upload via mintUploadToken.
+   */
+  put(access: 'public' | 'private', pathname: string, bytes: Buffer, contentType: string): Promise<void>
+
+  /**
+   * Server-side storage-to-storage copy within the same access store — used to
+   * "rename" a document's byte without the bytes transiting a Function (the
+   * prod download filename is the pathname basename). `contentType` is required
+   * because Vercel Blob's copy doesn't carry the source content type over.
+   */
+  copy(access: 'public' | 'private', fromPathname: string, toPathname: string, contentType: string): Promise<void>
+
+  /**
+   * Download URL. `private` is signed + time-limited; `public` is canonical
+   * (Vercel Blob) or stable bucket URL (S3 dev). `opts.downloadFilename`
+   * forces `Content-Disposition: attachment` under that name — honored on the
+   * S3 (dev) signed-URL path; Vercel Blob (prod) ignores it and serves the
+   * pathname basename, which `renameDocument` keeps in sync via copy().
+   */
+  getReadUrl(
+    access: 'public' | 'private',
+    pathname: string,
+    ttlSeconds: number,
+    opts?: { downloadFilename?: string },
+  ): Promise<string>
 }
 
 export const storage: StorageEffects = pickAdapter()  // lazy: adapters dynamically imported on first use
 ```
 
-The interface is **intentionally backend-neutral**. The discriminated `upload` payload is the seam: Vercel Blob returns `{ kind: 'vercel-blob-client', clientToken }` (browser uses `@vercel/blob/client.put()` so progress events still work); S3-compatible backends (RustFS for local dev, R2 the day we ever swap to it) return `{ kind: 'presigned-put', url }` (browser does a plain HTTPS PUT). The browser dispatcher in `clientUpload.ts` switches on `kind`, so `AvatarUpload.tsx` / `DocumentUpload.tsx` only know about the seam.
+The interface is **intentionally backend-neutral**. The discriminated `upload` payload is the seam: Vercel Blob returns `{ kind: 'vercel-blob-client', clientToken }` (browser uses `@vercel/blob/client.put()` so progress events still work); S3-compatible backends (RustFS for local dev, R2 the day we ever swap to it) return `{ kind: 'presigned-put', url }` (browser does a plain HTTPS PUT). The browser dispatcher in `clientUpload.ts` switches on `kind`, so the upload components (`src/components/user/AvatarUpload.tsx`, the document upload queue in `src/components/document/upload/`) only know about the seam — they call `runUploadFlow` (the shared mint → PUT → confirm sequence in `clientUpload.ts`) rather than any SDK.
+
+**Env-prefixing and `stripEnvPrefix` (added 2026-06-10).** The `vercelBlob` adapter prepends `prod/` / `preview/` / `dev/` (from `VERCEL_ENV`) to every pathname; `s3` and `devLog` don't prefix. Crucially, `mintUploadToken` returns the **prefixed** pathname, and that is what the browser round-trips to the confirm procedure — so confirm-time shape/ownership checks must validate the *logical* form: `stripEnvPrefix(input.pathname).startsWith('documents/')` in `confirmDocumentUpload`, and the `avatars/{userId}/` equivalent in `confirmAvatarUpload`. Both `envPrefix()` and `stripEnvPrefix()` are exported from `storage.ts` — one source of truth shared with the adapter, so prefixing and stripping can't drift. This codified a real production bug: `confirmDocumentUpload`'s previous bare `startsWith('documents/')` rejected every production document upload, because prod pathnames arrive as `prod/documents/…`.
 
 ### The byte-path
 
@@ -187,11 +234,13 @@ Client                                   Server (oRPC)                          
                                          · avatar: replaceAvatarForUser + delete previous blobs
                                                    + auth.api.updateUser({ image })
                                            document: fileService.confirmUpload(...)
-                                         · realtime.publish({ kind: 'user.changed' | 'file.changed' })
+                                         · realtime.publish({ kind: 'user.changed' | 'document.changed' })
 4. invalidateQueries(...)
 ```
 
-Two oRPC procedure calls (mint + confirm) bracket the direct PUT to Blob. **Bytes never traverse a Vercel Function**, same architectural property the original R2 plan wanted. The mint procedure owns the pathname (browser can't choose where bytes land); the confirm procedure verifies the blob exists via `storage.head` (a fake-confirm with no actual upload is rejected) and re-checks ownership (`pathname.includes('avatars/{userId}/')` for avatars).
+The diagram shows the byte path only — the confirm procedures also enqueue `blurhash` / `image_thumbnail` jobs for image mimes after the metadata write (ADR-0007 / ADR-0010), so don't read it as the complete post-confirm fan-out.
+
+Two oRPC procedure calls (mint + confirm) bracket the direct PUT to Blob. **Bytes never traverse a Vercel Function on the user upload/download paths**, same architectural property the original R2 plan wanted. The sanctioned exception is derived-asset workers: the `image_thumbnail` handler fetches the original and `storage.put`s a WebP, and the `blurhash` handler fetches it to compute a hash — server compute by design (ADR-0007/0010). `storage.copy` (rename) is storage-to-storage; no bytes transit a Function there either. The mint procedure owns the pathname (browser can't choose where bytes land); the confirm procedure verifies the blob exists via `storage.head` (a fake-confirm with no actual upload is rejected) and re-checks ownership (`stripEnvPrefix(pathname).startsWith('avatars/{userId}/')` for avatars).
 
 Why three steps instead of Vercel's `handleUpload` helper: `handleUpload` uses a webhook callback (`onUploadCompleted`) that requires Blob's servers to POST back to the app's URL after the upload completes. That doesn't reach `localhost` in dev, and on production it adds a round-trip. Our three-step shape is webhook-free, client-driven, and reuses the project's standard oRPC mutation pattern.
 
@@ -240,7 +289,7 @@ Operations: `confirmUpload`, `listAllDocuments` (shared library, joined with upl
 
 Documents (private store) work the same shape — `fileRouter.mintDocumentUpload` + `fileRouter.confirmDocumentUpload` — with a higher size cap (25 MB) and a broader MIME allowlist (PDFs, images, Word). Pathname format: `documents/{folder?}/{uuid}-{safeFilename}`.
 
-**Shared library, not per-owner**: every signed-in user sees all non-deleted document rows via `fileRouter.listDocuments` (joins `file` with `user` to surface the uploader's name). Only the owner or an admin can delete (`fileRouter.deleteDocument` → `fileService.softDelete` enforces it). Download is a 302-redirect route (`/api/files/download/$id`) that mints a 60-second signed URL via `storage.getReadUrl` after the session check — `<a href={...}>` lets the browser handle the file fetch natively.
+**Shared library, not per-owner**: every signed-in user sees all non-deleted document rows via `fileRouter.listDocuments` (joins `file` with `user` to surface the uploader's name). Only the owner or an admin can delete (`fileRouter.deleteDocument` → `fileService.softDelete` enforces it). Download is a 302-redirect route (`/api/files/download/$id`) that mints a 60-second signed URL via `storage.getReadUrl` after the session check — `<a href={...}>` lets the browser handle the file fetch natively. A sibling route `src/routes/api/files/view.$id.ts` follows the same auth-gated 302 pattern but passes no `downloadFilename`, so no `Content-Disposition: attachment` is forced — images and PDFs preview inline.
 
 ### Image Optimization — deferred, then wired via a passthrough transformer
 
@@ -261,10 +310,15 @@ The original plan called for `/_vercel/image?url=...&w=...&q=80` to deliver resi
 
 ### Why this is a deep module (in the architecture-skill's terms)
 
-- **Interface**: 4 typed functions (`mintUploadToken`, `head`, `delete`, `getReadUrl`). Stable across backends.
+- **Interface**: 6 typed functions (`mintUploadToken`, `head`, `delete`, `put`, `copy`, `getReadUrl`). Stable across backends.
 - **Implementation**: hides per-access token routing, env-prefixing, token minting, signed-URL generation, blob existence checks. The procedure layer never imports `@vercel/blob`; the *browser* side calls `put` from `@vercel/blob/client` (necessary — that's the upload SDK), but the procedures and services see only the interface.
 - **Two real adapters from day one** (`vercelBlob` + `devLog`) — the seam is real, not hypothetical, and passes ADR-0001's "deletion test".
-- **Test surface = the interface**: services + procedures use the `devLog` adapter in tests; we don't mock Blob, we have a real second implementation.
+- **Test surface = the interface**: services + procedures use the `devLog` adapter in tests via the selector's `VITEST === 'true'` short-circuit (the `STORAGE_ADAPTER=devLog` env override remains for ad-hoc use); we don't mock Blob, we have a real second implementation.
+
+### Adding a new file kind / a third store
+
+- **New file kind** (another uploadable entity): no storage changes. Follow ADR-0010's pattern — a 1:1 metadata table over `file`, a mint/confirm procedure pair against an existing store (`public` or `private`), post-confirm job enqueues for any derived assets.
+- **A genuinely third store** (a new `access` value): this is the expensive axis. The `'public' | 'private'` union threads through every method of `StorageEffects` and every adapter — `vercelBlob`'s token routing, `s3`'s bucket map, `devLog` — plus env vars, `compose.yaml` bucket bootstrap, and `.env.example`. Expect to touch all adapters, not add one file.
 
 ---
 
@@ -300,20 +354,20 @@ Notes: `del()` is free; dashboard browsing counts as Advanced Ops; multipart upl
 
 A reader can confirm the architecture is being followed without running anything:
 
-- `grep -rn "from '@vercel/blob" src/` — server SDK (`@vercel/blob`) imported only by `src/lib/effects/storage/adapters/vercelBlob.ts`. Browser SDK (`@vercel/blob/client`) imported only by the two upload components (`AvatarUpload.tsx`, `DocumentUpload.tsx`) — they're the only places that call `put`. Anywhere else is a violation.
-- `grep -rn "BLOB_PUBLIC_READ_WRITE_TOKEN\|BLOB_PRIVATE_READ_WRITE_TOKEN" src/` — should match only `adapters/vercelBlob.ts`. The tokens aren't read elsewhere.
+- `grep -rn "from '@vercel/blob" src/` — server SDK (`@vercel/blob`) imported only by `src/lib/effects/storage/adapters/vercelBlob.ts`. Browser SDK (`@vercel/blob/client`) imported only by `src/lib/effects/storage/clientUpload.ts` (the browser `put`) and `adapters/vercelBlob.ts` (server-side `generateClientTokenFromReadWriteToken`) — components never touch it; they go through `runUploadFlow`. Anywhere else is a violation.
+- `grep -rn "BLOB_PUBLIC_READ_WRITE_TOKEN\|BLOB_PRIVATE_READ_WRITE_TOKEN" src/` — should match only `adapters/vercelBlob.ts` and the adapter selector in `storage.ts`. The tokens aren't read elsewhere.
 - `grep -rn "handleUpload\|handleUploadUrl\|onUploadCompleted" src/` — zero hits. We don't use Vercel's webhook helper.
 - `grep -rn "/_vercel/image" src/` — only a comment in `src/lib/image/transformer.ts`. The URL is never hand-built; `unpic` produces it inside that transformer (prod, public-blob hosts only). `grep -rln "lib/image/transformer" src/` finds the transformer's consumers (`src/components/ui/avatar.tsx`, `src/components/passkey/PasskeyRow.tsx`).
 - `grep -rn "db\.\(select\|insert\|update\|delete\)" src/lib/effects/storage/` — zero hits. Storage adapters don't touch the DB; metadata writes are the `file` service's job (ADR-0002).
 - `grep -rn "console\." src/lib/effects/storage/` — zero hits. Logging via `~/lib/logger` (ADR-0003).
-- The `file` service's tests cover invariants without instantiating any storage adapter — the schema-per-test harness (`test/setup.ts`) is enough; storage calls are exercised against the `devLog` adapter via `STORAGE_ADAPTER=devLog`.
+- The `file` service's tests cover invariants without instantiating any storage adapter — the schema-per-test harness (`test/setup.ts`) is enough; storage calls are exercised against the `devLog` adapter via the selector's `VITEST === 'true'` short-circuit.
 
 Manual smoke tests:
 
-1. **`/konto`** — upload an avatar (JPEG, ~200 KB). DevTools Network shows three calls bracketing the byte transfer: `POST /api/rpc` (`image.mintAvatarUpload`) → `PUT https://{publicStoreId}.public.blob.vercel-storage.com/dev/avatars/{userId}/{uuid}` → `POST /api/rpc` (`image.confirmAvatarUpload`). The avatar renders immediately; `user.image` in Postgres holds the Blob URL; the `oceanview-public` dashboard shows a new object under `dev/avatars/...`.
+1. **`/account`** — upload an avatar (JPEG, ~200 KB). DevTools Network shows three calls bracketing the byte transfer: `POST /api/rpc` (`image.mintAvatarUpload`) → `PUT https://{publicStoreId}.public.blob.vercel-storage.com/dev/avatars/{userId}/{uuid}` → `POST /api/rpc` (`image.confirmAvatarUpload`). The avatar renders immediately; `user.image` in Postgres holds the Blob URL; the `oceanview-public` dashboard shows a new object under `dev/avatars/...`.
 2. **Avatar replacement** — upload a second avatar. The previous blob disappears from the public store dashboard; the previous `file` row is soft-deleted; `user.image` now points at the new URL (cookie cache refreshes because we go through `auth.api.updateUser`).
-3. **`/documents`** — upload a PDF as user A. Same three-call DevTools pattern against `file.mintDocumentUpload` + `PUT https://{privateStoreId}.private.blob.vercel-storage.com/...` + `file.confirmDocumentUpload`. Metadata row appears, file appears in the list, realtime event propagates to a second tab.
-4. **Shared library** — sign in as user B in another browser. User B sees A's document and can download it via `/api/files/download/{id}` (302 redirect to a 60-second signed URL). User B does NOT see a delete button on A's row; calling `orpc.file.deleteDocument({ id })` directly returns the Swedish `CANNOT_DELETE_OTHERS_FILE`-mapped error. As an admin, the delete succeeds.
+3. **`/documents`** — upload a PDF as user A. Same three-call DevTools pattern against `document.mintDocumentUpload` + `PUT https://{privateStoreId}.private.blob.vercel-storage.com/...` + `document.confirmDocumentUpload`. Metadata row appears, file appears in the list, realtime event propagates to a second tab.
+4. **Shared library** — sign in as user B in another browser. User B sees A's document and can download it via `/api/files/download/{id}` (302 redirect to a 60-second signed URL). User B does NOT see a delete button on A's row; calling `orpc.document.deleteDocument({ id })` directly returns the Swedish `CANNOT_DELETE_OTHERS_DOCUMENT`-mapped error. As an admin, the delete succeeds.
 5. **Privacy** — `curl -I` the private store URL directly without a signed URL → 401/403. `curl -I` the public store URL → 200.
 6. **Quota visibility** — confirm both Vercel Blob dashboards show usage; configure alerts at ~80% of the Hobby quota (the primary mitigation for the hard-cap risk).
 7. **`pnpm test`** — colocated tests pass (91/91 at the time of writing); storage tests use the `devLog` adapter and never make a live Blob call.
@@ -331,20 +385,20 @@ Manual smoke tests:
 - `src/lib/services/file/file.ts`, `errors.ts`, `file.test.ts`, `index.ts` — file metadata service (ADR-0002).
 - `src/lib/db/schema/file.ts` — `file` table + `fileAccessEnum`.
 - `src/lib/orpc/procedures/image.ts` — `imageRouter` (`mintAvatarUpload`, `confirmAvatarUpload`).
-- `src/lib/orpc/procedures/file.ts` — `fileRouter` (`mintDocumentUpload`, `confirmDocumentUpload`, `listDocuments`, `deleteDocument`).
-- `src/routes/api/files/download.$id.ts` — auth-gated 302 redirect to a signed Blob URL for private documents.
+- `src/lib/orpc/procedures/file.ts` — `fileRouter` (`mintDocumentUpload`, `confirmDocumentUpload`, `listDocuments`, `deleteDocument`). *(Since replaced by the `document`/`bin`/`folder`/`documentSearch` routers — ADR-0010.)*
+- `src/routes/api/files/download.$id.ts` — auth-gated 302 redirect to a signed Blob URL for private documents. *(Later joined by `view.$id.ts` — same pattern, inline disposition.)*
 - `src/components/user/AvatarUpload.tsx` — three-step upload flow against `imageRouter`.
-- `src/components/document/DocumentUpload.tsx` — three-step upload flow against `fileRouter`.
-- `src/components/document/DocumentList.tsx` — shared library with owner-or-admin delete buttons.
+- `src/components/document/DocumentUpload.tsx` — three-step upload flow against `fileRouter`. *(Now lives in `src/components/document/upload/` with the upload-queue components.)*
+- `src/components/document/DocumentList.tsx` — shared library with owner-or-admin delete buttons. *(Gone — replaced by the table/card views tree under `src/components/document/` — ADR-0010.)*
 
 **Modified**:
 - `src/lib/effects/index.ts` — added `storage` export.
-- `src/lib/effects/realtime/types.ts` — added `file.changed` event kind.
+- `src/lib/effects/realtime/types.ts` — added `file.changed` event kind. *(Since replaced by `document.changed` / `folder.changed` / `bin.changed` — ADR-0010.)*
 - `src/lib/db/schema/index.ts` — re-exported the `file` table.
 - `src/lib/services/user/user.ts` — added `image` to `UserRow` + `userSelection`.
 - `src/lib/orpc/router.ts` — mounted `imageRouter` and `fileRouter`.
 - `src/routes/_authenticated/documents.tsx` — replaced the placeholder with `<DocumentUpload>` + `<DocumentList>`.
-- `src/routes/_authenticated/konto.tsx` — added the `<AvatarUpload>` section.
+- `src/routes/_authenticated/konto.tsx` — added the `<AvatarUpload>` section *(route since renamed to `account.tsx`)*.
 - `src/components/user/UserCard.tsx`, `src/components/contact/ContactCard.tsx`, `src/routes/_authenticated/admin/users.tsx` — render `<AvatarImage src={image}>` when present, falling back to initials.
 - `.env.example` — added `BLOB_PUBLIC_READ_WRITE_TOKEN` + `BLOB_PRIVATE_READ_WRITE_TOKEN` + optional `STORAGE_ADAPTER` override.
 - `CLAUDE.md` — flipped the "file storage" decision line; added `image.ts` and `file.ts` to the procedures section; added `BLOB_*` to the env section.

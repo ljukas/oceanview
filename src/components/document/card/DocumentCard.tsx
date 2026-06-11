@@ -9,7 +9,6 @@ import {
 import {
   type CurrentUser,
   type DocumentRow,
-  documentDateFormatter,
   documentDisplayName,
   fileKindLabel,
   formatSize,
@@ -25,7 +24,9 @@ import {
 } from '~/components/ui/dropdown-menu'
 import { useDialogState } from '~/hooks/useDialogState'
 import { useLongPress } from '~/hooks/useLongPress'
+import { formatDate } from '~/lib/i18n/format'
 import { cn } from '~/lib/utils'
+import { m } from '~/paraglide/messages'
 
 const dropdownComponents: MenuComponents = {
   Item: DropdownMenuItem,
@@ -137,7 +138,7 @@ export function DocumentCard({
               isSelected ? 'text-selected-foreground/80' : 'text-muted-foreground',
             )}
           >
-            {`${documentDateFormatter.format(doc.uploadedAt)} • ${formatSize(doc.sizeBytes)}`}
+            {`${formatDate(doc.uploadedAt)} • ${formatSize(doc.sizeBytes)}`}
           </span>
         </div>
 
@@ -150,7 +151,12 @@ export function DocumentCard({
         ) : (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon-sm" aria-label="Dokumentåtgärder" {...swallow}>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label={m.document_actions_label()}
+                {...swallow}
+              >
                 <MoreVerticalIcon />
               </Button>
             </DropdownMenuTrigger>

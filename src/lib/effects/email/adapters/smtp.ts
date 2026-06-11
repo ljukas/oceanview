@@ -15,8 +15,8 @@ function getTransport(): Transporter {
 }
 
 export const smtp: EmailEffects = {
-  async sendMagicLink({ to, url }) {
-    const { subject, html, text } = await renderMagicLink({ url })
+  async sendMagicLink({ to, url, locale }) {
+    const { subject, html, text } = await renderMagicLink({ url, locale })
     await getTransport().sendMail({
       from: process.env.EMAIL_FROM,
       to,

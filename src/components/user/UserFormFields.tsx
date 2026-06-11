@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { FieldGroup } from '~/components/ui/field'
 import { withFieldGroup } from '~/hooks/form'
+import { m } from '~/paraglide/messages'
 
 export const userFieldsDefaults: {
   name: string
@@ -17,23 +18,18 @@ export const userFieldsDefaults: {
 export const userFieldsSchema = z.object({
   name: z.string(),
   email: z
-    .email({ error: 'Ange en giltig e-postadress' })
-    .min(1, { error: 'Ange en e-postadress' }),
+    .email({ error: () => m.validation_email_invalid() })
+    .min(1, { error: () => m.validation_email_required() }),
   phone: z
     .string()
-    .max(30, { error: 'Telefonnumret är för långt (max 30 tecken)' })
+    .max(30, { error: () => m.validation_phone_too_long() })
     .refine((v) => v === '' || v.length >= 5, {
-      error: 'Telefonnumret är för kort (minst 5 tecken)',
+      error: () => m.validation_phone_too_short(),
     }),
-  role: z.enum(['user', 'admin'], { error: 'Välj en roll' }),
+  role: z.enum(['user', 'admin'], { error: () => m.validation_role_required() }),
 })
 
 export type UserFieldsValues = z.infer<typeof userFieldsSchema>
-
-const roleOptions = [
-  { value: 'user', label: 'Seglare' },
-  { value: 'admin', label: 'Admin' },
-] as const
 
 export const userFieldsMap = {
   name: 'name',
@@ -45,20 +41,32 @@ export const userFieldsMap = {
 export const UserFormFields = withFieldGroup({
   defaultValues: userFieldsDefaults,
   render: function Render({ group }) {
+    // Built in render, not at module level, so the labels follow the active locale.
+    const roleOptions = [
+      { value: 'user', label: m.user_role_sailor() },
+      { value: 'admin', label: m.user_role_admin() },
+    ] as const
     return (
       <FieldGroup>
         <group.AppField
           name="name"
-          children={(field) => <field.TextField label="Namn" autoComplete="name" />}
+          children={(field) => <field.TextField label={m.user_field_name()} autoComplete="name" />}
         />
         <group.AppField
           name="email"
-          children={(field) => <field.TextField label="E-post" type="email" autoComplete="email" />}
+          children={(field) => (
+            <field.TextField label={m.user_field_email()} type="email" autoComplete="email" />
+          )}
         />
-        <group.AppField name="phone" children={(field) => <field.PhoneField label="Telefon" />} />
+        <group.AppField
+          name="phone"
+          children={(field) => <field.PhoneField label={m.user_field_phone()} />}
+        />
         <group.AppField
           name="role"
-          children={(field) => <field.ToggleField label="Roll" options={roleOptions} />}
+          children={(field) => (
+            <field.ToggleField label={m.user_field_role()} options={roleOptions} />
+          )}
         />
       </FieldGroup>
     )

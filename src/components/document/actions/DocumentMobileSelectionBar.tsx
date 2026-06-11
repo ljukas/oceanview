@@ -2,6 +2,7 @@ import { FolderInputIcon, Trash2Icon, XIcon } from 'lucide-react'
 import { BulkActionDialogs } from '~/components/document/actions/BulkActionDialogs'
 import { Button } from '~/components/ui/button'
 import { useDialogState } from '~/hooks/useDialogState'
+import { m } from '~/paraglide/messages'
 
 type Props = {
   selectedDocIds: Array<string>
@@ -36,18 +37,18 @@ export function DocumentMobileSelectionBar({
       <Button
         variant="ghost"
         size="icon-sm"
-        aria-label="Avsluta markering"
+        aria-label={m.document_selection_exit()}
         onClick={exitSelectMode}
       >
         <XIcon />
       </Button>
       <span aria-live="polite" className="flex-1 font-medium text-sm">
-        {count} valda
+        {m.document_selection_count({ count })}
       </span>
       <Button
         variant="ghost"
         size="icon-sm"
-        aria-label="Flytta"
+        aria-label={m.document_action_move()}
         disabled={!canActOnAll}
         onClick={() => dialog.show('move')}
       >
@@ -56,7 +57,7 @@ export function DocumentMobileSelectionBar({
       <Button
         variant="ghost"
         size="icon-sm"
-        aria-label="Ta bort"
+        aria-label={m.document_action_delete()}
         disabled={!canActOnAll}
         onClick={() => dialog.show('delete')}
         className="text-destructive hover:bg-destructive/10 hover:text-destructive"

@@ -3,6 +3,7 @@ import { useDropzone } from 'react-dropzone'
 import { toast } from 'sonner'
 import { useUploadQueue } from '~/components/document/upload/UploadQueueProvider'
 import { cn } from '~/lib/utils'
+import { m } from '~/paraglide/messages'
 
 const MAX_BYTES = 100_000_000
 
@@ -31,7 +32,7 @@ export const DocumentUpload = forwardRef<DocumentUploadHandle, Props>(function D
     (files: Array<File>) => {
       const accepted = files.filter((f) => {
         if (f.size > MAX_BYTES) {
-          toast.error(`"${f.name}" är för stor (max 100 MB)`)
+          toast.error(m.upload_file_too_large({ name: f.name }))
           return false
         }
         return true
@@ -61,7 +62,7 @@ export const DocumentUpload = forwardRef<DocumentUploadHandle, Props>(function D
       <input {...getInputProps()} />
       {isDragActive ? (
         <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-lg bg-background/80">
-          <p className="font-medium text-sm">Släpp filerna för att ladda upp…</p>
+          <p className="font-medium text-sm">{m.upload_drop_hint()}</p>
         </div>
       ) : null}
       {children}

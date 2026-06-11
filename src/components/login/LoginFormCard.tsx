@@ -9,6 +9,7 @@ import { Spinner } from '~/components/ui/spinner'
 import { useAppForm } from '~/hooks/form'
 import { usePasskeySupport } from '~/hooks/usePasskeys'
 import { authClient } from '~/lib/authClient'
+import { m } from '~/paraglide/messages'
 
 const loginSchema = z.object({
   email: z.email(),
@@ -32,7 +33,7 @@ export function LoginFormCard({ onSent, callbackURL, onPasskeySignIn, passkeyPen
         callbackURL,
       })
       if (error) {
-        toast.error(error.message ?? 'Kunde inte skicka inloggningslänken')
+        toast.error(error.message ?? m.login_send_error())
         return
       }
       onSent(value.email)
@@ -43,7 +44,7 @@ export function LoginFormCard({ onSent, callbackURL, onPasskeySignIn, passkeyPen
     <Card className="w-full max-w-sm">
       <CardHeader>
         <CardTitle>Oceanview</CardTitle>
-        <CardDescription>Logga in med en passkey eller en länk till din e-post.</CardDescription>
+        <CardDescription>{m.login_description()}</CardDescription>
       </CardHeader>
 
       <CardContent className="flex flex-col gap-4">
@@ -56,11 +57,11 @@ export function LoginFormCard({ onSent, callbackURL, onPasskeySignIn, passkeyPen
               onClick={onPasskeySignIn}
             >
               {passkeyPending ? <Spinner data-icon="inline-start" /> : <KeyRoundIcon />}
-              Logga in med passkey
+              {m.login_passkey_button()}
             </Button>
             <div className="flex items-center gap-3">
               <Separator className="flex-1" />
-              <span className="text-muted-foreground text-xs">eller</span>
+              <span className="text-muted-foreground text-xs">{m.common_or()}</span>
               <Separator className="flex-1" />
             </div>
           </>
@@ -78,10 +79,10 @@ export function LoginFormCard({ onSent, callbackURL, onPasskeySignIn, passkeyPen
               name="email"
               children={(field) => (
                 <field.TextField
-                  label="E-post"
+                  label={m.login_email_label()}
                   type="email"
                   autoComplete="username webauthn"
-                  placeholder="du@exempel.se"
+                  placeholder={m.login_email_placeholder()}
                 />
               )}
             />
@@ -89,8 +90,8 @@ export function LoginFormCard({ onSent, callbackURL, onPasskeySignIn, passkeyPen
 
           <form.AppForm>
             <form.SubmitButton
-              label="Skicka inloggningslänk"
-              pendingLabel="Skickar…"
+              label={m.login_submit()}
+              pendingLabel={m.login_submit_pending()}
               variant={passkeySupported ? 'outline' : 'default'}
               className="w-full"
             />

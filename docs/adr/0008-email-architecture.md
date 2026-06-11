@@ -5,6 +5,8 @@
 - **Deciders**: Lukas
 - **Decision in one line**: Send transactional email through a typed `src/lib/effects/email/` adapter with three implementations — `smtp` (nodemailer → Mailpit container in dev), `resend` (Resend SDK in prod), `devLog` (tests + offline). Templates are React components rendered server-side via `react-email`. Magic-link send stays tier-1 sync-critical; future non-auth emails (invitations, reminders, digests) are tier-3 via the queue.
 
+> **Amendment (2026-06-10)** — The selector now requires **both** `RESEND_API_KEY` and `EMAIL_FROM` before picking the `resend` adapter (`src/lib/effects/email/email.ts`). Previously a half-configured Resend (key set, `EMAIL_FROM` forgotten) selected `resend` anyway, and the adapter threw on every send — magic-link is tier-1 sync-critical, so that bricked all sign-ins. Now the selector logs `logger.error('RESEND_API_KEY is set but EMAIL_FROM is missing; falling back to devLog')` and uses `devLog` instead (links surface in Runtime Logs, same as the pre-DNS deferred state). Precedence list and selector snippet below updated to match.
+
 ---
 
 ## Context
@@ -34,7 +36,7 @@ Concretely:
   1. `VITEST === 'true'` → `devLog`. Tests never reach a real transport.
   2. `EMAIL_ADAPTER === 'devLog'` → `devLog`. Explicit offline override.
   3. `SMTP_HOST` set → `smtp`. Local dev (Mailpit) wins over Resend — protects against `vercel env pull` polluting `.env.local` with prod creds.
-  4. `RESEND_API_KEY` set → `resend`. Production.
+  4. `RESEND_API_KEY` **and** `EMAIL_FROM` set → `resend`. Production. Key without `EMAIL_FROM` logs an error and falls through to `devLog` instead of bricking sign-in (see Amendment 2026-06-10).
   5. Fallback → `devLog`. Offline dev without docker — auth flow still works; magic-links just appear in the log.
 - **Mailpit** (`axllent/mailpit`) is the local catcher — `compose.yaml` service `mail`, SMTP on `:14522`, web UI on `:14502`. In-memory ring buffer (`MP_MAX_MESSAGES=500`); no persistent volume.
 - **Templates** live in `src/emails/` (React Email convention; `react-email dev` previews them at `:14501`). Each template exports the React component and a typed `render<Name>(props): Promise<{ subject, html, text }>` helper. Adapters import the render helper, never the JSX.
@@ -51,14 +53,20 @@ The seam from ADR-0001 means the choice is **reversible**: if Resend ever stops 
 ### Adapter selector
 
 ```ts
-// src/lib/effects/email/email.ts
-async function getAdapter(): Promise<EmailEffects> {
+// src/lib/effects/email/email.ts (adapter imports elided)
+const getAdapter = lazy(async (): Promise<EmailEffects> => {
   if (process.env.VITEST === 'true') return devLog
   if (process.env.EMAIL_ADAPTER === 'devLog') return devLog
-  if (process.env.SMTP_HOST) return smtp           // local wins over Resend
-  if (process.env.RESEND_API_KEY) return resend
+  if (process.env.SMTP_HOST) return smtp              // local wins over Resend
+  if (process.env.RESEND_API_KEY) {
+    if (process.env.EMAIL_FROM) return resend         // production
+    // Half-configured Resend would throw on every send — and magic-link is
+    // tier-1, so that bricks sign-in entirely. Complain loudly and fall back.
+    logger.error('RESEND_API_KEY is set but EMAIL_FROM is missing; falling back to devLog')
+    return devLog
+  }
   return devLog
-}
+})
 ```
 
 The cached `Promise<EmailEffects>` means the selector runs once per process. Lazy `await import('./adapters/<name>')` keeps nodemailer out of the Resend cold start and vice versa.
@@ -74,8 +82,9 @@ Verification greps (also in `## Verification`):
 ```bash
 grep -rn "from 'nodemailer'" src/ | grep -v 'adapters/smtp.ts'    # must be empty
 grep -rn "from 'resend'" src/    | grep -v 'adapters/resend.ts'   # must be empty
-grep -rn "from '~/emails/" src/  | grep -v 'effects/email/adapters/' \
-                                 | grep -v 'src/emails/.*\.test\.tsx' # must be empty
+grep -rn "from '~/emails/" src/  | grep -v 'effects/email/adapters/'  # must be empty
+# (no test-file exclusion needed: MagicLinkEmail.test.tsx imports './MagicLinkEmail'
+# relatively, never via '~/emails/')
 ```
 
 ### Templates
@@ -110,9 +119,10 @@ Conventions for future templates:
 **Future non-auth emails go through the queue (tier-3).** User-invitation, schedule-reminder, season-summary digest, ownership-change notice, etc. — none of these have a user waiting on the request. Pattern:
 
 ```ts
-// procedure
+// procedure — topic joins the QueueTopic union in src/lib/effects/queue/queue.ts
+// (snake_case, no namespacing — like 'blurhash' | 'image_thumbnail' | 'pdf_thumbnail')
 await userService.invite(input)
-await queue.publish('email:userInvited', { userId, invitedById })
+await queue.publish('email_user_invited', { userId, invitedById })
 // later: src/lib/queue/handlers/emailUserInvited.ts
 import { email } from '~/lib/effects'
 export async function handle(payload: EmailUserInvitedPayload) {
@@ -152,7 +162,7 @@ The `EmailEffects` interface grows one method per kind; each adapter renders the
 ## Pricing
 
 - **Mailpit** — free (Apache-2.0). Local container only.
-- **Resend** — free tier: 100 emails/day, 3,000/month, 1 verified domain. Pro tier ($20/mo) lifts to 50k/month + extra domains. For ~20 users, free is forever.
+- **Resend** — free tier (as of 2026-06-10): 100 emails/day, 3,000/month, 1 verified domain. Pro tier ($20/mo) lifts to 50k/month + extra domains. For ~20 users, free is forever.
 - **Nodemailer** — free (MIT).
 - **React Email** — free (MIT).
 
@@ -167,6 +177,7 @@ Net cost for the foreseeable future: **$0/mo**.
 - **Cold-start path**: only the chosen adapter is imported (lazy `import('./adapters/<name>')`).
 - **Dev workflow**: `pnpm dev:up` brings Mailpit alongside db/queue/storage; login mail is visible at http://localhost:14502.
 - **Deprecation note**: pnpm's deprecation warning on `@react-email/components@1.0.x` led us to use the `react-email` umbrella package directly. Modern recommended path.
+- **Accepted enumeration oracle (2026-06-10 security audit)**: the magic-link request for an unknown, non-allowlisted email answers explicitly "Inget konto finns för denna e-postadress" (`src/lib/auth.ts`, `sendMagicLink` gate) instead of a uniform "if the address exists we've sent a link". A probe can therefore learn whether an email has an account. Deliberate: a co-owner who typos their address gets actionable feedback, membership of a ~15-person boat club is not a secret worth that UX cost, and the 5/min DB-backed rate limit bounds probing. Revisit if the app ever serves a userbase whose membership is sensitive.
 
 ---
 
@@ -184,6 +195,7 @@ Re-open this decision if any of the following land:
 ## Deferred work
 
 - **Sender-domain verification** — `mail.<oceanview-domain>` DNS records (SPF, DKIM, return-path). Once done, set `RESEND_API_KEY` and `EMAIL_FROM` in Vercel envs — the `resend` adapter activates automatically. No code change.
+- **Interim risk: prod magic-links in Runtime Logs.** Until DNS verification lands, production sends fall through to `devLog`, so magic-link URLs surface in Vercel Runtime Logs — the redaction policy in `src/lib/logger/redact.ts` deliberately spares them (they're only emitted by the `devLog` adapter). Anyone with Runtime Logs access can sign in as anyone whose link they capture before it expires. Accepted as an interim risk for this internal app. Checklist item: revisit the redaction decision once the `resend` adapter activates — at that point magic-link URLs in logs become a pure liability.
 - **Additional templates** — added with new features (user invitation, schedule reminder, season summary). Each new template is one `<Name>Email.tsx` + one new method on `EmailEffects` + per-adapter wiring.
 - **Webhook / bounce handling, open tracking, suppression list** — Resend-side; not needed at 20 users.
 - **Logo asset** — `MagicLinkEmail.tsx` currently uses a styled text wordmark. Swap to a hosted image (Vercel Blob's `oceanview-public` store, or a base64-inlined SVG) once a brand mark exists.
@@ -193,10 +205,12 @@ Re-open this decision if any of the following land:
 ## Files
 
 - `src/lib/effects/email/email.ts` — interface + lazy selector
+- `src/lib/effects/email/index.ts` — barrel
 - `src/lib/effects/email/adapters/devLog.ts` — log-only adapter (unchanged)
 - `src/lib/effects/email/adapters/smtp.ts` — nodemailer transport
 - `src/lib/effects/email/adapters/resend.ts` — Resend SDK
-- `src/lib/effects/email/email.test.ts` — selector contract
+  - Both transports require `EMAIL_FROM`; `resend` guards it (selector + adapter), while `smtp` passes it unchecked to nodemailer — a missing value fails at send time.
+- `src/lib/effects/email/email.test.ts` — interface contract under the VITEST short-circuit; cannot exercise the precedence rules (see § Verification)
 - `src/emails/theme.ts` — Studio Tailwind config (MIT)
 - `src/emails/Fonts.tsx` — Studio Inter + Geist loading (MIT)
 - `src/emails/MagicLinkEmail.tsx` — magic-link template + `renderMagicLink` (adapted from Studio, MIT)
@@ -219,13 +233,13 @@ End-to-end manual:
 6. Click the button → signed in.
 7. Server logs show `magic-link sent (smtp)` (not the devLog form).
 
-Adapter selection:
+Adapter selection (manual — this checklist *is* the precedence verification; the unit test can't cover it, see Tests below):
 
 - `unset SMTP_HOST; pnpm dev` → logs `magic-link (devLog)` (offline fallback).
 - `SMTP_HOST=localhost RESEND_API_KEY=re_xxx pnpm dev` → still `smtp` (local wins).
 - `EMAIL_ADAPTER=devLog SMTP_HOST=localhost pnpm dev` → `devLog` (override wins).
 
-Tests: `pnpm test src/lib/effects/email src/emails` — passes (VITEST short-circuit forces devLog; render tests are pure).
+Tests: `pnpm test src/lib/effects/email src/emails` — passes (VITEST short-circuit forces devLog; render tests are pure). Note `email.test.ts` cannot exercise the precedence rules: the VITEST short-circuit wins before any other branch, and `lazy()` caches the chosen adapter once per process, so no env permutation is reachable in-test. The adapter-selection checklist above is the actual precedence verification.
 
 Lint / typecheck: `pnpm check && pnpm build`.
 
@@ -234,6 +248,7 @@ Boundary greps:
 ```bash
 grep -rn "from 'nodemailer'" src/ | grep -v 'adapters/smtp.ts'    # must be empty
 grep -rn "from 'resend'" src/    | grep -v 'adapters/resend.ts'   # must be empty
-grep -rn "from '~/emails/" src/  | grep -v 'effects/email/adapters/' \
-                                 | grep -v 'src/emails/.*\.test\.tsx' # must be empty
+grep -rn "from '~/emails/" src/  | grep -v 'effects/email/adapters/'  # must be empty
+# (no test-file exclusion needed: MagicLinkEmail.test.tsx imports './MagicLinkEmail'
+# relatively, never via '~/emails/')
 ```

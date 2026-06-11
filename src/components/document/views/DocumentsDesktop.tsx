@@ -16,6 +16,7 @@ import { Button } from '~/components/ui/button'
 import { useDocumentDnd } from '~/hooks/useDocumentDnd'
 import { useDocumentSelection } from '~/hooks/useDocumentSelection'
 import { useDocumentsData } from '~/hooks/useDocumentsData'
+import { m } from '~/paraglide/messages'
 
 type Props = {
   /** Resolved folder id from the URL, or null for the virtual root. */
@@ -59,10 +60,10 @@ export function DocumentsDesktop({ activeFolderId, currentUser }: Props) {
       <div className="flex flex-col gap-4 p-4 md:p-8">
         <header className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex flex-col gap-1">
-            <h1 className="font-semibold text-3xl tracking-tight md:text-4xl">Dokument</h1>
-            <p className="text-muted-foreground text-sm">
-              Delat bibliotek för båtens samägare. Dra dokument mellan mappar eller ladda upp nya.
-            </p>
+            <h1 className="font-semibold text-3xl tracking-tight md:text-4xl">
+              {m.nav_documents()}
+            </h1>
+            <p className="text-muted-foreground text-sm">{m.document_page_description_desktop()}</p>
           </div>
           <DocumentSearch />
         </header>
@@ -72,11 +73,11 @@ export function DocumentsDesktop({ activeFolderId, currentUser }: Props) {
           <div className="flex items-center gap-2">
             <Button variant="outline" onClick={() => setCreateOpen(true)}>
               <FolderPlusIcon data-icon="inline-start" />
-              Ny mapp
+              {m.folder_create_title()}
             </Button>
             <Button onClick={() => uploadRef.current?.open()}>
               <UploadIcon data-icon="inline-start" />
-              Ladda upp dokument
+              {m.upload_button()}
             </Button>
           </div>
         </div>

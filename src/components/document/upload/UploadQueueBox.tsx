@@ -4,6 +4,7 @@ import { useUploadQueue } from '~/components/document/upload/UploadQueueProvider
 import { Button } from '~/components/ui/button'
 import { Progress } from '~/components/ui/progress'
 import { cn } from '~/lib/utils'
+import { m } from '~/paraglide/messages'
 
 const AUTO_HIDE_MS = 4000
 
@@ -47,10 +48,12 @@ export function UploadQueueBox() {
   if (total === 0) return null
 
   const heading = !settled
-    ? `Laddar upp… ${done}/${total}`
+    ? m.upload_progress_heading({ done, total })
     : errored === 0
-      ? `${done} ${done === 1 ? 'dokument uppladdat' : 'dokument uppladdade'}`
-      : `${done} uppladdade, ${errored} misslyckades`
+      ? done === 1
+        ? m.upload_done_single({ count: done })
+        : m.upload_done_multi({ count: done })
+      : m.upload_done_with_errors({ done, errored })
 
   return (
     <div
@@ -70,7 +73,7 @@ export function UploadQueueBox() {
             size="icon"
             className="size-7 shrink-0"
             onClick={dismiss}
-            aria-label="Stäng"
+            aria-label={m.common_close()}
           >
             <XIcon />
           </Button>
@@ -79,7 +82,7 @@ export function UploadQueueBox() {
 
       {!settled ? (
         <div className="px-3 py-2">
-          <Progress value={pct} aria-label={`Total uppladdning ${pct}%`} />
+          <Progress value={pct} aria-label={m.upload_total_progress_label({ pct })} />
         </div>
       ) : null}
 

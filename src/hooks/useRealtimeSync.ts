@@ -30,6 +30,9 @@ function dispatch(queryClient: QueryClient, event: RealtimeEvent) {
       // which enables the tile's (first) thumbnail fetch.
       void queryClient.invalidateQueries({ queryKey: orpc.document.listDocuments.key() })
       void queryClient.invalidateQueries({ queryKey: orpc.document.documentHistory.key() })
+      // Uploads/renames/deletes add, rewrite, or remove search haystacks, so an
+      // open search palette must refetch too (same reasoning as folder.changed).
+      void queryClient.invalidateQueries({ queryKey: orpc.documentSearch.key() })
       return
     case 'folder.changed':
       // A folder change rewrites descendant paths + document haystacks, so the

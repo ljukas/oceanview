@@ -3,6 +3,9 @@ import { db } from '~/lib/db'
 import { user } from '~/lib/db/schema'
 import { UserDomainError } from './errors'
 
+type DbTransaction = Parameters<Parameters<typeof db.transaction>[0]>[0]
+type DbOrTx = typeof db | DbTransaction
+
 export type UserRow = {
   id: string
   name: string
@@ -46,18 +49,23 @@ export async function findIdByEmail(email: string): Promise<string | null> {
   return row?.id ?? null
 }
 
-// Live avatar lookup for the public "Välkommen tillbaka" login card. Returns
-// all-null for unknown or soft-deleted emails — indistinguishable from an
-// avatar-less account, so the public procedure leaks nothing about who exists.
+// Live name + avatar lookup for the "Välkommen tillbaka" login card, called by
+// the getBrowserSession server fn with the email from the browser-session cookie
+// (never a caller-supplied address). Returns all-null for unknown or
+// soft-deleted emails — indistinguishable from an avatar-less account.
 export async function findAvatarByEmail(
   email: string,
-): Promise<{ image: string | null; imageBlurhash: string | null }> {
+): Promise<{ name: string | null; image: string | null; imageBlurhash: string | null }> {
   const [row] = await db
-    .select({ image: user.image, imageBlurhash: user.imageBlurhash })
+    .select({ name: user.name, image: user.image, imageBlurhash: user.imageBlurhash })
     .from(user)
     .where(and(eq(user.email, email), isNull(user.deletedAt)))
     .limit(1)
-  return { image: row?.image ?? null, imageBlurhash: row?.imageBlurhash ?? null }
+  return {
+    name: row?.name ?? null,
+    image: row?.image ?? null,
+    imageBlurhash: row?.imageBlurhash ?? null,
+  }
 }
 
 export async function listAll(): Promise<Array<UserRow>> {
@@ -72,19 +80,19 @@ export async function listDeleted(): Promise<Array<UserRow>> {
     .orderBy(desc(user.deletedAt))
 }
 
-export async function findRowById(id: string): Promise<UserRow | null> {
-  const [row] = await db.select(userSelection).from(user).where(eq(user.id, id)).limit(1)
+export async function findRowById(id: string, dbOrTx: DbOrTx = db): Promise<UserRow | null> {
+  const [row] = await dbOrTx.select(userSelection).from(user).where(eq(user.id, id)).limit(1)
   return row ?? null
 }
 
-export async function findActiveById(id: string): Promise<UserRow | null> {
-  const row = await findRowById(id)
+export async function findActiveById(id: string, dbOrTx: DbOrTx = db): Promise<UserRow | null> {
+  const row = await findRowById(id, dbOrTx)
   if (!row || row.deletedAt) return null
   return row
 }
 
-export async function countAdmins(): Promise<number> {
-  const [row] = await db
+export async function countAdmins(dbOrTx: DbOrTx = db): Promise<number> {
+  const [row] = await dbOrTx
     .select({ value: count() })
     .from(user)
     .where(and(eq(user.role, 'admin'), isNull(user.deletedAt)))
@@ -110,43 +118,47 @@ export async function updateAsAdmin(
   targetId: string,
   input: UpdateUserInput,
 ): Promise<UserRow> {
-  const target = await findRowById(targetId)
-  if (!target) throw new UserDomainError('NOT_FOUND')
-  if (target.deletedAt) throw new UserDomainError('TARGET_DELETED')
+  return db.transaction(async (tx) => {
+    const target = await findRowById(targetId, tx)
+    if (!target) throw new UserDomainError('NOT_FOUND')
+    if (target.deletedAt) throw new UserDomainError('TARGET_DELETED')
 
-  const demotingSelf = actorId === targetId && input.role !== 'admin'
-  if (demotingSelf) throw new UserDomainError('CANNOT_ACT_ON_SELF')
+    const demotingSelf = actorId === targetId && input.role !== 'admin'
+    if (demotingSelf) throw new UserDomainError('CANNOT_ACT_ON_SELF')
 
-  const demotingAdmin = target.role === 'admin' && input.role !== 'admin'
-  if (demotingAdmin && (await countAdmins()) <= 1) {
-    throw new UserDomainError('LAST_ADMIN')
-  }
+    const demotingAdmin = target.role === 'admin' && input.role !== 'admin'
+    if (demotingAdmin && (await countAdmins(tx)) <= 1) {
+      throw new UserDomainError('LAST_ADMIN')
+    }
 
-  const [row] = await db
-    .update(user)
-    .set({
-      name: input.name,
-      email: input.email,
-      phone: input.phone,
-      role: input.role,
-    })
-    .where(eq(user.id, targetId))
-    .returning(userSelection)
-  return row
+    const [row] = await tx
+      .update(user)
+      .set({
+        name: input.name,
+        email: input.email,
+        phone: input.phone,
+        role: input.role,
+      })
+      .where(eq(user.id, targetId))
+      .returning(userSelection)
+    return row
+  })
 }
 
 export async function softDeleteAsAdmin(actorId: string, targetId: string): Promise<void> {
   if (actorId === targetId) throw new UserDomainError('CANNOT_ACT_ON_SELF')
 
-  const target = await findRowById(targetId)
-  if (!target) throw new UserDomainError('NOT_FOUND')
-  if (target.deletedAt) return
+  await db.transaction(async (tx) => {
+    const target = await findRowById(targetId, tx)
+    if (!target) throw new UserDomainError('NOT_FOUND')
+    if (target.deletedAt) return
 
-  if (target.role === 'admin' && (await countAdmins()) <= 1) {
-    throw new UserDomainError('LAST_ADMIN')
-  }
+    if (target.role === 'admin' && (await countAdmins(tx)) <= 1) {
+      throw new UserDomainError('LAST_ADMIN')
+    }
 
-  await db.update(user).set({ deletedAt: new Date() }).where(eq(user.id, targetId))
+    await tx.update(user).set({ deletedAt: new Date() }).where(eq(user.id, targetId))
+  })
 }
 
 export async function restoreAsAdmin(targetId: string): Promise<void> {

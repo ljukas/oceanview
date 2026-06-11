@@ -46,6 +46,7 @@ export type ShareEventRow = {
 }
 
 type DbTransaction = Parameters<Parameters<typeof db.transaction>[0]>[0]
+type DbOrTx = typeof db | DbTransaction
 
 const partSelection = {
   id: sharePart.id,
@@ -97,8 +98,11 @@ export async function getCurrentOwner(partId: string): Promise<string | null> {
   return row?.userId ?? null
 }
 
-async function getActiveAssignment(partId: string): Promise<AssignmentRow | null> {
-  const [row] = await db
+async function getActiveAssignment(
+  partId: string,
+  dbOrTx: DbOrTx = db,
+): Promise<AssignmentRow | null> {
+  const [row] = await dbOrTx
     .select(assignmentSelection)
     .from(ownershipAssignment)
     .where(and(eq(ownershipAssignment.partId, partId), isNull(ownershipAssignment.assignedTo)))
@@ -342,32 +346,35 @@ export async function assignShareAsAdmin(
           { partId: part2Id, userId: input.assignment.part2UserId },
         ]
 
-  // Active-user check up-front; a deleted user can never be assigned.
-  const uniqueUserIds = [...new Set(targets.map((t) => t.userId))]
-  for (const userId of uniqueUserIds) {
-    const u = await userService.findActiveById(userId)
-    if (!u) throw new ShareDomainError('USER_NOT_FOUND')
-  }
-
-  // Per-part validation. Skip parts whose target equals the current owner —
-  // makes "Tilldela hel andel A → Alice" lenient when Alice already has A1
-  // but not A2: only the half that actually changes runs.
-  const fromMs = input.from.getTime()
-  const changes: Array<{ partId: string; userId: string }> = []
-  const displacedUserIds = new Set<string>()
-  for (const t of targets) {
-    const existing = await getActiveAssignment(t.partId)
-    if (existing && existing.userId === t.userId) continue
-    if (existing && fromMs <= existing.assignedFrom.getTime()) {
-      throw new ShareDomainError('FROM_DATE_NOT_AFTER_CURRENT')
-    }
-    if (existing) displacedUserIds.add(existing.userId)
-    changes.push(t)
-  }
-
-  if (changes.length === 0) throw new ShareDomainError('ALREADY_CURRENT_OWNER')
-
   await db.transaction(async (tx) => {
+    // Active-user check; a deleted user can never be assigned. Must run on
+    // `tx`: with the test pool pinned to one connection, an outer-`db` query
+    // inside this transaction would wait on the connection the tx holds.
+    const uniqueUserIds = [...new Set(targets.map((t) => t.userId))]
+    for (const userId of uniqueUserIds) {
+      const u = await userService.findActiveById(userId, tx)
+      if (!u) throw new ShareDomainError('USER_NOT_FOUND')
+    }
+
+    // Per-part validation. Skip parts whose target equals the current owner —
+    // makes "Tilldela hel andel A → Alice" lenient when Alice already has A1
+    // but not A2: only the half that actually changes runs. Reads share the
+    // mutation tx; concurrent-admin races are accepted at this scale (ADR-0002).
+    const fromMs = input.from.getTime()
+    const changes: Array<{ partId: string; userId: string }> = []
+    const displacedUserIds = new Set<string>()
+    for (const t of targets) {
+      const existing = await getActiveAssignment(t.partId, tx)
+      if (existing && existing.userId === t.userId) continue
+      if (existing && fromMs <= existing.assignedFrom.getTime()) {
+        throw new ShareDomainError('FROM_DATE_NOT_AFTER_CURRENT')
+      }
+      if (existing) displacedUserIds.add(existing.userId)
+      changes.push(t)
+    }
+
+    if (changes.length === 0) throw new ShareDomainError('ALREADY_CURRENT_OWNER')
+
     const eventId = await createEventTx(tx, { actorUserId: ctx.actorUserId ?? null })
     for (const c of changes) {
       await assignPartTx(tx, { partId: c.partId, userId: c.userId, from: input.from, eventId })
@@ -385,24 +392,24 @@ export async function unassignShareAsAdmin(input: UnassignShareInput): Promise<v
   const targets =
     input.parts === 'both' ? [part1Id, part2Id] : input.parts === '1' ? [part1Id] : [part2Id]
 
-  const onMs = input.on.getTime()
-  let anyAssigned = false
-  const toClose: string[] = []
-  const displacedUserIds = new Set<string>()
-  for (const partId of targets) {
-    const existing = await getActiveAssignment(partId)
-    if (!existing) continue
-    anyAssigned = true
-    if (onMs <= existing.assignedFrom.getTime()) {
-      throw new ShareDomainError('DATE_NOT_AFTER_CURRENT')
-    }
-    toClose.push(partId)
-    displacedUserIds.add(existing.userId)
-  }
-
-  if (!anyAssigned) throw new ShareDomainError('NOT_ASSIGNED')
-
   await db.transaction(async (tx) => {
+    const onMs = input.on.getTime()
+    let anyAssigned = false
+    const toClose: string[] = []
+    const displacedUserIds = new Set<string>()
+    for (const partId of targets) {
+      const existing = await getActiveAssignment(partId, tx)
+      if (!existing) continue
+      anyAssigned = true
+      if (onMs <= existing.assignedFrom.getTime()) {
+        throw new ShareDomainError('DATE_NOT_AFTER_CURRENT')
+      }
+      toClose.push(partId)
+      displacedUserIds.add(existing.userId)
+    }
+
+    if (!anyAssigned) throw new ShareDomainError('NOT_ASSIGNED')
+
     for (const partId of toClose) {
       await unassignPartTx(tx, partId, input.on)
     }

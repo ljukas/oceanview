@@ -5,13 +5,15 @@
 - **Deciders**: Lukas
 - **Decision in one line**: Push state changes to every authenticated tab through a typed `realtime` effect — oRPC mutation procedures call `realtime.publish(event)` after the service commit, a single SSE procedure forwards events to subscribers, and one per-tab `useRealtimeSync()` hook turns each event into a `queryClient.invalidateQueries({ queryKey: orpc.<namespace>.key() })`. The bus is an in-process `MemoryPublisher` because we run as a single Vercel function instance.
 
+> **Amended 2026-06-10.** Adoption is no longer single-entity: seven namespaces publish (`user`, `season`, `presence`, `share`, `document`, `folder`, `bin` — see `src/lib/effects/realtime/types.ts`). Two design-level additions below: **[Dispatch granularity](#dispatch-granularity)** — the `switch` in `useRealtimeSync.ts`, not blanket `orpc.<namespace>.key()`, is the invalidation contract — and the **sanctioned non-mutation publish sites** under [Where to publish](#where-to-publish--in-the-procedure-after-the-service-call) (the SSE handler for `presence.changed`; the `image_thumbnail` queue handler). Stale specifics fixed in place.
+
 ---
 
 ## Context
 
-Oceanview is a multi-user app (10–20 owners + admins) where most screens read shared state — the user roster today; soon also the season grid, share assignments, the file library, and boat-week scheduling. When one admin mutates state in one tab, every other tab that's currently viewing affected data needs to refetch within a small number of hundreds of milliseconds without anyone reloading the page. The existing data layer (oRPC + TanStack Query, [ADR-0002](./0002-service-domain-architecture.md)) already knows how to refetch — it just needs to be told *when*.
+Oceanview is a multi-user app (10–20 owners + admins) where most screens read shared state — the user roster, the season grid, share assignments, the document library; boat-week scheduling still to come. When one admin mutates state in one tab, every other tab that's currently viewing affected data needs to refetch within a small number of hundreds of milliseconds without anyone reloading the page. The existing data layer (oRPC + TanStack Query, [ADR-0002](./0002-service-domain-architecture.md)) already knows how to refetch — it just needs to be told *when*.
 
-Today only the **user** entity opts in (`src/lib/orpc/procedures/user.ts`), and only one event variant exists (`user.changed`). The same pattern is intended to spread across every shared-state entity. Writing this down now sets the shape so each new entity owner doesn't reinvent the event name, the publish site, or the dispatch hook.
+The **user** entity adopted first (`src/lib/orpc/procedures/user.ts`; `user.changed` was the only variant when this was written). As of 2026-06 seven namespaces publish — `user`, `season`, `presence`, `share`, `document`, `folder`, `bin` (`src/lib/effects/realtime/types.ts`) — and the pattern spread exactly as intended: writing this down set the shape so each new entity owner didn't reinvent the event name, the publish site, or the dispatch hook.
 
 The behaviour is also subtly in tension with [ADR-0001](./0001-side-effects-architecture.md) ("skip in-process pub/sub"). That tension is real and worth reconciling once, in writing, so future readers don't relitigate the same trade-off every time another entity adopts the pattern.
 
@@ -25,7 +27,7 @@ Server-push invalidation, end-to-end:
 2. **Bus** — the `realtime` effect (`src/lib/effects/realtime/`) wraps `@orpc/experimental-publisher`'s `MemoryPublisher` on a single `'event'` channel. In-process, single-instance.
 3. **SSE handler** — `protectedProcedure` `realtime.events` (`src/lib/orpc/procedures/realtime.ts`) is an `async function*` with `.output(eventIterator(realtimeEventSchema))` — that combination flips oRPC's `RPCHandler` into SSE-encoder mode. It forwards `realtime.subscribe({ signal, log: context.log })` to the client. `signal` is wired by oRPC to both client disconnect and function shutdown.
 4. **Subscriber hook** — `useRealtimeSync()` (`src/hooks/useRealtimeSync.ts`) is mounted **once** in `src/routes/_authenticated.tsx`. It opens a single SSE stream, iterates events, and `switch`es on `event.kind` to `queryClient.invalidateQueries({ queryKey: orpc.<namespace>.key() })`. Reconnects with `exponential-backoff` (1s → 30s cap, ×2, full jitter, infinite attempts, stop on `UNAUTHORIZED`).
-5. **Event schema** — `realtimeEventSchema` in `src/lib/effects/realtime/types.ts` is a discriminated union on `kind`. `kind` is always `<namespace>.changed` where `<namespace>` is the top-level `appRouter` key the client should invalidate. `ids` is optional metadata for future fine-grained patching; coarse invalidation ignores it.
+5. **Event schema** — `realtimeEventSchema` in `src/lib/effects/realtime/types.ts` is a discriminated union on `kind`. `kind` is always `<namespace>.changed` where `<namespace>` is the top-level `appRouter` key the client should invalidate. `ids` is optional metadata carrying discriminator values — record ids, or share codes (e.g. `'A'`) for `share.changed` — reserved for future fine-grained patching; coarse invalidation ignores them.
 6. **Echo suppression** — a mutation publishes with `{ source: context.user.id }`. The SSE handler does **not** deliver an event back to the actor who caused it (`shouldDeliver(source, self)` in `src/lib/effects/realtime/realtime.ts`). The actor's own tab already updated itself locally via its mutation's `onSuccess` invalidation / optimistic write — realtime exists to propagate **other** actors' changes. `source` rides a server-internal envelope (`{ event, source }`), never the wire schema. Sourceless publishes (presence transitions, background jobs) broadcast to everyone, including the actor.
 
 This keeps the **interface** small (two functions on the effect, one event schema), the **implementation** swappable (in-memory today; Postgres `LISTEN/NOTIFY` or Redis later if we ever multi-instance), and the **locality** intact (the procedure reads top-to-bottom: validate → service → publish; the hook reads top-to-bottom: open → dispatch → reconnect).
@@ -76,6 +78,8 @@ Realtime sync is a different problem:
 
 So: ADR-0001 rejects pub/sub *between code units inside one process call stack*. Realtime sync uses pub/sub *between distinct request lifecycles inside one process*. Same word, different problem. The seam is genuine here in a way it isn't in ADR-0001's territory.
 
+Since this was written, ADR-0001's **2026-06-04 amendment** formally sanctions `realtime` (and `presence`) as in-process effects under the same seam — the tension-resolution argued above is now codified on both sides.
+
 ---
 
 ## Architecture
@@ -123,9 +127,10 @@ update: adminProcedure
 
 Rules:
 - Publish **after** the service call returns successfully — never before, never inside the service. Services are DB-only ([ADR-0002](./0002-service-domain-architecture.md)) and must not import the `realtime` effect.
-- Publish **after** any sync-critical side effect that must succeed before clients see the change (e.g. `auth.api.revokeUserSessions` on delete — see `procedures/user.ts:92-103`).
+- Publish **after** any sync-critical side effect that must succeed before clients see the change (the canonical example is `user.delete`'s revoke-then-publish ordering: `auth.api.revokeUserSessions` runs before the `user.changed` publish).
 - Publish on **every** state-changing mutation for an opted-in entity, including create, update, delete, restore. Missing one publish means every client sees stale data until they navigate.
 - Pass `{ source: context.user.id }` from mutation procedures so the actor's own tab isn't double-invalidated (see [Echo suppression](#echo-suppression)). Omit `source` **only** for broadcast-to-all publishes where there is no single acting user or every client (incl. the actor) must receive it: the two `presence.changed` publishes in the SSE handler, and the background thumbnail job (`src/lib/queue/handlers/imageThumbnail.ts`) — the uploader depends on that later echo to surface `thumbnailPathname`.
+- **Sanctioned exceptions to "publish from mutation procedures":** the SSE handler itself (`realtime.events` in `src/lib/orpc/procedures/realtime.ts`) is the one publish site for `presence.changed` — presence state *is* the SSE subscription state, so there is no DB mutation to attach it to (the handler's own comment records this). The `image_thumbnail` queue handler publishes a sourceless `document.changed` once the rendered thumbnail is stored. The `blurhash` queue handler deliberately publishes **nothing** — blurhash is progressive enhancement, picked up on the next natural refetch rather than forcing one.
 
 ### Where to subscribe — once per authenticated tab
 
@@ -148,15 +153,26 @@ Rules:
 // src/lib/effects/realtime/types.ts
 export const realtimeEventSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('user.changed'), ids: z.array(z.string()).optional() }),
-  // Add per-entity variants here as they adopt.
+  // …season / presence / document / folder / share / bin variants elided —
+  // see the file. Add per-entity variants here as they adopt.
 ])
 ```
 
-- `kind` is always `<namespace>.changed`, where `<namespace>` is the top-level `appRouter` key the client should invalidate. Today: `user.changed` → invalidates `orpc.user.key()`. Tomorrow: `season.changed` → `orpc.season.key()`, `share.changed` → `orpc.share.key()`.
-- `ids` is metadata, not a payload. Coarse invalidation ignores it. It exists so a future fine-grained variant can patch the cache without a schema break.
+- `kind` is always `<namespace>.changed`, where `<namespace>` is the top-level `appRouter` key the client should invalidate. Today seven variants exist (`user` / `season` / `presence` / `share` / `document` / `folder` / `bin`). A future entity follows the same shape: `booking.changed` → `orpc.booking.key()`. What "invalidate" means per event is defined by the dispatch switch — see [Dispatch granularity](#dispatch-granularity).
+- `ids` carries discriminator values, not a payload — record ids for most namespaces, share codes (e.g. `'A'`) for `share.changed`. Coarse invalidation ignores them; the field exists so a future fine-grained variant can patch the cache without a schema break.
 - One variant per entity is the default. Don't pre-split into `user.created` / `user.updated` / `user.deleted` — the client doesn't care which mutation happened, only that the namespace is dirty.
 - **Compound publishes are fine when one mutation dirties more than one namespace.** A procedure may publish several events in sequence. `src/lib/orpc/procedures/folder.ts` does this: a folder rename/move/soft-delete/restore publishes both `folder.changed` *and* `document.changed`, because folder path changes flow into the denormalized document search haystack and a folder cascade soft-deletes its documents. The rule is still "thin event, fat refetch" per namespace — just emit one per dirtied namespace. The schema also carries cross-namespace coupling the other direction: `share.changed` is dispatched in the hook to invalidate both `orpc.share` and `orpc.user.listContacts`.
 - **`bin.changed` is published only by mutations that move an item in or out of the admin bin** — soft-delete document/folder (enter), restore document/folder and hard-delete document (leave). These publish it *alongside* their `document.changed` / `folder.changed`. Crucially, upload / rename / move publish `document.changed` *without* `bin.changed`, so unrelated document edits don't mark the bin query stale. This is why the bin has its own event rather than piggybacking on `document.changed`.
+
+### Dispatch granularity
+
+"Invalidate the namespace" does **not** always mean blanket `orpc.<namespace>.key()`. The `switch` in `useRealtimeSync.ts` is the invalidation contract: each `case` decides which query keys an event dirties, and a case may narrow to sub-namespace keys or fan out to extra namespaces. The comment on each `case` documents *why* — treat it as part of the contract, not decoration. Three worked examples, all live in the switch today:
+
+- **`document.changed`** invalidates `orpc.document.listDocuments`, `orpc.document.documentHistory`, and `orpc.documentSearch` — deliberately **not** `document.thumbnail`. Thumbnails are served from stable public URLs; refetching them would reload every tile. A newly rendered thumbnail is picked up naturally: the list refetch surfaces `thumbnailPathname`, which enables the tile's first thumbnail fetch. (The `documentSearch` coupling was added 2026-06-10 — uploads/renames/deletes add, rewrite, or remove search haystacks, so an open search palette must refetch too.)
+- **`folder.changed`** fans out to `orpc.folder` plus `orpc.document.listDocuments`, `orpc.document.documentHistory`, and `orpc.documentSearch` — a folder change rewrites descendant paths and document haystacks, so document lists and search results shift. Thumbnails stay untouched for the same reason as above.
+- **`share.changed`** invalidates `orpc.share` *and* `orpc.user.listContacts` — the Delägare table renders owned shares, so it must stay in sync with share assignments.
+
+Blanket `key()` is the right default for a new entity; narrow or widen only with a reason, and write that reason as the `case` comment.
 
 ### Echo suppression
 
@@ -177,7 +193,7 @@ Granularity is **user-level** (not per-tab): `context.user.id` is already availa
 
 In the architecture skill's vocabulary:
 
-- **Interface** — two functions on `RealtimeEffects` (`publish(event, opts?: { source? })`, `subscribe(): AsyncIterable<RealtimeEnvelope>`) plus the typed event schema and the `shouldDeliver` policy helper. Stable; new entities extend the schema's discriminated union, not the interface.
+- **Interface** — two functions on `RealtimeEffects` (`publish(event, opts?: { source? })`, `subscribe(args: { signal?: AbortSignal; log: Logger }): AsyncIterable<RealtimeEnvelope>`) plus the typed event schema and the `shouldDeliver` policy helper. Stable; new entities extend the schema's discriminated union, not the interface.
 - **Implementation** — `MemoryPublisher` channel routing, SSE encoding via `eventIterator`, `AbortSignal` teardown on disconnect and shutdown, reconnect-with-backoff and full jitter, coarse invalidation policy in the browser hook. All hidden.
 - **Two seams** — the `RealtimeEffects` interface (real seam: in-memory today, broker-backed adapter tomorrow if multi-instance lands) and the event-schema enum (one variant per opted-in namespace).
 - **Test surface = the interface** — `realtime.test.ts` exercises publish/subscribe/abort against the real `MemoryPublisher`. No mocks. The deletion test passes: removing this module would re-scatter `MemoryPublisher`, the SSE handler, the schema, the dispatch switch, and the reconnect loop across every entity's procedures and routes.
@@ -225,24 +241,25 @@ This is the same reason no outbox tier (per [ADR-0001](./0001-side-effects-archi
 
 ## How to add a new event kind
 
-When an entity (e.g. `share`) needs realtime sync:
+When an entity (e.g. a future `booking`) needs realtime sync:
 
 1. **Extend the schema.** Add a variant to `realtimeEventSchema` in `src/lib/effects/realtime/types.ts`:
    ```ts
-   z.object({ kind: z.literal('share.changed'), ids: z.array(z.string()).optional() }),
+   z.object({ kind: z.literal('booking.changed'), ids: z.array(z.string()).optional() }),
    ```
    The `kind` literal must be `<namespace>.changed`, where `<namespace>` matches the top-level `appRouter` key.
 
 2. **Add a dispatch case.** Extend the `switch` in `src/hooks/useRealtimeSync.ts`:
    ```ts
-   case 'share.changed':
-     void queryClient.invalidateQueries({ queryKey: orpc.share.key() })
+   case 'booking.changed':
+     void queryClient.invalidateQueries({ queryKey: orpc.booking.key() })
      return
    ```
+   Blanket `key()` is the default; narrow to sub-namespace keys or add extra namespaces only with a reason, written as the `case` comment (see [Dispatch granularity](#dispatch-granularity)).
 
-3. **Publish from every mutation procedure** for that entity (`src/lib/orpc/procedures/share.ts`):
+3. **Publish from every mutation procedure** for that entity (`src/lib/orpc/procedures/booking.ts`):
    ```ts
-   await realtime.publish({ kind: 'share.changed', ids: [/* affected ids */] }, { source: context.user.id })
+   await realtime.publish({ kind: 'booking.changed', ids: [/* affected ids */] }, { source: context.user.id })
    ```
    After the service call returns. After any sync-critical side effect. Before returning to the caller. Pass `{ source: context.user.id }` so the actor's own tab isn't double-invalidated — omit it only for broadcast-to-all publishes (see [Echo suppression](#echo-suppression)).
 
@@ -259,7 +276,7 @@ That's the whole recipe. No new files in `effects/realtime/`. No changes to the 
 - `src/lib/effects/realtime/adapters/inMemory.ts` — `MemoryPublisher` adapter on the `'event'` channel.
 - `src/lib/effects/realtime/realtime.test.ts` — interface contract tests against the real `MemoryPublisher`.
 - `src/lib/orpc/procedures/realtime.ts` — SSE handler (`realtime.events`).
-- `src/lib/orpc/procedures/<entity>.ts` — publish sites (`procedures/user.ts:70,85,103,113` is the canonical pattern).
+- `src/lib/orpc/procedures/<entity>.ts` — publish sites (the publishes in `user.create` / `user.update` / `user.delete` / `user.restore` in `procedures/user.ts` are the canonical pattern).
 - `src/lib/orpc/router.ts` — registers `realtime: realtimeRouter`.
 - `src/hooks/useRealtimeSync.ts` — browser subscriber + dispatch + reconnect loop. **Extend the `switch` here for new event kinds.**
 - `src/routes/_authenticated.tsx` — the single `useRealtimeSync()` mount.

@@ -13,6 +13,7 @@ import {
   sharePartId,
   WEEKS_PER_SEASON,
 } from '~/lib/shares/codes'
+import { SeasonDomainError } from './errors'
 
 // The co-ownership group's fixed convention: every season starts on ISO
 // week 21. Soft rule per ADR-0009 Rule 2 — defaulted here and treated as a
@@ -50,7 +51,13 @@ export type CreateSeasonInput = {
 // `startShare` defaults to the previous year rotated by DEFAULT_YEAR_ROTATION
 // (or ANCHOR_START_SHARE when no prior season exists). `startWeek` defaults
 // to SEASON_START_WEEK; an explicit override is passed through unchanged.
+//
+// Check-first invariant (ADR-0002): an explicit existence read raises the
+// domain error; we never inspect Postgres error codes or messages. The
+// unique constraint on `year` stays as a backstop — a racing duplicate
+// insert surfaces as a raw DB error, accepted at this scale.
 export async function createSeason(input: CreateSeasonInput): Promise<SeasonRow> {
+  if (await findSeason(input.year)) throw new SeasonDomainError('ALREADY_EXISTS')
   const startShare = input.startShare ?? (await defaultStartShareFor(input.year))
   const startWeek = input.startWeek ?? SEASON_START_WEEK
   const [row] = await db
@@ -115,6 +122,7 @@ export async function updateSeason(year: number, patch: UpdateSeasonInput): Prom
     .set(patch)
     .where(eq(season.year, year))
     .returning(seasonSelection)
+  if (!row) throw new SeasonDomainError('NOT_FOUND')
   return row
 }
 

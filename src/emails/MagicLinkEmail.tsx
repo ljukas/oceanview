@@ -16,22 +16,28 @@ import {
   Tailwind,
   Text,
 } from 'react-email'
+import { m } from '~/paraglide/messages'
+import type { Locale } from '~/paraglide/runtime'
 import { TechFonts } from './Fonts'
 import { techTailwindConfig } from './theme'
 
 export interface MagicLinkEmailProps {
   url: string
+  // Explicit rather than read from the Paraglide request scope: emails may be
+  // rendered outside a request (queue, previews, tests), and the caller knows
+  // the recipient's locale.
+  locale: Locale
 }
 
-export const MagicLinkEmail = ({ url }: MagicLinkEmailProps) => (
+export const MagicLinkEmail = ({ url, locale }: MagicLinkEmailProps) => (
   <Tailwind config={techTailwindConfig}>
-    <Html lang="sv">
+    <Html lang={locale}>
       <Head>
         <TechFonts />
       </Head>
 
       <Body className="m-0 bg-bg-2 p-0">
-        <Preview>Använd länken för att logga in. Gäller i 5 minuter.</Preview>
+        <Preview>{m.email_magiclink_preview({}, { locale })}</Preview>
         <Container className="mx-auto w-full max-w-[640px]">
           <Section className="bg-bg-3 px-0 pt-14 text-center">
             <Section className="px-6 pb-[72px]">
@@ -40,9 +46,11 @@ export const MagicLinkEmail = ({ url }: MagicLinkEmailProps) => (
               </Section>
 
               <Section className="mx-auto mb-8 max-w-[448px]">
-                <Text className="m-0 font-40 font-geist text-fg">Logga in på Oceanview</Text>
+                <Text className="m-0 font-40 font-geist text-fg">
+                  {m.email_magiclink_heading({}, { locale })}
+                </Text>
                 <Text className="m-0 mt-6 font-14 font-sans text-fg-2">
-                  Hej! Klicka på knappen nedan för att logga in. Länken gäller i 5 minuter.
+                  {m.email_magiclink_body({}, { locale })}
                 </Text>
               </Section>
 
@@ -50,13 +58,13 @@ export const MagicLinkEmail = ({ url }: MagicLinkEmailProps) => (
                 href={url}
                 className="inline-block rounded-[8px] border border-button-border bg-white px-[20px] py-[12px] font-15 font-sans text-[#1F2222]"
               >
-                Logga in
+                {m.email_magiclink_button({}, { locale })}
               </Button>
 
               <Section className="mx-auto mt-12 max-w-[448px]">
                 <Hr className="my-0 border-stroke" />
                 <Text className="m-0 mt-6 font-13 font-sans text-fg-2">
-                  Om knappen inte fungerar, kopiera och klistra in följande länk i din webbläsare:
+                  {m.email_magiclink_fallback({}, { locale })}
                 </Text>
                 <Link href={url} className="break-all font-13 font-sans text-fg">
                   {url}
@@ -68,7 +76,7 @@ export const MagicLinkEmail = ({ url }: MagicLinkEmailProps) => (
           <Section className="px-6 py-20 text-center">
             <Section className="mx-auto max-w-[320px]">
               <Text className="m-0 font-11 font-sans text-fg-2">
-                Om du inte begärde det här mejlet kan du ignorera det.
+                {m.email_magiclink_ignore({}, { locale })}
               </Text>
             </Section>
           </Section>
@@ -80,6 +88,7 @@ export const MagicLinkEmail = ({ url }: MagicLinkEmailProps) => (
 
 MagicLinkEmail.PreviewProps = {
   url: 'https://oceanview.example/sign-in/magic-link?token=preview',
+  locale: 'sv',
 } satisfies MagicLinkEmailProps
 
 export default MagicLinkEmail
@@ -89,5 +98,5 @@ export async function renderMagicLink(props: MagicLinkEmailProps) {
     render(<MagicLinkEmail {...props} />),
     render(<MagicLinkEmail {...props} />, { plainText: true }),
   ])
-  return { subject: 'Logga in på Oceanview', html, text }
+  return { subject: m.email_magiclink_subject({}, { locale: props.locale }), html, text }
 }

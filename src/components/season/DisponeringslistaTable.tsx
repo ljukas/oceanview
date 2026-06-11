@@ -3,6 +3,7 @@ import { Button } from '~/components/ui/button'
 import type { ShareCode } from '~/lib/shares/codes'
 import { shareBackgroundClass } from '~/lib/shares/colors'
 import { cn } from '~/lib/utils'
+import { m } from '~/paraglide/messages'
 
 export type MonthBand = {
   month: number
@@ -34,22 +35,23 @@ type Props = {
   onDeleteSeason?: (year: number) => void
 }
 
-// Short Swedish month labels indexed 0..11 (Jan..Dec). The season only
-// touches positions 4..9 (Maj..Okt) in practice, but the array keeps the
-// lookup branchless.
+// Short month labels indexed 0..11 (Jan..Dec). The season only touches
+// positions 4..9 (May..Oct) in practice, but the array keeps the lookup
+// branchless. Message FUNCTIONS, called at render so the labels follow the
+// active locale (precedent: AppSidebar nav items).
 const MONTH_LABELS = [
-  'Jan',
-  'Feb',
-  'Mar',
-  'Apr',
-  'Maj',
-  'Jun',
-  'Jul',
-  'Aug',
-  'Sep',
-  'Okt',
-  'Nov',
-  'Dec',
+  m.season_month_jan,
+  m.season_month_feb,
+  m.season_month_mar,
+  m.season_month_apr,
+  m.season_month_may,
+  m.season_month_jun,
+  m.season_month_jul,
+  m.season_month_aug,
+  m.season_month_sep,
+  m.season_month_oct,
+  m.season_month_nov,
+  m.season_month_dec,
 ] as const
 
 // Owned-cell highlight: 2px inset ring drawn inside the cell box so it
@@ -66,7 +68,7 @@ export function DisponeringslistaTable({
   onDeleteSeason,
 }: Props) {
   if (schedules.length === 0) {
-    return <p className="text-muted-foreground text-sm">Inga säsonger är inlagda än.</p>
+    return <p className="text-muted-foreground text-sm">{m.season_disponeringslista_empty()}</p>
   }
 
   const currentYear = new Date().getFullYear()
@@ -74,7 +76,7 @@ export function DisponeringslistaTable({
   return (
     <section className="flex flex-col gap-3">
       <h2 className="text-center font-heading font-semibold text-lg tracking-tight">
-        Disponeringslista
+        {m.season_disponeringslista_title()}
       </h2>
       <WideLayout
         schedules={schedules}
@@ -174,12 +176,12 @@ function YearBlock({
             colSpan={band.span}
             className={cn('bg-muted py-1 text-center font-semibold', i < lastBandIdx && 'border-r')}
           >
-            {MONTH_LABELS[band.month]}
+            {MONTH_LABELS[band.month]?.()}
           </th>
         ))}
         {showAdminActions && (
           <th className="w-[1%] whitespace-nowrap border-l bg-muted px-3 py-1 text-center font-semibold">
-            Åtgärder
+            {m.common_actions()}
           </th>
         )}
       </tr>
@@ -201,7 +203,7 @@ function YearBlock({
               <Button
                 variant="outline"
                 size="icon-sm"
-                aria-label="Redigera"
+                aria-label={m.common_edit()}
                 onClick={() => onEditSeason(s.year)}
               >
                 <PencilIcon />
@@ -209,7 +211,7 @@ function YearBlock({
               <Button
                 variant="outline"
                 size="icon-sm"
-                aria-label="Ta bort"
+                aria-label={m.common_delete()}
                 className="text-destructive hover:text-destructive"
                 onClick={() => onDeleteSeason(s.year)}
               >
@@ -225,7 +227,7 @@ function YearBlock({
           return (
             <td
               key={cell.week}
-              aria-label={isMine ? `Din vecka ${cell.week}` : undefined}
+              aria-label={isMine ? m.season_my_week({ week: cell.week }) : undefined}
               className={cn(
                 'relative px-1 py-2 text-center font-medium',
                 monthEndWeeks.has(cell.week) && 'border-r',
@@ -299,7 +301,7 @@ function YearCard({
             <Button
               variant="outline"
               size="icon-sm"
-              aria-label="Redigera"
+              aria-label={m.common_edit()}
               onClick={() => onEditSeason(schedule.year)}
             >
               <PencilIcon />
@@ -307,7 +309,7 @@ function YearCard({
             <Button
               variant="outline"
               size="icon-sm"
-              aria-label="Ta bort"
+              aria-label={m.common_delete()}
               className="text-destructive hover:text-destructive"
               onClick={() => onDeleteSeason(schedule.year)}
             >
@@ -352,7 +354,7 @@ function MonthSection({ band, cells, isCurrent, ownedPartIds }: MonthSectionProp
   return (
     <section className="border-b last:border-b-0">
       <h3 className="bg-muted/50 px-4 py-1 font-semibold text-muted-foreground text-xs uppercase tracking-wider">
-        {MONTH_LABELS[band.month]}
+        {MONTH_LABELS[band.month]?.()}
       </h3>
       <div className="grid grid-cols-2">
         {cells.map((cell, i) => {
@@ -371,7 +373,7 @@ function MonthSection({ band, cells, isCurrent, ownedPartIds }: MonthSectionProp
                 isMine && OWNED_RING,
               )}
             >
-              {isMine && <span className="sr-only">Din vecka </span>}
+              {isMine && <span className="sr-only">{m.season_my_week_prefix()} </span>}
               <span
                 className={cn(
                   'tabular-nums',

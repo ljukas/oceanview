@@ -1,5 +1,6 @@
 import { createFileRoute, redirect, useNavigate } from '@tanstack/react-router'
 import { useState } from 'react'
+import { LocaleSwitcherInline } from '~/components/LocaleSwitcher'
 import { LoginFormCard } from '~/components/login/LoginFormCard'
 import { MagicLinkSentCard } from '~/components/login/MagicLinkSentCard'
 import { WelcomeBackCard } from '~/components/login/WelcomeBackCard'
@@ -7,7 +8,6 @@ import { useAwaitSignIn } from '~/hooks/useAwaitSignIn'
 import { useSignInPasskey, useSignInPasskeyAutofill } from '~/hooks/usePasskeys'
 import { clearBrowserSession, getBrowserSession } from '~/lib/browserSessionFns'
 import { getSession } from '~/lib/getSession'
-import { orpc } from '~/lib/orpc/client'
 import { sanitizeRedirect } from '~/lib/utils'
 
 // The magic link lands in a *new* tab on the /signed-in confirmation page,
@@ -26,20 +26,18 @@ export const Route = createFileRoute('/login')({
     const session = await getSession()
     if (session) throw redirect({ to: search.redirect ?? '/' })
   },
-  loader: async ({ context }) => {
+  loader: async () => {
     const session = await getBrowserSession()
-    if (!session?.email) return { savedLogin: null }
-    // Fetch the avatar live by email rather than trusting a stale cookie value:
-    // a changed/removed avatar would otherwise 404 and fall back to the initial.
-    const avatar = await context.queryClient.ensureQueryData(
-      orpc.user.avatarByEmail.queryOptions({ input: { email: session.email } }),
-    )
     return {
-      savedLogin: {
-        email: session.email,
-        image: avatar.image,
-        imageBlurhash: avatar.imageBlurhash,
-      },
+      savedLogin: session?.email
+        ? {
+            email: session.email,
+            hasPasskey: session.hasPasskey,
+            name: session.name,
+            image: session.image,
+            imageBlurhash: session.imageBlurhash,
+          }
+        : null,
     }
   },
   component: Login,
@@ -83,12 +81,17 @@ function Login() {
   }
 
   return (
-    <div className="grid min-h-svh place-items-center p-4">
+    <div className="relative grid min-h-svh place-items-center p-4">
+      <div className="absolute top-4 right-4">
+        <LocaleSwitcherInline />
+      </div>
       {sentTo ? (
         <MagicLinkSentCard email={sentTo} />
       ) : savedLogin ? (
         <WelcomeBackCard
           email={savedLogin.email}
+          hasPasskey={savedLogin.hasPasskey}
+          name={savedLogin.name}
           image={savedLogin.image}
           imageBlurhash={savedLogin.imageBlurhash}
           callbackURL={callbackURL}

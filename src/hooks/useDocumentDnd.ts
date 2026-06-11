@@ -23,6 +23,7 @@ import {
 } from '~/components/document/shared/documentHelpers'
 import { client, orpc, type RouterOutputs } from '~/lib/orpc/client'
 import { optimisticPatch, optimisticRemove } from '~/lib/orpc/optimistic'
+import { m } from '~/paraglide/messages'
 
 /** A row as returned by `document.listDocuments` — derived so it can't drift. */
 type DocumentRow = RouterOutputs['document']['listDocuments'][number]
@@ -130,11 +131,13 @@ export function useDocumentDnd({
       const failed = results.filter((r) => r.status === 'rejected').length
       if (failed === 0) {
         toast.success(
-          ids.length === 1 ? 'Dokumentet flyttades' : `${ids.length} dokument flyttades`,
+          ids.length === 1
+            ? m.document_moved_single_toast()
+            : m.document_moved_count_toast({ count: ids.length }),
         )
         clearSelection()
       } else {
-        toast.error(`${failed} av ${ids.length} kunde inte flyttas`)
+        toast.error(m.document_move_failed_partial({ failed, count: ids.length }))
       }
     },
     [queryClient, activeFolderId, clearSelection],
@@ -157,9 +160,9 @@ export function useDocumentDnd({
 
       try {
         await client.folder.moveFolder({ id, newParentId })
-        toast.success('Mappen flyttades')
+        toast.success(m.folder_moved_toast())
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : 'Kunde inte flytta mappen')
+        toast.error(err instanceof Error ? err.message : m.folder_move_error())
       } finally {
         await Promise.all([
           queryClient.invalidateQueries({ queryKey: orpc.folder.key() }),
@@ -199,10 +202,14 @@ export function useDocumentDnd({
       const total = docIds.length + folderIds.length
       const failed = results.filter((r) => r.status === 'rejected').length
       if (failed === 0) {
-        toast.success(total === 1 ? 'Objektet flyttades' : `${total} objekt flyttades`)
+        toast.success(
+          total === 1
+            ? m.document_item_moved_toast()
+            : m.document_items_moved_toast({ count: total }),
+        )
         clearSelection()
       } else {
-        toast.error(`${failed} av ${total} kunde inte flyttas`)
+        toast.error(m.document_move_failed_partial({ failed, count: total }))
       }
     },
     [queryClient, activeFolderId, clearSelection],
@@ -249,7 +256,7 @@ export function useDocumentDnd({
             dropTargetRect.current = over.rect
             void runMixedMove(plan.docIds, plan.folderIds, target)
           } else if (plan.kind === 'abort') {
-            toast.error('Kan inte flytta in i en markerad mapp')
+            toast.error(m.document_move_into_selected_error())
           }
           // 'none' → no-op (already in target / nothing legal): snap back, no toast.
         }

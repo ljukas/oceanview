@@ -1,3 +1,4 @@
+import type { Locale } from '~/paraglide/runtime'
 import { lazy } from '../lazy'
 
 /**
@@ -24,14 +25,23 @@ import { lazy } from '../lazy'
  * See ADR-0008.
  */
 export interface EmailEffects {
-  sendMagicLink(input: { to: string; url: string }): Promise<void>
+  sendMagicLink(input: { to: string; url: string; locale: Locale }): Promise<void>
 }
 
 const getAdapter = lazy(async (): Promise<EmailEffects> => {
   if (process.env.VITEST === 'true') return (await import('./adapters/devLog')).devLog
   if (process.env.EMAIL_ADAPTER === 'devLog') return (await import('./adapters/devLog')).devLog
   if (process.env.SMTP_HOST) return (await import('./adapters/smtp')).smtp
-  if (process.env.RESEND_API_KEY) return (await import('./adapters/resend')).resend
+  if (process.env.RESEND_API_KEY) {
+    if (process.env.EMAIL_FROM) return (await import('./adapters/resend')).resend
+    // Half-configured Resend (API key set, EMAIL_FROM forgotten) would throw
+    // on every send — and magic-link is tier-1, so that bricks sign-in
+    // entirely. Fall back to devLog (links in Runtime Logs, same as the
+    // pre-DNS deferred state) and complain loudly instead.
+    const { logger } = await import('~/lib/logger/server')
+    logger.error('RESEND_API_KEY is set but EMAIL_FROM is missing; falling back to devLog')
+    return (await import('./adapters/devLog')).devLog
+  }
   return (await import('./adapters/devLog')).devLog
 })
 

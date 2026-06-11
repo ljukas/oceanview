@@ -16,6 +16,7 @@ import { Input } from '~/components/ui/input'
 import { Popover, PopoverContent, PopoverTrigger } from '~/components/ui/popover'
 import { ScrollArea } from '~/components/ui/scroll-area'
 import { cn } from '~/lib/utils'
+import { m } from '~/paraglide/messages'
 
 type PhoneInputProps = Omit<React.ComponentProps<'input'>, 'onChange' | 'value' | 'ref'> &
   Omit<RPNInput.Props<typeof RPNInput.default>, 'onChange'> & {
@@ -109,11 +110,11 @@ const CountrySelect = ({
                 }
               }, 0)
             }}
-            placeholder="Sök land..."
+            placeholder={m.form_country_search_placeholder()}
           />
           <CommandList>
             <ScrollArea ref={scrollAreaRef} className="h-72">
-              <CommandEmpty>Inget land hittades.</CommandEmpty>
+              <CommandEmpty>{m.form_country_search_empty()}</CommandEmpty>
               <CommandGroup>
                 {countryList.map(({ value: countryValue, label }) =>
                   countryValue ? (

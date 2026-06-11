@@ -1,3 +1,7 @@
+// Side-effect import: installs the locale-delegating Zod error map for the
+// /api/rpc HTTP path, where router.tsx (the SSR entry that otherwise loads it)
+// is never evaluated.
+import '~/lib/zodLocale'
 import { documentRouter } from './procedures/document'
 import { binRouter } from './procedures/documentBin'
 import { documentSearchRouter } from './procedures/documentSearch'

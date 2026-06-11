@@ -5,6 +5,7 @@ import { Button } from '~/components/ui/button'
 import type { AdminPartRow } from '~/lib/orpc/procedures/share'
 import { shareBackgroundClass } from '~/lib/shares/colors'
 import { cn, initials } from '~/lib/utils'
+import { m } from '~/paraglide/messages'
 
 type Props = {
   shareCode: string
@@ -32,12 +33,16 @@ export function SharePartCard({ shareCode, part1, part2, onAssign, onUnassign, o
         )}
       >
         <span className="font-semibold text-2xl tracking-tight">{shareCode}</span>
-        {!isWhole && !isUnassigned ? <Badge variant="secondary">Delad</Badge> : null}
+        {!isWhole && !isUnassigned ? (
+          <Badge variant="secondary">{m.share_split_badge()}</Badge>
+        ) : null}
       </header>
 
       <div className="flex flex-1 flex-col gap-3 p-4">
         {isUnassigned ? (
-          <p className="py-4 text-center text-muted-foreground text-sm">Ej tilldelad</p>
+          <p className="py-4 text-center text-muted-foreground text-sm">
+            {m.share_card_unassigned()}
+          </p>
         ) : isWhole && owner1 ? (
           <OwnerRow owner={owner1} />
         ) : (
@@ -50,14 +55,14 @@ export function SharePartCard({ shareCode, part1, part2, onAssign, onUnassign, o
 
       <footer className="flex flex-col gap-2 border-t bg-muted/30 p-3">
         <Button size="sm" variant="default" onClick={onAssign} className="w-full">
-          {isUnassigned ? 'Tilldela' : 'Tilldela om'}
+          {isUnassigned ? m.share_assign_submit() : m.share_card_reassign()}
         </Button>
         <div className="flex gap-2">
           {!isUnassigned ? (
             <Button
               size="sm"
               variant="outline"
-              aria-label="Ta bort tilldelning"
+              aria-label={m.share_card_unassign_label()}
               onClick={onUnassign}
               className="flex-1"
             >
@@ -67,7 +72,7 @@ export function SharePartCard({ shareCode, part1, part2, onAssign, onUnassign, o
           <Button
             size="sm"
             variant="outline"
-            aria-label="Historik"
+            aria-label={m.share_card_history_label()}
             onClick={onHistory}
             className="flex-1"
           >
@@ -122,7 +127,7 @@ function SplitRow({ label, owner }: { label: string; owner: Owner | null }) {
           <span className="break-words text-sm leading-tight">{owner.name}</span>
         </div>
       ) : (
-        <span className="text-muted-foreground text-sm">Ej tilldelad</span>
+        <span className="text-muted-foreground text-sm">{m.share_card_unassigned()}</span>
       )}
     </div>
   )

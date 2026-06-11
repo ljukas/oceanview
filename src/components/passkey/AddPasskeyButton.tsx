@@ -7,6 +7,7 @@ import { Button } from '~/components/ui/button'
 import { Spinner } from '~/components/ui/spinner'
 import { useAddPasskey } from '~/hooks/usePasskeys'
 import { orpc } from '~/lib/orpc/client'
+import { m } from '~/paraglide/messages'
 
 // The Account "Lägg till passkey" button. On the happy path (fresh session) it adds directly;
 // when Better Auth rejects the add as not-fresh, it opens PasskeyReauthDialog to re-authenticate.
@@ -15,7 +16,7 @@ export function AddPasskeyButton() {
   const [reauthOpen, setReauthOpen] = useState(false)
 
   const { mutate, isPending } = useAddPasskey({
-    onAdded: () => toast.success('Passkey kopplad. Nästa gång loggar du in direkt.'),
+    onAdded: () => toast.success(m.passkey_added()),
     onNotFresh: () => setReauthOpen(true),
   })
 
@@ -23,7 +24,7 @@ export function AddPasskeyButton() {
     <div>
       <Button onClick={() => mutate()} disabled={isPending} className="w-full sm:w-auto">
         {isPending ? <Spinner data-icon="inline-start" /> : <PlusIcon />}
-        Lägg till passkey
+        {m.passkey_add_button()}
       </Button>
       <PasskeyReauthDialog
         open={reauthOpen}

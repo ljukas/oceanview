@@ -15,7 +15,7 @@ Oceanview's read/write paths cross three layers: HTTP request → oRPC procedure
 2. **DB primitives leak.** `db.select(...)` in a route loader looks innocent until the third place has to be kept in sync with a schema change. `db` becomes an ambient global; the schema becomes everyone's problem.
 3. **Errors arrive at the boundary in the wrong shape.** Procedures need Swedish, human-readable messages with the right ORPC status code. Services need testable, machine-readable failure modes that don't depend on a translation table. If the service throws a Swedish string, tests assert on Swedish strings; if the procedure throws a raw `Error`, the UI can't tell `LAST_ADMIN` apart from `NOT_FOUND`.
 
-The canonical example today is admin user CRUD. `softDeleteAsAdmin` enforces four rules; `updateAsAdmin` enforces five (counting `TARGET_DELETED`). Six months from now, a future feature — boat-week assignments — will have its own invariants ("can't assign a deleted user," "share-rotation order is fixed"). The seam needs to be in place before that lands, not retrofitted after.
+The canonical example today is admin user CRUD. `softDeleteAsAdmin` enforces four rules; `updateAsAdmin` enforces four guards (`NOT_FOUND`, `TARGET_DELETED`, `CANNOT_ACT_ON_SELF`, `LAST_ADMIN`). Six months from now, a future feature — boat-week assignments — will have its own invariants ("can't assign a deleted user," "share-rotation order is fixed"). The seam needs to be in place before that lands, not retrofitted after.
 
 ---
 
@@ -26,7 +26,7 @@ The canonical example today is admin user CRUD. `softDeleteAsAdmin` enforces fou
 - All `db.*` calls live in `src/lib/services/<entity>/<entity>.ts`. Outside that namespace and `src/lib/db/`, zero modules import `db`.
 - Invariants are enforced inside the guarded service operations (`updateAsAdmin`, `softDeleteAsAdmin`, …), never in callers.
 - Service operations either return the new state or throw an `<Entity>DomainError` whose `code` field is a TypeScript-narrow union of English machine identifiers.
-- oRPC procedures `try { await service.op() } catch (err) { rethrowAsORPC(err, ...) }` — translating each `code` to an `ORPCError` with the right status (`NOT_FOUND` / `CONFLICT` / `FORBIDDEN`) and a Swedish user-facing message.
+- oRPC procedures `try { await service.op() } catch (err) { rethrowAsORPC(err, ...) }` — translating each `code` to an `ORPCError` with the right status (`NOT_FOUND` / `CONFLICT` / `FORBIDDEN` / `BAD_REQUEST`) and a Swedish user-facing message.
 - Cross-system side effects (Better Auth session revoke, R2 deletes, email) happen in the procedure **after** the service call succeeds, never inside the service. (Side-effects layering is in ADR-0001.)
 
 The canonical example is `src/lib/services/user/`. Read it before adding a new service.
@@ -83,6 +83,10 @@ src/lib/services/
     index.ts             barrel: `export * from './<entity>'` (+ `./errors`)
 ```
 
+A service may additionally carry pure-function test files when logic warrants them (e.g. `season/logic.test.ts`) — same folder, no harness implications.
+
+Services today: `document/`, `documentEvent/`, `documentSearch/`, `file/`, `folder/`, `season/`, `share/`, `user/`. Their procedure-side counterparts live in `src/lib/orpc/procedures/`: `document.ts`, `documentBin.ts`, `documentSearch.ts`, `folder.ts`, `health.ts`, `image.ts`, `presence.ts`, `realtime.ts`, `season.ts`, `share.ts`, `user.ts` (not 1:1 — a service can back several procedure files, and `health`/`presence`/`realtime` need no service).
+
 External code always imports through the barrel:
 
 ```ts
@@ -92,7 +96,7 @@ const id = await userService.findIdByEmail(email)
 
 Never `~/lib/services/user/user` — the folder is the unit of import, the barrel is the public surface.
 
-`season/` and `share/` deliberately have **no** `errors.ts`. They have no invariants beyond raw CRUD today, so the file would be empty. The convention is: **`errors.ts` appears exactly when the first invariant does.**
+`documentEvent/` and `documentSearch/` deliberately have **no** `errors.ts`. They have no invariants beyond raw CRUD today, so the file would be empty. The convention is: **`errors.ts` appears exactly when the first invariant does.**
 
 ### The guarded-operation pattern
 
@@ -108,19 +112,46 @@ There are no exported raw `updateUser` / `softDeleteUser` primitives. When invar
 export async function softDeleteAsAdmin(actorId: string, targetId: string): Promise<void> {
   if (actorId === targetId) throw new UserDomainError('CANNOT_ACT_ON_SELF')
 
-  const target = await findRowById(targetId)
-  if (!target) throw new UserDomainError('NOT_FOUND')
-  if (target.deletedAt) return  // idempotent — already deleted is success
+  await db.transaction(async (tx) => {
+    const target = await findRowById(targetId, tx)
+    if (!target) throw new UserDomainError('NOT_FOUND')
+    if (target.deletedAt) return
 
-  if (target.role === 'admin' && (await countAdmins()) <= 1) {
-    throw new UserDomainError('LAST_ADMIN')
-  }
+    if (target.role === 'admin' && (await countAdmins(tx)) <= 1) {
+      throw new UserDomainError('LAST_ADMIN')
+    }
 
-  await db.update(user).set({ deletedAt: new Date() }).where(eq(user.id, targetId))
+    await tx.update(user).set({ deletedAt: new Date() }).where(eq(user.id, targetId))
+  })
 }
 ```
 
-Three rules to read in sequence. The `db.update` is the last line; the four lines above it are the rule layer. If a future maintainer wants to add "can't delete if there are pending boat-week assignments," they extend the rule layer in this function — no new file, no caller change.
+Rules read in sequence; the `tx.update` is the last line and everything above it is the rule layer. `updateAsAdmin` and `softDeleteAsAdmin` run inside `db.transaction`, with reads going through the transaction — the read primitives (`findRowById`, `countAdmins`) take a `DbOrTx` parameter defaulting to `db`, so the same helpers serve both transactional guards and plain reads. If a future maintainer wants to add "can't delete if there are pending boat-week assignments," they extend the rule layer in this function — no new file, no caller change.
+
+### Check first — never translate Postgres errors (added 2026-06-10)
+
+When an invariant is also backed by a DB constraint (a unique index, a CHECK), the service still enforces it **check-first**: an explicit read, then the typed domain error.
+
+```ts
+// src/lib/services/season/season.ts
+export async function createSeason(input: CreateSeasonInput): Promise<SeasonRow> {
+  if (await findSeason(input.year)) throw new SeasonDomainError('ALREADY_EXISTS')
+  // ... insert
+}
+```
+
+What we deliberately do **not** do: let the insert fail and translate the Postgres error — neither by message-regexing (`/duplicate key|unique constraint/`) nor by SQLSTATE matching (`err.code === '23505'`). Both make the domain layer's behavior depend on driver error shapes, and the regex variant breaks the moment Postgres wording or locale changes. A check-first read keeps the rule readable in sequence with the other guards and throws the same `<Entity>DomainError` shape as every other invariant.
+
+The constraint itself stays in the schema as a backstop. The window between check and write means a racing duplicate surfaces as a raw DB error (a 500) instead of the Swedish message — accepted at this scale (one or two admins). The same acceptance applies to cross-row invariants with **no** constraint backstop (`LAST_ADMIN`, `LEAVES_USER_WITH_ONLY_HALVES`): the check runs inside the guarded operation's transaction, but concurrent admins could in principle interleave check-then-write. We don't serialize for it. If the `LAST_ADMIN` race ever fired, recovery is one manual `UPDATE "user" SET role = 'admin' …` — note the `ADMIN_EMAILS` allowlist grants admin only at account *creation*, so a zero-admin state does not self-heal. Should concurrent admin mutations ever become real (more admins, automation), serialize the guarded operation with `pg_advisory_xact_lock(hashtext('<entity>_guard'))` as the first statement of its transaction (the idiom the Supabase skill's `lock-advisory` rule recommends) — still no SQLSTATE translation, no SERIALIZABLE retries.
+
+### Effect-boundary invariants (added 2026-06-10)
+
+One class of check legitimately lives in the procedure, not the service: ownership/shape validation that requires **storage knowledge**. Services may not import `~/lib/effects` (see "Why services stay free of Better Auth / Resend / R2 imports" below), so a check that needs the storage layer's pathname conventions can't live there. Examples:
+
+- `confirmAvatarUpload` (`src/lib/orpc/procedures/image.ts`) rejects pathnames where ``stripEnvPrefix(input.pathname).startsWith(`avatars/${context.user.id}/`)`` is false.
+- `confirmDocumentUpload` (`src/lib/orpc/procedures/document.ts`) requires `stripEnvPrefix(input.pathname).startsWith('documents/')`.
+
+`stripEnvPrefix` is exported from `src/lib/effects/storage/storage.ts` so the env-prefixing convention and its validation can't drift apart. These are **effect-boundary invariants** — the rule belongs to the storage contract, not the entity's data model. Don't mistake them for violations of "invariants are enforced inside guarded service operations, never in callers"; that rule governs invariants over the entity's own rows.
 
 ### The `<Entity>DomainError` shape
 
@@ -149,7 +180,7 @@ export class UserDomainError extends Error {
 
 ### Error mapping at the procedure boundary
 
-Each procedure file gets a local `rethrowAsORPC(err, context)` helper that translates `code` to `ORPCError`. The Swedish strings live here — colocated with the other UI-language strings the procedure exposes:
+Each entity gets a `rethrowAsORPC(err, context)`-style helper that translates `code` to `ORPCError`. It usually lives in the entity's procedure file; when two procedure files map the same domain error, sharing one exhaustive mapper is sanctioned — `src/lib/orpc/procedures/documentBin.ts` imports `rethrowDocumentErrorAsORPC` from `document.ts`. The Swedish strings live here — colocated with the other UI-language strings the procedure exposes:
 
 ```ts
 // src/lib/orpc/procedures/user.ts
@@ -215,10 +246,10 @@ This is also why test files for the user service can build minimal admins and me
 
 The instant the first invariant lands. Until then:
 
-- `season/` — no `errors.ts`. Raw CRUD; no rules to enforce (the week-21 default is a soft fallback, not a guard — see [ADR-0009](./0009-organization-rules.md)).
-- `user/`, `share/`, `document/`, `file/`, `folder/` — each has `errors.ts`. `share/` started rule-free and grew invariants later (the whole-share rule from [ADR-0009](./0009-organization-rules.md) and date/ownership guards), which is exactly when its `errors.ts` appeared.
+- `documentEvent/`, `documentSearch/` — no `errors.ts`. Raw CRUD/reads; no rules to enforce.
+- `user/`, `share/`, `season/`, `document/`, `file/`, `folder/` — each has `errors.ts`. `share/` started rule-free and grew invariants later (the whole-share rule from [ADR-0009](./0009-organization-rules.md) and date/ownership guards), which is exactly when its `errors.ts` appeared; `season/` followed on 2026-06-10 with `ALREADY_EXISTS | NOT_FOUND` (the week-21 default remains a soft fallback, not a guard — see [ADR-0009](./0009-organization-rules.md)).
 
-The pattern is symmetric: a service without invariants has no need to differentiate failures beyond "couldn't find it" (return `null`) and "DB-level error" (re-thrown unchanged). The moment you write a guard — `if (something) throw new XDomainError('...')` — you also add `errors.ts` and one barrel re-export. Don't add an empty errors file in anticipation.
+The pattern is symmetric: a service without invariants has no need to differentiate failures beyond "couldn't find it" (return `null`) and "DB-level error" (re-thrown unchanged). The moment you write a guard — `if (something) throw new XDomainError('...')` — you also add `errors.ts` and one barrel re-export. Don't add an empty errors file in anticipation. It works in reverse too: when a guard goes away, its code goes with it (`share/` dropped `PART_NOT_FOUND` on 2026-06-10), and an `errors.ts` whose last code disappears gets deleted.
 
 ### Why this is a deep module (in the skill's terms)
 
@@ -234,10 +265,10 @@ The pattern is symmetric: a service without invariants has no need to differenti
 A reader can confirm the architecture is being followed without running anything:
 
 - **No `db.*` calls outside services.** `grep -rn "db\.\(select\|insert\|update\|delete\)" src/ --include="*.ts" --include="*.tsx" | grep -v "src/lib/services/" | grep -v "src/lib/db/"` should produce **zero hits**.
-- **No `~/lib/db` imports outside services + the db module itself.** `grep -rn "from.*lib/db" src/ --include="*.ts" --include="*.tsx" | grep -v "src/lib/services/" | grep -v "src/lib/db/"` should produce zero non-test hits.
+- **No `~/lib/db` imports outside services + the db module itself.** `grep -rn "from.*lib/db" src/ --include="*.ts" --include="*.tsx" | grep -v "src/lib/services/" | grep -v "src/lib/db/" | grep -v "\.test\.ts"` should produce **zero hits**. One sanctioned `db` import escapes this pattern entirely: `src/lib/auth.ts` imports `{ db } from './db'` (relative path) to hand the handle to `drizzleAdapter` — wiring, not querying; Better Auth issues its own queries through the adapter.
 - **No transport imports inside services.** `grep -rn "lib/auth\|lib/effects\|@resend" src/lib/services/` should produce zero hits.
-- **Procedures import services through the barrel.** Grep `lib/services/<entity>/<entity>` in `src/lib/orpc/procedures/` — zero hits; only `lib/services/<entity>` (the folder, via the barrel).
-- **Domain errors carry typed codes.** Grep `instanceof.*DomainError` — every match should be inside a `rethrowAsORPC`-style helper in `src/lib/orpc/procedures/`, switching on `.code`.
+- **Procedures import services through the barrel.** `grep -rn "lib/services/[a-zA-Z]*/" src/lib/orpc/procedures/` — zero hits; only `lib/services/<entity>` (the folder, via the barrel).
+- **Domain errors carry typed codes.** `grep -rn "instanceof.*DomainError" src/ --include="*.ts" | grep -v "\.test\.ts"` — every match is inside a `rethrowAsORPC`-style helper in `src/lib/orpc/procedures/`, switching on `.code`. (Test files also match `instanceof` legitimately, hence the exclusion. Not every procedure file shows a match: `documentBin.ts` reuses the shared `rethrowDocumentErrorAsORPC` from `document.ts` instead of defining its own — sanctioned.)
 - **`errors.ts` exists iff invariants exist.** A service folder with `errors.ts` must have at least one `throw new X DomainError(...)` in its `<entity>.ts`. A service folder *without* `errors.ts` must have zero `throw` statements in `<entity>.ts`.
 
 Manual smoke test:
@@ -256,7 +287,8 @@ Manual smoke test:
 - `src/lib/services/user/index.ts` — canonical barrel.
 - `src/lib/orpc/procedures/user.ts` — canonical `rethrowAsORPC` helper + service+side-effect ordering.
 - `test/setup.ts` — schema-per-test harness that makes services testable in isolation.
-- `src/lib/services/season/` — service without invariants → no `errors.ts`. (`share/`, `document/`, `file/`, `folder/` each grew an `errors.ts` once their first invariant landed.)
+- `src/lib/services/documentEvent/`, `src/lib/services/documentSearch/` — services without invariants → no `errors.ts`. (`share/`, `season/`, `document/`, `file/`, `folder/` each grew an `errors.ts` once their first invariant landed.)
+- `src/lib/orpc/procedures/document.ts` + `documentBin.ts` — the shared-mapper variant: one exhaustive `rethrowDocumentErrorAsORPC` exported from `document.ts`, imported by `documentBin.ts`.
 
 > See [ADR-0009 — Organization rules](./0009-organization-rules.md) for the index of social invariants and which ones encode as hard `<Entity>DomainError` codes vs soft defaults; this ADR owns the *mechanism*, ADR-0009 owns the *catalogue of rules*.
 

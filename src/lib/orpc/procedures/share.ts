@@ -6,37 +6,36 @@ import * as shareService from '~/lib/services/share'
 import { ShareDomainError } from '~/lib/services/share'
 import * as userService from '~/lib/services/user'
 import { SHARE_CODES, type ShareCode } from '~/lib/shares/codes'
+import { m } from '~/paraglide/messages'
 
 const shareCodeSchema = z.enum(SHARE_CODES)
 
-function rethrowAsORPC(err: unknown, _action: 'assign' | 'unassign'): never {
+function rethrowAsORPC(err: unknown): never {
   if (!(err instanceof ShareDomainError)) throw err
   switch (err.code) {
-    case 'PART_NOT_FOUND':
-      throw new ORPCError('NOT_FOUND', { message: 'Andelen hittades inte' })
     case 'USER_NOT_FOUND':
       throw new ORPCError('NOT_FOUND', {
-        message: 'Användaren hittades inte eller är borttagen',
+        message: m.share_error_user_not_found(),
       })
     case 'ALREADY_CURRENT_OWNER':
       throw new ORPCError('CONFLICT', {
-        message: 'Användaren äger redan andelen',
+        message: m.share_error_already_owner(),
       })
     case 'FROM_DATE_NOT_AFTER_CURRENT':
       throw new ORPCError('CONFLICT', {
-        message: 'Datumet måste vara efter nuvarande tilldelning',
+        message: m.share_error_date_not_after_current(),
       })
     case 'NOT_ASSIGNED':
       throw new ORPCError('CONFLICT', {
-        message: 'Andelen är inte tilldelad',
+        message: m.share_error_not_assigned(),
       })
     case 'DATE_NOT_AFTER_CURRENT':
       throw new ORPCError('CONFLICT', {
-        message: 'Datumet måste vara efter nuvarande tilldelning',
+        message: m.share_error_date_not_after_current(),
       })
     case 'LEAVES_USER_WITH_ONLY_HALVES':
       throw new ORPCError('CONFLICT', {
-        message: 'Användaren skulle bara äga halvor — varje ägare måste ha minst en hel andel',
+        message: m.share_error_only_halves(),
       })
   }
 }
@@ -179,7 +178,7 @@ export const shareRouter = {
       try {
         await shareService.assignShareAsAdmin(input, { actorUserId: context.user.id })
       } catch (err) {
-        rethrowAsORPC(err, 'assign')
+        rethrowAsORPC(err)
       }
       context.log.info('admin assigned share', {
         shareCode: input.shareCode,
@@ -203,7 +202,7 @@ export const shareRouter = {
       try {
         await shareService.unassignShareAsAdmin(input)
       } catch (err) {
-        rethrowAsORPC(err, 'unassign')
+        rethrowAsORPC(err)
       }
       context.log.info('admin unassigned share', {
         shareCode: input.shareCode,

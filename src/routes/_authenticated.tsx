@@ -5,9 +5,11 @@ import { UploadQueueBox } from '~/components/document/upload/UploadQueueBox'
 import { UploadQueueProvider } from '~/components/document/upload/UploadQueueProvider'
 import { SidebarInset, SidebarProvider, SidebarTrigger } from '~/components/ui/sidebar'
 import { TooltipProvider } from '~/components/ui/tooltip'
+import { HeaderUserMenu } from '~/components/user/UserMenu'
 import { useRealtimeSync } from '~/hooks/useRealtimeSync'
 import { rememberBrowserUser } from '~/lib/browserSessionFns'
 import { getSession } from '~/lib/getSession'
+import { orpc } from '~/lib/orpc/client'
 
 export const Route = createFileRoute('/_authenticated')({
   beforeLoad: async ({ location }) => {
@@ -16,10 +18,14 @@ export const Route = createFileRoute('/_authenticated')({
       throw redirect({ to: '/login', search: { redirect: location.href } })
     }
     if (environmentManager.isServer()) {
-      await rememberBrowserUser({ data: { email: session.user.email } })
+      await rememberBrowserUser({
+        data: { email: session.user.email, userId: session.user.id },
+      })
     }
     return { user: session.user }
   },
+  loader: ({ context: { queryClient } }) =>
+    queryClient.ensureQueryData(orpc.user.me.queryOptions()),
   component: AuthenticatedLayout,
 })
 
@@ -35,6 +41,9 @@ function AuthenticatedLayout() {
           <SidebarInset>
             <header className="sticky top-0 z-30 flex h-12 items-center gap-2 border-b bg-background px-4 md:hidden">
               <SidebarTrigger />
+              <div className="ml-auto flex items-center">
+                <HeaderUserMenu />
+              </div>
             </header>
             <Outlet />
           </SidebarInset>

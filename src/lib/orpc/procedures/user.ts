@@ -1,13 +1,13 @@
 import { ORPCError } from '@orpc/server'
 import { z } from 'zod'
-import { normalizeEmail } from '~/lib/adminAllowlist'
 import { auth } from '~/lib/auth'
 import { realtime } from '~/lib/effects'
-import { adminProcedure, protectedProcedure, publicProcedure } from '~/lib/orpc/context'
+import { adminProcedure, protectedProcedure } from '~/lib/orpc/context'
 import type { SharePartRow } from '~/lib/services/share'
 import * as shareService from '~/lib/services/share'
 import * as userService from '~/lib/services/user'
 import { UserDomainError } from '~/lib/services/user'
+import { m } from '~/paraglide/messages'
 
 function surnameKey(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean)
@@ -16,16 +16,22 @@ function surnameKey(name: string): string {
 
 const roleSchema = z.enum(['user', 'admin'])
 
+// Error callbacks (not literals) so each parse resolves the active locale —
+// the schema itself is module-level and outlives any single request.
 const userInputSchema = z.object({
-  name: z.string(),
+  name: z
+    .string()
+    .trim()
+    .min(1, { error: () => m.validation_name_required() })
+    .max(255, { error: () => m.validation_name_too_long() }),
   email: z
-    .email({ error: 'Ange en giltig e-postadress' })
-    .min(1, { error: 'Ange en e-postadress' }),
+    .email({ error: () => m.validation_email_invalid() })
+    .min(1, { error: () => m.validation_email_required() }),
   phone: z
     .string()
-    .max(30, { error: 'Telefonnumret är för långt (max 30 tecken)' })
+    .max(30, { error: () => m.validation_phone_too_long() })
     .refine((v) => v === '' || v.length >= 5, {
-      error: 'Telefonnumret är för kort (minst 5 tecken)',
+      error: () => m.validation_phone_too_short(),
     }),
   role: roleSchema,
 })
@@ -34,20 +40,15 @@ function rethrowAsORPC(err: unknown, context: 'update' | 'delete' | 'restore'): 
   if (!(err instanceof UserDomainError)) throw err
   switch (err.code) {
     case 'NOT_FOUND':
-      throw new ORPCError('NOT_FOUND', { message: 'Användaren hittades inte' })
+      throw new ORPCError('NOT_FOUND', { message: m.user_error_not_found() })
     case 'TARGET_DELETED':
-      throw new ORPCError('CONFLICT', {
-        message: 'Användaren är borttagen och kan inte ändras',
-      })
+      throw new ORPCError('CONFLICT', { message: m.user_error_target_deleted() })
     case 'CANNOT_ACT_ON_SELF':
       throw new ORPCError('FORBIDDEN', {
-        message:
-          context === 'delete' ? 'Du kan inte radera dig själv' : 'Du kan inte degradera dig själv',
+        message: context === 'delete' ? m.user_error_delete_self() : m.user_error_demote_self(),
       })
     case 'LAST_ADMIN':
-      throw new ORPCError('CONFLICT', {
-        message: 'Det måste finnas minst en administratör',
-      })
+      throw new ORPCError('CONFLICT', { message: m.user_error_last_admin() })
   }
 }
 
@@ -63,13 +64,6 @@ export const userRouter = {
   findIdByEmail: adminProcedure
     .input(z.object({ email: z.email() }))
     .handler(({ input }) => userService.findIdByEmail(input.email)),
-
-  // Public: backs the login "Välkommen tillbaka" card, which only knows the
-  // last-signed-in email (from the browser-session cookie) and needs the live
-  // avatar. Returns all-null for unknown/avatar-less emails — see service note.
-  avatarByEmail: publicProcedure
-    .input(z.object({ email: z.email() }))
-    .handler(({ input }) => userService.findAvatarByEmail(normalizeEmail(input.email))),
 
   list: adminProcedure
     .input(z.object({ filter: z.enum(['active', 'deleted']).default('active') }))
@@ -103,7 +97,7 @@ export const userRouter = {
   getById: adminProcedure.input(z.object({ id: z.uuid() })).handler(async ({ input }) => {
     const target = await userService.findActiveById(input.id)
     if (!target) {
-      throw new ORPCError('NOT_FOUND', { message: 'Användaren hittades inte' })
+      throw new ORPCError('NOT_FOUND', { message: m.user_error_not_found() })
     }
     return target
   }),

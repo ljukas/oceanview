@@ -1,7 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { z } from 'zod'
-import { Button } from '~/components/ui/button'
 import {
   Dialog,
   DialogContent,
@@ -12,8 +11,14 @@ import {
 } from '~/components/ui/dialog'
 import { useAppForm } from '~/hooks/form'
 import { orpc } from '~/lib/orpc/client'
+import { m } from '~/paraglide/messages'
 
-const schema = z.object({ name: z.string().min(1, 'Ange ett namn').max(255) })
+const schema = z.object({
+  name: z
+    .string()
+    .min(1, { error: () => m.validation_name_required() })
+    .max(255),
+})
 
 type Props = {
   open: boolean
@@ -28,10 +33,10 @@ export function CreateFolderDialog({ open, onOpenChange, parentId }: Props) {
     orpc.folder.createFolder.mutationOptions({
       onSuccess: async () => {
         await queryClient.invalidateQueries({ queryKey: orpc.folder.key() })
-        toast.success('Mappen skapades')
+        toast.success(m.folder_created_toast())
         onOpenChange(false)
       },
-      onError: (err) => toast.error(err.message || 'Kunde inte skapa mappen'),
+      onError: (err) => toast.error(err.message || m.folder_create_error()),
     }),
   )
 
@@ -47,8 +52,8 @@ export function CreateFolderDialog({ open, onOpenChange, parentId }: Props) {
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Ny mapp</DialogTitle>
-          <DialogDescription>Skapa en mapp här för att organisera dokument.</DialogDescription>
+          <DialogTitle>{m.folder_create_title()}</DialogTitle>
+          <DialogDescription>{m.folder_create_description()}</DialogDescription>
         </DialogHeader>
         <form
           onSubmit={(e) => {
@@ -57,20 +62,17 @@ export function CreateFolderDialog({ open, onOpenChange, parentId }: Props) {
           }}
         >
           <form.AppField name="name">
-            {(field) => <field.TextField label="Namn" autoComplete="off" autoFocus />}
+            {(field) => (
+              <field.TextField label={m.document_name_label()} autoComplete="off" autoFocus />
+            )}
           </form.AppField>
 
           <DialogFooter className="mt-6">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => onOpenChange(false)}
-              disabled={form.state.isSubmitting}
-            >
-              Avbryt
-            </Button>
             <form.AppForm>
-              <form.SubmitButton label="Skapa mapp" />
+              <form.CancelButton onClick={() => onOpenChange(false)}>
+                {m.common_cancel()}
+              </form.CancelButton>
+              <form.SubmitButton label={m.folder_create_submit()} />
             </form.AppForm>
           </DialogFooter>
         </form>
