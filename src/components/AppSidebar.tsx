@@ -1,15 +1,5 @@
 import { Link, linkOptions, useMatchRoute } from '@tanstack/react-router'
-import {
-  AnchorIcon,
-  CalendarIcon,
-  FolderIcon,
-  LogOutIcon,
-  Trash2Icon,
-  UsersIcon,
-} from 'lucide-react'
-import { LocaleSwitcher } from '~/components/LocaleSwitcher'
-import { ModeToggle } from '~/components/ModeToggle'
-import { Button } from '~/components/ui/button'
+import { AnchorIcon, CalendarIcon, FolderIcon, Trash2Icon, UsersIcon } from 'lucide-react'
 import {
   Sidebar,
   SidebarContent,
@@ -23,8 +13,7 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from '~/components/ui/sidebar'
-import { AccountAvatarLink } from '~/components/user/AccountAvatarLink'
-import { useSignOut } from '~/lib/authClient'
+import { SidebarUserMenu } from '~/components/user/UserMenu'
 import { m } from '~/paraglide/messages'
 
 type SidebarUser = {
@@ -48,8 +37,7 @@ type NavItem = (typeof mainNavItems)[number] | (typeof adminNavItems)[number]
 
 export function AppSidebar({ user }: { user: SidebarUser }) {
   const matchRoute = useMatchRoute()
-  const { setOpenMobile, isMobile } = useSidebar()
-  const signOut = useSignOut()
+  const { setOpenMobile } = useSidebar()
 
   const isAdmin = user.role === 'admin'
 
@@ -87,25 +75,12 @@ export function AppSidebar({ user }: { user: SidebarUser }) {
           </SidebarGroup>
         ) : null}
       </SidebarContent>
-      <SidebarFooter className="flex flex-row items-center gap-2 p-4">
-        {/* On mobile these live in the header next to the hamburger */}
-        {isMobile ? null : (
-          <>
-            <ModeToggle />
-            <LocaleSwitcher />
-            <AccountAvatarLink onClick={() => setOpenMobile(false)} />
-          </>
-        )}
-        <Button
-          variant="outline"
-          className="flex-1"
-          onClick={() => {
-            void signOut()
-          }}
-        >
-          <LogOutIcon />
-          <span>{m.nav_sign_out()}</span>
-        </Button>
+      {/* Hidden below md: the mobile header already shows HeaderUserMenu,
+          so the drawer would duplicate it. */}
+      <SidebarFooter className="hidden md:flex">
+        <SidebarMenu>
+          <SidebarUserMenu />
+        </SidebarMenu>
       </SidebarFooter>
     </Sidebar>
   )

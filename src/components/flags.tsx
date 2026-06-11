@@ -7,6 +7,10 @@ type FlagProps = {
   className?: string
 }
 
+// The ring keeps the GB flag's white quadrants from washing into light
+// backgrounds; rounded-full shapes it to the circular flag.
+export const FLAG_CLASSES = 'size-4 rounded-full ring-1 ring-border'
+
 export function SwedenFlag({ className }: FlagProps) {
   return (
     <svg
