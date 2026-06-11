@@ -35,6 +35,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
         sizes: '180x180',
         href: '/apple-touch-icon.png',
       },
+      { rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg' },
       {
         rel: 'icon',
         type: 'image/png',
@@ -47,7 +48,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
         sizes: '16x16',
         href: '/favicon-16x16.png',
       },
-      { rel: 'manifest', href: '/site.webmanifest', color: '#fffff' },
+      { rel: 'manifest', href: '/site.webmanifest' },
       { rel: 'icon', href: '/favicon.ico' },
     ],
   }),

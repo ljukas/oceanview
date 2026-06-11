@@ -11,7 +11,8 @@ services:
       # Persist Neon Local's branch metadata so `down`/`up` reuses the same
       # upstream branch instead of creating a fresh one. Combined with the
       # git/HEAD mount below, each local git branch gets its own persistent
-      # Neon branch.
+      # Neon branch. These accumulate (~32 MB each against the 512 MB free
+      # tier) — `pnpm neon:prune` deletes the ones whose git branch is gone.
       - ./.neon_local:/tmp/.neon_local
       - ./.git/HEAD:/tmp/.git/HEAD:ro
     restart: unless-stopped

@@ -9,6 +9,8 @@
 
 > **Amendment (2026-06-11)** — Sender domain verified; Resend is live in prod. Domain `mail.lukaslindqvist.se` (Resend region `eu-west-1`), DNS at Namecheap: MX + SPF TXT on `send.mail`, DKIM TXT on `resend._domainkey.mail`, DMARC on `_dmarc.mail`. `RESEND_API_KEY` + `EMAIL_FROM` (`Oceanview <no-reply@mail.lukaslindqvist.se>`) set in Vercel production env. With Resend active, magic-link URLs in Runtime Logs became a pure liability (see the closed "Interim risk" item under Deferred work), so the `devLog` adapter now redacts the URL when `NODE_ENV === 'production'` — a prod fall-through (config regression) still logs `magic-link (devLog)` as a misconfiguration signal, just without a usable sign-in link.
 
+> **Amendment (2026-06-11, open tracking)** — Open tracking enabled on the Resend domain (`resend domains update <id> --open-tracking`). Resend injects a tracking pixel into the HTML part; opens are read in the Resend dashboard — no webhook, no app code. **Click tracking deliberately left off**: tracking is domain-wide (no per-email/per-link control in the Resend API), so enabling it would rewrite the one-time magic-link URL through Resend's redirect — an added failure mode on tier-1 sign-in, and a visible-URL/href mismatch on the template's plain fallback link (a spam-filter/phishing signal). Caveat: Apple Mail Privacy Protection pre-fetches pixels, so opens from Apple Mail users read as ~100% — the metric is directional, not exact.
+
 ---
 
 ## Context
@@ -199,7 +201,7 @@ Re-open this decision if any of the following land:
 - ~~**Sender-domain verification**~~ — **Done 2026-06-11** (see Amendment above): `mail.lukaslindqvist.se` verified, Vercel envs set, `resend` adapter active in prod.
 - ~~**Interim risk: prod magic-links in Runtime Logs.**~~ — **Closed 2026-06-11**: the `devLog` adapter redacts the magic-link URL when `NODE_ENV === 'production'`, so a future config regression can't leak sign-in links into Runtime Logs. `src/lib/logger/redact.ts` stays unchanged (a global `url` path would scrub far too much).
 - **Additional templates** — added with new features (user invitation, schedule reminder, season summary). Each new template is one `<Name>Email.tsx` + one new method on `EmailEffects` + per-adapter wiring.
-- **Webhook / bounce handling, open tracking, suppression list** — Resend-side; not needed at 20 users.
+- **Webhook / bounce handling, suppression list** — Resend-side; not needed at 20 users. (Open tracking enabled 2026-06-11 — see Amendment; click tracking deliberately off.)
 - **Logo asset** — `MagicLinkEmail.tsx` currently uses a styled text wordmark. Swap to a hosted image (Vercel Blob's `oceanview-public` store, or a base64-inlined SVG) once a brand mark exists.
 
 ---
