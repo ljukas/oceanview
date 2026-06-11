@@ -1,5 +1,4 @@
-import { GB, SE } from 'country-flag-icons/react/3x2'
-import { GlobeIcon } from 'lucide-react'
+import { SwedenFlag, UnitedKingdomFlag } from '~/components/flags'
 import { Button } from '~/components/ui/button'
 import {
   DropdownMenu,
@@ -15,7 +14,14 @@ import { getLocale, type Locale, setLocale } from '~/paraglide/runtime'
 // whole document (loader data, query cache, <html lang>) re-renders
 // server-side in the new locale, so no React state or provider is involved.
 
-const FLAG_BY_LOCALE: Record<Locale, typeof SE> = { sv: SE, en: GB }
+const FLAG_BY_LOCALE: Record<Locale, typeof SwedenFlag> = {
+  sv: SwedenFlag,
+  en: UnitedKingdomFlag,
+}
+
+// The ring keeps the GB flag's white quadrants from washing into light
+// backgrounds; rounded-full shapes it to the circular flag.
+const FLAG_CLASSES = 'size-4 rounded-full ring-1 ring-border'
 
 export function LocaleSwitcher() {
   const Flag = FLAG_BY_LOCALE[getLocale()]
@@ -23,10 +29,7 @@ export function LocaleSwitcher() {
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button variant="outline" size="icon">
-          {/* Flag wrapper matches FlagComponent in ui/phone-input.tsx */}
-          <span className="flex h-4 w-6 overflow-hidden rounded-sm bg-foreground/20 [&_svg:not([class*='size-'])]:size-full">
-            <Flag title={m.locale_switcher_label()} />
-          </span>
+          <Flag className={FLAG_CLASSES} />
           <span className="sr-only">{m.locale_switcher_label()}</span>
         </Button>
       </DropdownMenuTrigger>
@@ -37,8 +40,14 @@ export function LocaleSwitcher() {
         >
           {/* Endonyms — each language named in itself, readable whatever the
               active locale is. Deliberately not in messages/*.json. */}
-          <DropdownMenuRadioItem value="sv">Svenska</DropdownMenuRadioItem>
-          <DropdownMenuRadioItem value="en">English</DropdownMenuRadioItem>
+          <DropdownMenuRadioItem value="sv">
+            <SwedenFlag className={FLAG_CLASSES} />
+            Svenska
+          </DropdownMenuRadioItem>
+          <DropdownMenuRadioItem value="en">
+            <UnitedKingdomFlag className={FLAG_CLASSES} />
+            English
+          </DropdownMenuRadioItem>
         </DropdownMenuRadioGroup>
       </DropdownMenuContent>
     </DropdownMenu>
@@ -50,9 +59,10 @@ export function LocaleSwitcher() {
 // doesn't understand the current one.
 export function LocaleSwitcherInline() {
   const other: Locale = getLocale() === 'sv' ? 'en' : 'sv'
+  const OtherFlag = FLAG_BY_LOCALE[other]
   return (
     <Button variant="ghost" size="sm" onClick={() => setLocale(other)}>
-      <GlobeIcon data-icon="inline-start" />
+      <OtherFlag className={FLAG_CLASSES} />
       {other === 'en' ? 'In English' : 'På svenska'}
     </Button>
   )
