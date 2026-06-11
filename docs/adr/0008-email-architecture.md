@@ -7,6 +7,8 @@
 
 > **Amendment (2026-06-10)** — The selector now requires **both** `RESEND_API_KEY` and `EMAIL_FROM` before picking the `resend` adapter (`src/lib/effects/email/email.ts`). Previously a half-configured Resend (key set, `EMAIL_FROM` forgotten) selected `resend` anyway, and the adapter threw on every send — magic-link is tier-1 sync-critical, so that bricked all sign-ins. Now the selector logs `logger.error('RESEND_API_KEY is set but EMAIL_FROM is missing; falling back to devLog')` and uses `devLog` instead (links surface in Runtime Logs, same as the pre-DNS deferred state). Precedence list and selector snippet below updated to match.
 
+> **Amendment (2026-06-11)** — Sender domain verified; Resend is live in prod. Domain `mail.lukaslindqvist.se` (Resend region `eu-west-1`), DNS at Namecheap: MX + SPF TXT on `send.mail`, DKIM TXT on `resend._domainkey.mail`, DMARC on `_dmarc.mail`. `RESEND_API_KEY` + `EMAIL_FROM` (`Oceanview <no-reply@mail.lukaslindqvist.se>`) set in Vercel production env. With Resend active, magic-link URLs in Runtime Logs became a pure liability (see the closed "Interim risk" item under Deferred work), so the `devLog` adapter now redacts the URL when `NODE_ENV === 'production'` — a prod fall-through (config regression) still logs `magic-link (devLog)` as a misconfiguration signal, just without a usable sign-in link.
+
 ---
 
 ## Context
@@ -194,8 +196,8 @@ Re-open this decision if any of the following land:
 
 ## Deferred work
 
-- **Sender-domain verification** — `mail.<oceanview-domain>` DNS records (SPF, DKIM, return-path). Once done, set `RESEND_API_KEY` and `EMAIL_FROM` in Vercel envs — the `resend` adapter activates automatically. No code change.
-- **Interim risk: prod magic-links in Runtime Logs.** Until DNS verification lands, production sends fall through to `devLog`, so magic-link URLs surface in Vercel Runtime Logs — the redaction policy in `src/lib/logger/redact.ts` deliberately spares them (they're only emitted by the `devLog` adapter). Anyone with Runtime Logs access can sign in as anyone whose link they capture before it expires. Accepted as an interim risk for this internal app. Checklist item: revisit the redaction decision once the `resend` adapter activates — at that point magic-link URLs in logs become a pure liability.
+- ~~**Sender-domain verification**~~ — **Done 2026-06-11** (see Amendment above): `mail.lukaslindqvist.se` verified, Vercel envs set, `resend` adapter active in prod.
+- ~~**Interim risk: prod magic-links in Runtime Logs.**~~ — **Closed 2026-06-11**: the `devLog` adapter redacts the magic-link URL when `NODE_ENV === 'production'`, so a future config regression can't leak sign-in links into Runtime Logs. `src/lib/logger/redact.ts` stays unchanged (a global `url` path would scrub far too much).
 - **Additional templates** — added with new features (user invitation, schedule reminder, season summary). Each new template is one `<Name>Email.tsx` + one new method on `EmailEffects` + per-adapter wiring.
 - **Webhook / bounce handling, open tracking, suppression list** — Resend-side; not needed at 20 users.
 - **Logo asset** — `MagicLinkEmail.tsx` currently uses a styled text wordmark. Swap to a hosted image (Vercel Blob's `oceanview-public` store, or a base64-inlined SVG) once a brand mark exists.

@@ -2,7 +2,7 @@
 
 Internal web app for a sailboat co-ownership group (10–20 users: owners + a couple of admins). Not a commercial product — it coordinates one boat among its owners.
 
-**State**: scaffold + auth + DB + services + file storage + email all wired. Resend in prod is gated on sender-domain verification ([Deferred work](#deferred-work)); until then prod magic-links go through `devLog` and surface in Vercel Runtime Logs.
+**State**: scaffold + auth + DB + services + file storage + email all wired. Resend is live in prod (sender domain `mail.lukaslindqvist.se`, verified 2026-06-11; see ADR-0008).
 
 **Architecture lives in `docs/adr/`** (ADRs 0001–0011). This file is a router: rules + commands + gotchas. For *why* a pattern exists, follow the ADR link.
 
@@ -187,7 +187,7 @@ Five architectural rules (full rationale in each ADR — read it before adjustin
 - **Set in Vercel + `.env`**: `BETTER_AUTH_SECRET` (32+ chars; `openssl rand -base64 32`), `BETTER_AUTH_URL`, `ADMIN_EMAILS` (CSV allowlist). `ADMIN_EMAILS` is consulted only when a user row is *created* (signup hook in `auth.ts`) — editing it later does **not** change existing users. To promote/demote an existing user, update their `role` via the admin UI at `/admin` (or the Better Auth admin API); to revoke access immediately, also revoke their sessions (role is cookie-cached up to 5 min, sessions live 30 days).
 - **Vercel Blob (auto-provisioned via Marketplace)**: `BLOB_PUBLIC_READ_WRITE_TOKEN` (avatars), `BLOB_PRIVATE_READ_WRITE_TOKEN` (documents). Leave blank locally; use `S3_*` instead. Override: `STORAGE_ADAPTER=devLog` (tests).
 - **Local S3** (backs `pnpm storage:up`): `S3_ENDPOINT` (default `http://localhost:14523`), `S3_REGION=eu-north-1`, `S3_ACCESS_KEY_ID`/`S3_SECRET_ACCESS_KEY` (default `oceanview-dev`/`oceanview-dev-secret-key`), `S3_BUCKET_PUBLIC=oceanview-public`, `S3_BUCKET_PRIVATE=oceanview-private`. When `S3_ENDPOINT` is set, the storage adapter picks `s3` over `BLOB_*`. See ADR-0006.
-- **Resend (after DNS verification)**: `RESEND_API_KEY`, `EMAIL_FROM`. Activates when `RESEND_API_KEY` is set and `SMTP_HOST` is unset. Until then, prod runs through `devLog`. See ADR-0008.
+- **Resend (live in prod)**: `RESEND_API_KEY`, `EMAIL_FROM` (`Oceanview <no-reply@mail.lukaslindqvist.se>`) set in Vercel production. Selected when both are set and `SMTP_HOST` is unset. See ADR-0008.
 - **Local SMTP (Mailpit)**: `SMTP_HOST=localhost`, `SMTP_PORT=14522`, `EMAIL_FROM`. When set, takes precedence over `RESEND_API_KEY` so `vercel env pull` accidents don't send real mail. Override: `EMAIL_ADAPTER=devLog`. See ADR-0008.
 - **Optional**: `LOG_LEVEL` (pino; defaults: `debug` dev, `info` prod). `REDIS_URL` enables BullMQ locally.
 
@@ -219,7 +219,7 @@ WebFetch before guessing APIs.
 
 ## Deferred work
 
-**Resend sender domain** — `resend` adapter ships in `src/lib/effects/email/adapters/resend.ts`, gated on `RESEND_API_KEY` + `EMAIL_FROM` set in Vercel (and `SMTP_HOST` unset — the prod default). Pending DNS for `mail.<oceanview-domain>` (SPF/DKIM/return-path). Drop values into Vercel envs once verified — no code change. Until then, prod magic-links go through `devLog` and appear in Vercel Runtime Logs. See ADR-0008.
+Nothing currently deferred. (Resend sender-domain verification landed 2026-06-11 — see ADR-0008 amendments.)
 
 ---
 
