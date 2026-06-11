@@ -33,6 +33,7 @@ export const Route = createFileRoute('/login')({
         ? {
             email: session.email,
             hasPasskey: session.hasPasskey,
+            name: session.name,
             image: session.image,
             imageBlurhash: session.imageBlurhash,
           }
@@ -90,6 +91,7 @@ function Login() {
         <WelcomeBackCard
           email={savedLogin.email}
           hasPasskey={savedLogin.hasPasskey}
+          name={savedLogin.name}
           image={savedLogin.image}
           imageBlurhash={savedLogin.imageBlurhash}
           callbackURL={callbackURL}

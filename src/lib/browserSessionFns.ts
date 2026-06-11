@@ -8,10 +8,10 @@ import {
 } from '~/lib/browserSession'
 import { findAvatarByEmail } from '~/lib/services/user'
 
-// Avatar is resolved here, server-side, from the cookie's own email — never
-// from a caller-supplied address. Keeping the lookup cookie-bound means there
-// is no endpoint an anonymous visitor can probe with arbitrary emails to
-// confirm an account exists (or fetch its photo).
+// Name and avatar are resolved here, server-side, from the cookie's own email —
+// never from a caller-supplied address. Keeping the lookup cookie-bound means
+// there is no endpoint an anonymous visitor can probe with arbitrary emails to
+// confirm an account exists (or fetch its name/photo).
 export const getBrowserSession = createServerFn({ method: 'GET' }).handler(async () => {
   const session = readBrowserSession()
   if (!session) return null

@@ -14,6 +14,7 @@ import {
 import { Spinner } from '~/components/ui/spinner'
 import { usePasskeySupport } from '~/hooks/usePasskeys'
 import { authClient } from '~/lib/authClient'
+import { initials } from '~/lib/utils'
 import { m } from '~/paraglide/messages'
 
 type Props = {
@@ -23,6 +24,7 @@ type Props = {
   hasPasskey: boolean | undefined
   // Resolved server-side by the login loader from the cookie's email — kept
   // out of the cookie itself so it never goes stale.
+  name: string | null
   image: string | null
   imageBlurhash: string | null
   onSent: (email: string) => void
@@ -35,6 +37,7 @@ type Props = {
 export function WelcomeBackCard({
   email,
   hasPasskey,
+  name,
   image,
   imageBlurhash,
   onSent,
@@ -104,7 +107,7 @@ export function WelcomeBackCard({
             <AvatarImage src={image} alt={email} width={64} height={64} blurhash={imageBlurhash} />
           ) : null}
           <AvatarFallback className="font-semibold text-2xl">
-            {email[0]?.toUpperCase() ?? '?'}
+            {name?.trim() ? initials(name) : (email[0]?.toUpperCase() ?? '?')}
           </AvatarFallback>
         </Avatar>
         <div className="break-all text-center font-medium text-sm">{email}</div>
