@@ -18,6 +18,7 @@ import { authClient } from '~/lib/authClient'
 type Props = {
   email: string
   image: string | null
+  imageBlurhash?: string | null
   onSent: (email: string) => void
   onSwitchUser: () => void
   onPasskeySignIn: () => void
@@ -28,6 +29,7 @@ type Props = {
 export function WelcomeBackCard({
   email,
   image,
+  imageBlurhash,
   onSent,
   onSwitchUser,
   onPasskeySignIn,
@@ -59,7 +61,9 @@ export function WelcomeBackCard({
       </CardHeader>
       <CardContent className="flex flex-col items-center gap-3">
         <Avatar className="size-16">
-          {image ? <AvatarImage src={image} alt={email} width={64} height={64} /> : null}
+          {image ? (
+            <AvatarImage src={image} alt={email} width={64} height={64} blurhash={imageBlurhash} />
+          ) : null}
           <AvatarFallback className="font-semibold text-2xl">
             {email[0]?.toUpperCase() ?? '?'}
           </AvatarFallback>

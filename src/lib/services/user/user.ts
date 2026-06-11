@@ -46,6 +46,20 @@ export async function findIdByEmail(email: string): Promise<string | null> {
   return row?.id ?? null
 }
 
+// Live avatar lookup for the public "Välkommen tillbaka" login card. Returns
+// all-null for unknown or soft-deleted emails — indistinguishable from an
+// avatar-less account, so the public procedure leaks nothing about who exists.
+export async function findAvatarByEmail(
+  email: string,
+): Promise<{ image: string | null; imageBlurhash: string | null }> {
+  const [row] = await db
+    .select({ image: user.image, imageBlurhash: user.imageBlurhash })
+    .from(user)
+    .where(and(eq(user.email, email), isNull(user.deletedAt)))
+    .limit(1)
+  return { image: row?.image ?? null, imageBlurhash: row?.imageBlurhash ?? null }
+}
+
 export async function listAll(): Promise<Array<UserRow>> {
   return db.select(userSelection).from(user).where(isNull(user.deletedAt)).orderBy(asc(user.name))
 }
