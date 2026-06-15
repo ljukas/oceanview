@@ -37,6 +37,8 @@
 >
 > **Deleting a prod-origin file in dev is safe** — prod is untouched on both axes. Soft-delete is a pure DB write on the **dev Neon branch** (branch writes never propagate to prod). Hard-delete (admin bin purge) deletes the dev-branch row, then `storage.delete` hits **local RustFS** (idempotent no-op on a missing key); it cannot reach prod Vercel Blob — the running app has no blob tokens wired in and uses the `s3` adapter/endpoint.
 
+> **Amended 2026-06-15. Prod-origin files in Vercel preview (`applyEnvPrefix`).** Preview deployments also branch the prod Neon DB, so prod `file` rows surface in preview with their `prod/` pathname — but preview *shares the same two Vercel Blob stores* as prod (only the env prefix differs), so the bytes are reachable; the file should just load. It didn't: the `vercelBlob` adapter's prefixing only treated the **current** env's prefix as "already prefixed", so in preview a `prod/documents/x` was re-prefixed to `preview/prod/documents/x` → "Blob not found". Fixed by generalizing that helper to `applyEnvPrefix` in `storage.ts`, which (mirroring `stripEnvPrefix`) leaves any `prod/`/`preview/`/`dev/`-prefixed pathname untouched and only prepends the current prefix to logical paths. Preview now reads prod bytes directly. The dev-only badge + `remoteOriginUnavailable()` fallback are unchanged and remain correctly off in preview (`isRemoteOriginPathname` stays `S3_ENDPOINT`-gated) — they only fire in dev, where the `s3`/RustFS adapter genuinely can't reach Blob.
+
 ---
 
 ## Context

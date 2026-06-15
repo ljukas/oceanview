@@ -40,6 +40,9 @@ export function envPrefix(): string {
   }
 }
 
+/** Matches any env prefix (`prod/`, `preview/`, `dev/`) at the start of a pathname. */
+const ENV_PREFIX_RE = /^(?:prod|preview|dev)\//
+
 /**
  * Reduce an adapter-final pathname back to its logical form for validation.
  * `mintUploadToken` returns the final (possibly env-prefixed) pathname and the
@@ -48,7 +51,24 @@ export function envPrefix(): string {
  * prefix first or they reject every production upload.
  */
 export function stripEnvPrefix(pathname: string): string {
-  return pathname.replace(/^(?:prod|preview|dev)\//, '')
+  return pathname.replace(ENV_PREFIX_RE, '')
+}
+
+/**
+ * Prepend the current env prefix UNLESS the pathname already carries ANY env
+ * prefix. The vercelBlob adapter uses this to turn a logical path
+ * (`documents/x.pdf`) into the env-namespaced key it stores under.
+ *
+ * Recognizing all three prefixes — not just the current env's — matters because
+ * dev/preview Neon DBs branch prod, so a prod `file` row read from preview keeps
+ * its `prod/` pathname. That byte lives at `prod/…` in the shared Blob store, so
+ * it must be looked up verbatim; re-prefixing it to `preview/prod/…` 404s
+ * ("Blob not found"). Mirrors `stripEnvPrefix` so prefixing and stripping can't
+ * drift. Logical paths never start with an env prefix, so new uploads still get
+ * the current env's prefix.
+ */
+export function applyEnvPrefix(pathname: string): string {
+  return ENV_PREFIX_RE.test(pathname) ? pathname : `${envPrefix()}${pathname}`
 }
 
 /**
@@ -60,10 +80,11 @@ export function stripEnvPrefix(pathname: string): string {
  * bytes were never written to local RustFS. The s3 adapter never prefixes its
  * own uploads, so the presence of that prefix *is* the "byte is remote" signal.
  *
- * Always false in production: there `S3_ENDPOINT` is unset (the vercelBlob
- * adapter serves every `prod/`-prefixed file from the store it lives in), so
- * this never flags a real prod file. Used to mark such rows in the dev UI and
- * to return a friendly "run `pnpm storage:sync`" message instead of a 404.
+ * Always false in production AND preview: there `S3_ENDPOINT` is unset and both
+ * read the *same* Vercel Blob stores (only the env prefix differs), so a prod
+ * `prod/`-prefixed byte resolves directly via `applyEnvPrefix` — nothing is
+ * remote-origin. Used only in dev to mark such rows in the UI and return a
+ * friendly "run `pnpm storage:sync`" message instead of a 404.
  */
 export function isRemoteOriginPathname(pathname: string): boolean {
   if (!process.env.S3_ENDPOINT) return false

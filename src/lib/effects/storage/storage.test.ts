@@ -1,5 +1,23 @@
 import { expect, test } from 'vitest'
-import { storage } from './storage'
+import { applyEnvPrefix, storage, stripEnvPrefix } from './storage'
+
+// Tests run with VERCEL_ENV unset → envPrefix() resolves to 'dev/'.
+test('applyEnvPrefix prepends the current env prefix to a logical path', () => {
+  expect(applyEnvPrefix('documents/x.pdf')).toBe('dev/documents/x.pdf')
+  expect(applyEnvPrefix('avatars/user-1/abc.png')).toBe('dev/avatars/user-1/abc.png')
+})
+
+test('applyEnvPrefix leaves an already-prefixed pathname untouched (no double-prefix)', () => {
+  // The preview "Blob not found" regression: a prod row read from another env
+  // must resolve verbatim in the shared store, never become preview/prod/….
+  expect(applyEnvPrefix('prod/documents/x.pdf')).toBe('prod/documents/x.pdf')
+  expect(applyEnvPrefix('preview/avatars/u/a.png')).toBe('preview/avatars/u/a.png')
+  expect(applyEnvPrefix('dev/documents/y.pdf')).toBe('dev/documents/y.pdf')
+})
+
+test('applyEnvPrefix and stripEnvPrefix round-trip a logical path', () => {
+  expect(stripEnvPrefix(applyEnvPrefix('documents/x.pdf'))).toBe('documents/x.pdf')
+})
 
 test('mintUploadToken returns a pathname and a typed upload payload', async () => {
   const result = await storage.mintUploadToken({
