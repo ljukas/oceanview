@@ -128,7 +128,6 @@
   "document_rename_description_extension": "Ändra namnet. Filändelsen kan inte ändras.",
   "document_rename_error": "Kunde inte byta namn",
   "document_rename_title": "Byt namn på dokument",
-  "document_renamed_toast": "Dokumentet bytte namn",
   "document_selection_clear": "Avmarkera",
   "document_selection_count": "{count} valda",
   "document_selection_exit": "Avsluta markering",

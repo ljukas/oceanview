@@ -1,5 +1,5 @@
 import { useSuspenseQuery } from '@tanstack/react-query'
-import { createFileRoute, useMatchRoute } from '@tanstack/react-router'
+import { createFileRoute } from '@tanstack/react-router'
 import { PlusIcon } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { z } from 'zod'
@@ -10,6 +10,7 @@ import { DisponeringslistaTable } from '~/components/season/DisponeringslistaTab
 import { EditSeasonDialog } from '~/components/season/EditSeasonDialog'
 import { Button } from '~/components/ui/button'
 import { usePasskeySetupPrompt } from '~/hooks/usePasskeys'
+import { useUrlDialog } from '~/hooks/useUrlDialog'
 import { orpc } from '~/lib/orpc/client'
 import { m } from '~/paraglide/messages'
 
@@ -18,6 +19,9 @@ const indexSearchSchema = z.object({
   dialog: z.enum(['createSeason', 'editSeason', 'deleteSeason']).optional(),
   seasonYear: z.coerce.number().int().optional(),
 })
+
+type IndexSearch = z.infer<typeof indexSearchSchema>
+type IndexDialog = NonNullable<IndexSearch['dialog']>
 
 export const Route = createFileRoute('/_authenticated/')({
   validateSearch: indexSearchSchema,
@@ -42,8 +46,13 @@ function Calendar() {
   const { user: currentUser } = Route.useRouteContext()
   const passkeyParam = Route.useSearch({ select: (s) => s.passkey })
   const seasonYear = Route.useSearch({ select: (s) => s.seasonYear })
+  const dialog = Route.useSearch({ select: (s) => s.dialog })
   const navigate = Route.useNavigate()
-  const matchRoute = useMatchRoute()
+  const { isOpen, open, close } = useUrlDialog<IndexDialog, IndexSearch>({
+    current: dialog,
+    navigate,
+    clearKeys: ['seasonYear'],
+  })
 
   const { data: schedules } = useSuspenseQuery(orpc.season.listSchedules.queryOptions())
   const { data: ownedParts } = useSuspenseQuery(orpc.share.listMine.queryOptions())
@@ -51,16 +60,14 @@ function Calendar() {
   const ownedPartIds = new Set(ownedParts.map((p) => p.id))
 
   const isAdmin = currentUser.role === 'admin'
-  const isCreateSeason = isAdmin && !!matchRoute({ to: '/', search: { dialog: 'createSeason' } })
-  const isEditSeason = isAdmin && !!matchRoute({ to: '/', search: { dialog: 'editSeason' } })
-  const isDeleteSeason = isAdmin && !!matchRoute({ to: '/', search: { dialog: 'deleteSeason' } })
+  const isCreateSeason = isAdmin && isOpen('createSeason')
+  const isEditSeason = isAdmin && isOpen('editSeason')
+  const isDeleteSeason = isAdmin && isOpen('deleteSeason')
   const editYear = isEditSeason ? seasonYear : undefined
   const deleteYear = isDeleteSeason ? seasonYear : undefined
 
-  const handleEdit = (year: number) =>
-    void navigate({ to: '.', search: { dialog: 'editSeason', seasonYear: year } })
-  const handleDelete = (year: number) =>
-    void navigate({ to: '.', search: { dialog: 'deleteSeason', seasonYear: year } })
+  const handleEdit = (year: number) => void open('editSeason', { seasonYear: year })
+  const handleDelete = (year: number) => void open('deleteSeason', { seasonYear: year })
 
   // Capture the post-sign-in setup intent once, then strip the ?passkey=setup param so a
   // refresh doesn't reopen the prompt. The captured value keeps the prompt enabled even
@@ -77,7 +84,7 @@ function Calendar() {
       <h1 className="font-semibold text-2xl tracking-tight md:text-3xl">{m.nav_calendar()}</h1>
       {isAdmin && (
         <div className="flex justify-end">
-          <Button onClick={() => navigate({ to: '.', search: { dialog: 'createSeason' } })}>
+          <Button onClick={() => open('createSeason')}>
             <PlusIcon />
             {m.season_create_title()}
           </Button>
@@ -92,21 +99,21 @@ function Calendar() {
       <CreateSeasonDialog
         open={isCreateSeason}
         onOpenChange={(open) => {
-          if (!open) void navigate({ to: '.', search: {} })
+          if (!open) close()
         }}
       />
       <EditSeasonDialog
         open={isEditSeason && editYear !== undefined}
         year={editYear}
         onOpenChange={(open) => {
-          if (!open) void navigate({ to: '.', search: {} })
+          if (!open) close()
         }}
       />
       <DeleteSeasonDialog
         open={isDeleteSeason && deleteYear !== undefined}
         year={deleteYear}
         onOpenChange={(open) => {
-          if (!open) void navigate({ to: '.', search: {} })
+          if (!open) close()
         }}
       />
       <PasskeySetupPrompt

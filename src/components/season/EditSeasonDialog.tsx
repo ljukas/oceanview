@@ -1,19 +1,21 @@
+import { isDefinedError } from '@orpc/client'
 import { useMutation, useQueryClient, useSuspenseQuery } from '@tanstack/react-query'
 import { Suspense } from 'react'
 import { toast } from 'sonner'
 import { z } from 'zod'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '~/components/ui/dialog'
 import { FieldGroup } from '~/components/ui/field'
+import {
+  ResponsiveDialog,
+  ResponsiveDialogContent,
+  ResponsiveDialogDescription,
+  ResponsiveDialogFooter,
+  ResponsiveDialogHeader,
+  ResponsiveDialogTitle,
+} from '~/components/ui/responsive-dialog'
 import { Spinner } from '~/components/ui/spinner'
 import { useAppForm } from '~/hooks/form'
 import { orpc } from '~/lib/orpc/client'
+import { seasonErrorMessage } from '~/lib/orpc/seasonErrorMessage'
 import { SHARE_CODES } from '~/lib/shares/codes'
 import { m } from '~/paraglide/messages'
 
@@ -37,14 +39,14 @@ const editSeasonFormSchema = z.object({
 
 export function EditSeasonDialog({ open, year, onOpenChange }: Props) {
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>
+    <ResponsiveDialog open={open} onOpenChange={onOpenChange}>
+      <ResponsiveDialogContent className="sm:max-w-md">
+        <ResponsiveDialogHeader>
+          <ResponsiveDialogTitle>
             {year !== undefined ? m.season_edit_title_year({ year }) : m.season_edit_title()}
-          </DialogTitle>
-          <DialogDescription>{m.season_edit_description()}</DialogDescription>
-        </DialogHeader>
+          </ResponsiveDialogTitle>
+          <ResponsiveDialogDescription>{m.season_edit_description()}</ResponsiveDialogDescription>
+        </ResponsiveDialogHeader>
         {year !== undefined ? (
           <Suspense
             fallback={
@@ -56,8 +58,8 @@ export function EditSeasonDialog({ open, year, onOpenChange }: Props) {
             <EditSeasonDialogBody key={year} year={year} onDone={() => onOpenChange(false)} />
           </Suspense>
         ) : null}
-      </DialogContent>
-    </Dialog>
+      </ResponsiveDialogContent>
+    </ResponsiveDialog>
   )
 }
 
@@ -73,7 +75,7 @@ function EditSeasonDialogBody({ year, onDone }: { year: number; onDone: () => vo
         onDone()
       },
       onError: (err) => {
-        toast.error(err.message || m.season_update_error())
+        toast.error(isDefinedError(err) ? seasonErrorMessage(err.code) : m.season_update_error())
       },
     }),
   )
@@ -124,12 +126,12 @@ function EditSeasonDialogBody({ year, onDone }: { year: number; onDone: () => vo
         />
       </FieldGroup>
 
-      <DialogFooter className="mt-6">
+      <ResponsiveDialogFooter className="mt-6">
         <form.AppForm>
           <form.CancelButton onClick={onDone}>{m.common_cancel()}</form.CancelButton>
           <form.SubmitButton label={m.common_save()} />
         </form.AppForm>
-      </DialogFooter>
+      </ResponsiveDialogFooter>
     </form>
   )
 }

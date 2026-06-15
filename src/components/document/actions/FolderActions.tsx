@@ -29,6 +29,16 @@ type Props = {
   triggerClassName?: string
 }
 
+// The ⋮ trigger and its menu content must not select or navigate the enclosing
+// folder row/card. The menu portals out in the DOM but is a React child of the
+// row, so its item clicks still bubble (React replays along the React tree) —
+// swallow the pointer/click on both so this stays self-contained at every
+// call site (`FolderTableRow` has no wrapping guard of its own).
+const swallow = {
+  onPointerDown: (e: React.PointerEvent) => e.stopPropagation(),
+  onClick: (e: React.MouseEvent) => e.stopPropagation(),
+}
+
 export function FolderActions({ folderId, folderName, isAdmin, triggerClassName }: Props) {
   const dialog = useDialogState<'create' | 'rename' | 'move' | 'delete'>()
   const isRoot = folderId === null
@@ -42,11 +52,12 @@ export function FolderActions({ folderId, folderName, isAdmin, triggerClassName 
             size="icon-sm"
             aria-label={m.folder_actions_label()}
             className={triggerClassName}
+            {...swallow}
           >
             <MoreVerticalIcon />
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
+        <DropdownMenuContent align="end" {...swallow}>
           <DropdownMenuGroup>
             <DropdownMenuItem onSelect={() => dialog.show('create')}>
               <FolderPlusIcon data-icon="inline-start" />

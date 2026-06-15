@@ -1,16 +1,18 @@
+import { isDefinedError } from '@orpc/client'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { z } from 'zod'
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '~/components/ui/dialog'
+  ResponsiveDialog,
+  ResponsiveDialogContent,
+  ResponsiveDialogDescription,
+  ResponsiveDialogFooter,
+  ResponsiveDialogHeader,
+  ResponsiveDialogTitle,
+} from '~/components/ui/responsive-dialog'
 import { useAppForm } from '~/hooks/form'
 import { orpc } from '~/lib/orpc/client'
+import { folderErrorMessage } from '~/lib/orpc/folderErrorMessage'
 import { m } from '~/paraglide/messages'
 
 const schema = z.object({
@@ -36,7 +38,8 @@ export function CreateFolderDialog({ open, onOpenChange, parentId }: Props) {
         toast.success(m.folder_created_toast())
         onOpenChange(false)
       },
-      onError: (err) => toast.error(err.message || m.folder_create_error()),
+      onError: (err) =>
+        toast.error(isDefinedError(err) ? folderErrorMessage(err.code) : m.folder_create_error()),
     }),
   )
 
@@ -49,12 +52,12 @@ export function CreateFolderDialog({ open, onOpenChange, parentId }: Props) {
   })
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>{m.folder_create_title()}</DialogTitle>
-          <DialogDescription>{m.folder_create_description()}</DialogDescription>
-        </DialogHeader>
+    <ResponsiveDialog open={open} onOpenChange={onOpenChange}>
+      <ResponsiveDialogContent className="sm:max-w-md">
+        <ResponsiveDialogHeader>
+          <ResponsiveDialogTitle>{m.folder_create_title()}</ResponsiveDialogTitle>
+          <ResponsiveDialogDescription>{m.folder_create_description()}</ResponsiveDialogDescription>
+        </ResponsiveDialogHeader>
         <form
           onSubmit={(e) => {
             e.preventDefault()
@@ -67,16 +70,16 @@ export function CreateFolderDialog({ open, onOpenChange, parentId }: Props) {
             )}
           </form.AppField>
 
-          <DialogFooter className="mt-6">
+          <ResponsiveDialogFooter className="mt-6">
             <form.AppForm>
               <form.CancelButton onClick={() => onOpenChange(false)}>
                 {m.common_cancel()}
               </form.CancelButton>
               <form.SubmitButton label={m.folder_create_submit()} />
             </form.AppForm>
-          </DialogFooter>
+          </ResponsiveDialogFooter>
         </form>
-      </DialogContent>
-    </Dialog>
+      </ResponsiveDialogContent>
+    </ResponsiveDialog>
   )
 }

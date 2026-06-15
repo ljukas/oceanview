@@ -1,16 +1,18 @@
+import { isDefinedError } from '@orpc/client'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { z } from 'zod'
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '~/components/ui/dialog'
+  ResponsiveDialog,
+  ResponsiveDialogContent,
+  ResponsiveDialogDescription,
+  ResponsiveDialogFooter,
+  ResponsiveDialogHeader,
+  ResponsiveDialogTitle,
+} from '~/components/ui/responsive-dialog'
 import { useAppForm } from '~/hooks/form'
 import { orpc } from '~/lib/orpc/client'
+import { documentErrorMessage } from '~/lib/orpc/documentErrorMessage'
 import { optimisticPatch } from '~/lib/orpc/optimistic'
 import { m } from '~/paraglide/messages'
 
@@ -32,7 +34,7 @@ export function RenameDocumentDialog({ open, onOpenChange, document }: Props) {
 
   const renameMutation = useMutation(
     orpc.document.renameDocument.mutationOptions({
-      // Patch the new name into the row's scoped list cache before the round-trip.
+      // Paint the new name into the row's scoped list cache before the round-trip.
       onMutate: ({ name }) =>
         optimisticPatch(
           queryClient,
@@ -40,11 +42,15 @@ export function RenameDocumentDialog({ open, onOpenChange, document }: Props) {
           (d) => d.id === document.id,
           (d) => ({ ...d, name }),
         ),
-      onSuccess: () => {
-        toast.success(m.document_renamed_toast())
-        onOpenChange(false)
-      },
-      onError: (err) => toast.error(err.message || m.document_rename_error()),
+      // These live on useMutation (not the mutate call) so they still run after we
+      // close the dialog below: TanStack Query fires useMutation callbacks
+      // regardless of unmount, mutate callbacks don't. No success toast — the
+      // optimistic rename is the confirmation; the error toast is the one signal
+      // we deliberately keep post-close. onSettled reverts the patch on failure.
+      onError: (err) =>
+        toast.error(
+          isDefinedError(err) ? documentErrorMessage(err.code) : m.document_rename_error(),
+        ),
       onSettled: () =>
         queryClient.invalidateQueries({ queryKey: orpc.document.listDocuments.key() }),
     }),
@@ -53,22 +59,26 @@ export function RenameDocumentDialog({ open, onOpenChange, document }: Props) {
   const form = useAppForm({
     defaultValues: { name: document.name },
     validators: { onSubmit: schema },
-    onSubmit: async ({ value }) => {
-      await renameMutation.mutateAsync({ id: document.id, name: value.name })
+    onSubmit: ({ value }) => {
+      // Optimistic instant-close: onMutate paints the new name, we close the dialog
+      // immediately, and onError/onSettled reconcile in the background. Document
+      // rename has no user-fixable failure, so there's nothing to keep it open for.
+      renameMutation.mutate({ id: document.id, name: value.name })
+      onOpenChange(false)
     },
   })
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>{m.document_rename_title()}</DialogTitle>
-          <DialogDescription>
+    <ResponsiveDialog open={open} onOpenChange={onOpenChange}>
+      <ResponsiveDialogContent className="sm:max-w-md">
+        <ResponsiveDialogHeader>
+          <ResponsiveDialogTitle>{m.document_rename_title()}</ResponsiveDialogTitle>
+          <ResponsiveDialogDescription>
             {document.extension
               ? m.document_rename_description_extension()
               : m.document_rename_description()}
-          </DialogDescription>
-        </DialogHeader>
+          </ResponsiveDialogDescription>
+        </ResponsiveDialogHeader>
         <form
           onSubmit={(e) => {
             e.preventDefault()
@@ -86,16 +96,16 @@ export function RenameDocumentDialog({ open, onOpenChange, document }: Props) {
             )}
           </form.AppField>
 
-          <DialogFooter className="mt-6">
+          <ResponsiveDialogFooter className="mt-6">
             <form.AppForm>
               <form.CancelButton onClick={() => onOpenChange(false)}>
                 {m.common_cancel()}
               </form.CancelButton>
               <form.SubmitButton label={m.common_save()} />
             </form.AppForm>
-          </DialogFooter>
+          </ResponsiveDialogFooter>
         </form>
-      </DialogContent>
-    </Dialog>
+      </ResponsiveDialogContent>
+    </ResponsiveDialog>
   )
 }

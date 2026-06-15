@@ -1,3 +1,4 @@
+import { isDefinedError } from '@orpc/client'
 import { useMutation, useQueryClient, useSuspenseQuery } from '@tanstack/react-query'
 import { Suspense } from 'react'
 import { toast } from 'sonner'
@@ -13,6 +14,8 @@ import {
 } from '~/components/ui/alert-dialog'
 import { Spinner } from '~/components/ui/spinner'
 import { orpc } from '~/lib/orpc/client'
+import { optimisticRemove } from '~/lib/orpc/optimistic'
+import { userErrorMessage } from '~/lib/orpc/userErrorMessage'
 import { m } from '~/paraglide/messages'
 
 type Props = {
@@ -57,16 +60,19 @@ function DeleteUserBody({ userId, onDone }: { userId: string; onDone: () => void
 
   const deleteMutation = useMutation(
     orpc.user.delete.mutationOptions({
-      onSuccess: async () => {
-        await queryClient.invalidateQueries({
-          queryKey: orpc.user.list.key(),
-        })
-        toast.success(m.user_deleted())
-        onDone()
-      },
+      // Drop the row from the active owners list before the round-trip; the row
+      // vanishing is the confirmation, so there's no success toast.
+      onMutate: ({ id }) =>
+        optimisticRemove(queryClient, orpc.user.listContacts.queryKey(), (u) => u.id === id),
+      // onError/onSettled live on useMutation (not the mutate call) so they still
+      // run after the instant close below. onSettled invalidates both user lists
+      // (listContacts + list), reverting the optimistic removal on failure.
       onError: (err) => {
-        toast.error(err.message || m.user_delete_error())
+        toast.error(
+          isDefinedError(err) ? userErrorMessage(err.code, 'delete') : m.user_delete_error(),
+        )
       },
+      onSettled: () => queryClient.invalidateQueries({ queryKey: orpc.user.key() }),
     }),
   )
 
@@ -87,7 +93,11 @@ function DeleteUserBody({ userId, onDone }: { userId: string; onDone: () => void
           disabled={deleteMutation.isPending}
           onClick={(e) => {
             e.preventDefault()
+            // Optimistic instant-close: onMutate drops the row, we close now, and
+            // onError/onSettled reconcile in the background. Delete has no
+            // user-fixable failure, so nothing keeps the dialog open.
             deleteMutation.mutate({ id: userId })
+            onDone()
           }}
         >
           {deleteMutation.isPending && <Spinner data-icon="inline-start" />}

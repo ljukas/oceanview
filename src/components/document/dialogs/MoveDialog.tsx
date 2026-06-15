@@ -1,15 +1,18 @@
+import { isDefinedError } from '@orpc/client'
 import { useMutation, useQueryClient, useSuspenseQuery } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '~/components/ui/dialog'
+  ResponsiveDialog,
+  ResponsiveDialogContent,
+  ResponsiveDialogDescription,
+  ResponsiveDialogFooter,
+  ResponsiveDialogHeader,
+  ResponsiveDialogTitle,
+} from '~/components/ui/responsive-dialog'
 import { useAppForm } from '~/hooks/form'
 import { client, orpc } from '~/lib/orpc/client'
+import { documentErrorMessage } from '~/lib/orpc/documentErrorMessage'
+import { folderErrorMessage } from '~/lib/orpc/folderErrorMessage'
 import { optimisticPatch, optimisticRemove } from '~/lib/orpc/optimistic'
 import { m } from '~/paraglide/messages'
 
@@ -53,7 +56,6 @@ export function MoveDialog({ open, onOpenChange, target }: Props) {
     toast.success(m.document_moved_toast())
     onOpenChange(false)
   }
-  const onError = (err: Error) => toast.error(err.message || m.document_move_error())
   // Both moves shift folder paths and document lists; reconcile both on settle.
   const onSettled = () =>
     Promise.all([
@@ -74,12 +76,20 @@ export function MoveDialog({ open, onOpenChange, target }: Props) {
             )
           : undefined,
       onSuccess,
-      onError,
+      // Document procedures throw code-only typed errors; localize by code.
+      onError: (err) =>
+        toast.error(isDefinedError(err) ? documentErrorMessage(err.code) : m.document_move_error()),
       onSettled,
     }),
   )
   const moveFolder = useMutation(
-    orpc.folder.moveFolder.mutationOptions({ onSuccess, onError, onSettled }),
+    orpc.folder.moveFolder.mutationOptions({
+      onSuccess,
+      // Folder procedures throw code-only typed errors; localize by code.
+      onError: (err) =>
+        toast.error(isDefinedError(err) ? folderErrorMessage(err.code) : m.document_move_error()),
+      onSettled,
+    }),
   )
 
   // For a folder move, hide the folder itself and its descendants (path prefix).
@@ -170,18 +180,18 @@ export function MoveDialog({ open, onOpenChange, target }: Props) {
   })
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>
+    <ResponsiveDialog open={open} onOpenChange={onOpenChange}>
+      <ResponsiveDialogContent className="sm:max-w-md">
+        <ResponsiveDialogHeader>
+          <ResponsiveDialogTitle>
             {target.kind === 'documents'
               ? m.document_move_title_documents({ count: target.count })
               : target.kind === 'items'
                 ? m.document_move_title_items({ count: target.count })
                 : m.document_move_title_named({ name: target.name })}
-          </DialogTitle>
-          <DialogDescription>{m.document_move_description()}</DialogDescription>
-        </DialogHeader>
+          </ResponsiveDialogTitle>
+          <ResponsiveDialogDescription>{m.document_move_description()}</ResponsiveDialogDescription>
+        </ResponsiveDialogHeader>
         <form
           onSubmit={(e) => {
             e.preventDefault()
@@ -194,16 +204,16 @@ export function MoveDialog({ open, onOpenChange, target }: Props) {
             )}
           </form.AppField>
 
-          <DialogFooter className="mt-6">
+          <ResponsiveDialogFooter className="mt-6">
             <form.AppForm>
               <form.CancelButton onClick={() => onOpenChange(false)}>
                 {m.common_cancel()}
               </form.CancelButton>
               <form.SubmitButton label={m.document_action_move()} />
             </form.AppForm>
-          </DialogFooter>
+          </ResponsiveDialogFooter>
         </form>
-      </DialogContent>
-    </Dialog>
+      </ResponsiveDialogContent>
+    </ResponsiveDialog>
   )
 }

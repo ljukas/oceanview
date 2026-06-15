@@ -1,3 +1,4 @@
+import { isDefinedError } from '@orpc/client'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import {
@@ -11,6 +12,8 @@ import {
 import { Button } from '~/components/ui/button'
 import { Spinner } from '~/components/ui/spinner'
 import { orpc } from '~/lib/orpc/client'
+import { folderErrorMessage } from '~/lib/orpc/folderErrorMessage'
+import { optimisticRemove } from '~/lib/orpc/optimistic'
 import { m } from '~/paraglide/messages'
 
 type Props = {
@@ -24,22 +27,31 @@ export function DeleteFolderDialog({ open, onOpenChange, folder }: Props) {
 
   const deleteMutation = useMutation(
     orpc.folder.softDeleteFolder.mutationOptions({
-      onSuccess: async (result) => {
-        await Promise.all([
-          queryClient.invalidateQueries({ queryKey: orpc.folder.key() }),
-          queryClient.invalidateQueries({ queryKey: orpc.document.listDocuments.key() }),
-          // The folder and its documents land in the admin bin — refresh it.
-          queryClient.invalidateQueries({ queryKey: orpc.bin.key() }),
-        ])
+      // Drop the folder row from the tree before the round-trip. Its descendants
+      // aren't in the current view, so removing the one row is the full visible
+      // effect; the bin and document lists reconcile in onSettled.
+      onMutate: ({ id }) =>
+        optimisticRemove(queryClient, orpc.folder.tree.queryKey(), (f) => f.id === id),
+      // onSuccess/onError/onSettled live on useMutation (not the mutate call) so
+      // they still run after the instant close below. We keep the success toast
+      // here because its cascade counts are genuinely informative — and it fires
+      // even though the dialog has already closed.
+      onSuccess: (result) =>
         toast.success(
           m.folder_deleted_toast({
             folders: result.foldersAffected,
             documents: result.documentsAffected,
           }),
-        )
-        onOpenChange(false)
-      },
-      onError: (err) => toast.error(err.message || m.folder_delete_error()),
+        ),
+      onError: (err) =>
+        toast.error(isDefinedError(err) ? folderErrorMessage(err.code) : m.folder_delete_error()),
+      onSettled: () =>
+        Promise.all([
+          queryClient.invalidateQueries({ queryKey: orpc.folder.key() }),
+          queryClient.invalidateQueries({ queryKey: orpc.document.listDocuments.key() }),
+          // The folder and its documents land in the admin bin — refresh it.
+          queryClient.invalidateQueries({ queryKey: orpc.bin.key() }),
+        ]),
     }),
   )
 
@@ -62,7 +74,12 @@ export function DeleteFolderDialog({ open, onOpenChange, folder }: Props) {
           </Button>
           <Button
             variant="destructive"
-            onClick={() => deleteMutation.mutate({ id: folder.id })}
+            onClick={() => {
+              // Optimistic instant-close: onMutate drops the row, we close now,
+              // and onSuccess/onError/onSettled reconcile in the background.
+              deleteMutation.mutate({ id: folder.id })
+              onOpenChange(false)
+            }}
             disabled={deleteMutation.isPending}
           >
             {deleteMutation.isPending ? <Spinner data-icon="inline-start" /> : null}
