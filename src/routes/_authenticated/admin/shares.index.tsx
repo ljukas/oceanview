@@ -1,11 +1,11 @@
 import { useSuspenseQuery } from '@tanstack/react-query'
-import { createFileRoute, useMatchRoute } from '@tanstack/react-router'
+import { createFileRoute } from '@tanstack/react-router'
 import { useMemo } from 'react'
 import { z } from 'zod'
 import { AssignmentHistorySheet } from '~/components/share/AssignmentHistorySheet'
-import { AssignShareDialog } from '~/components/share/AssignShareDialog'
 import { SharePartCard } from '~/components/share/SharePartCard'
 import { UnassignShareDialog } from '~/components/share/UnassignShareDialog'
+import { useUrlDialog } from '~/hooks/useUrlDialog'
 import { orpc } from '~/lib/orpc/client'
 import type { AdminPartRow } from '~/lib/orpc/procedures/share'
 import { SHARE_CODES, type ShareCode } from '~/lib/shares/codes'
@@ -14,12 +14,17 @@ import { seo } from '~/utils/seo'
 
 const shareCodeSchema = z.enum(SHARE_CODES)
 
+// `assign` is no longer a dialog — it's the dedicated route
+// `/admin/shares/assign/$shareCode` (ADR-0013). Only unassign + history remain overlays.
 const sharesSearchSchema = z.object({
-  dialog: z.enum(['assign', 'unassign', 'history']).optional(),
+  dialog: z.enum(['unassign', 'history']).optional(),
   shareCode: shareCodeSchema.optional(),
 })
 
-export const Route = createFileRoute('/_authenticated/admin/shares')({
+type SharesSearch = z.infer<typeof sharesSearchSchema>
+type SharesDialog = NonNullable<SharesSearch['dialog']>
+
+export const Route = createFileRoute('/_authenticated/admin/shares/')({
   head: () => ({
     meta: seo({
       title: m.meta_shares_title(),
@@ -34,7 +39,6 @@ export const Route = createFileRoute('/_authenticated/admin/shares')({
   loader: async ({ context: { queryClient }, deps }) => {
     await Promise.all([
       queryClient.ensureQueryData(orpc.share.listAll.queryOptions()),
-      queryClient.ensureQueryData(orpc.user.list.queryOptions({ input: { filter: 'active' } })),
       ...(deps.dialog === 'history' && deps.shareCode
         ? [
             queryClient.ensureQueryData(
@@ -49,12 +53,14 @@ export const Route = createFileRoute('/_authenticated/admin/shares')({
 
 function AdminShares() {
   const { data: parts } = useSuspenseQuery(orpc.share.listAll.queryOptions())
-  const { data: users } = useSuspenseQuery(
-    orpc.user.list.queryOptions({ input: { filter: 'active' } }),
-  )
   const navigate = Route.useNavigate()
-  const matchRoute = useMatchRoute()
   const dialogShareCode = Route.useSearch({ select: (s) => s.shareCode })
+  const dialog = Route.useSearch({ select: (s) => s.dialog })
+  const { isOpen, open, close } = useUrlDialog<SharesDialog, SharesSearch>({
+    current: dialog,
+    navigate,
+    clearKeys: ['shareCode'],
+  })
 
   // Group parts by shareCode so each card receives its pair.
   const byCode = useMemo(() => {
@@ -69,18 +75,9 @@ function AdminShares() {
     return map
   }, [parts])
 
-  const userOptions = useMemo(
-    () => users.map((u) => ({ id: u.id, name: u.name, image: u.image })),
-    [users],
-  )
-
-  const isAssign = !!matchRoute({ to: '/admin/shares', search: { dialog: 'assign' } })
-  const isUnassign = !!matchRoute({ to: '/admin/shares', search: { dialog: 'unassign' } })
-  const isHistory = !!matchRoute({ to: '/admin/shares', search: { dialog: 'history' } })
-
+  const isUnassign = isOpen('unassign')
+  const isHistory = isOpen('history')
   const activeSlot = dialogShareCode ? byCode.get(dialogShareCode) : undefined
-
-  const close = () => navigate({ to: '.', search: {} })
 
   return (
     <div className="flex flex-col gap-6 p-4 md:p-8">
@@ -104,33 +101,20 @@ function AdminShares() {
               shareCode={code}
               part1={slot.part1}
               part2={slot.part2}
-              onAssign={() => navigate({ to: '.', search: { dialog: 'assign', shareCode: code } })}
-              onUnassign={() =>
-                navigate({ to: '.', search: { dialog: 'unassign', shareCode: code } })
+              onAssign={() =>
+                navigate({ to: '/admin/shares/assign/$shareCode', params: { shareCode: code } })
               }
-              onHistory={() =>
-                navigate({ to: '.', search: { dialog: 'history', shareCode: code } })
-              }
+              onUnassign={() => open('unassign', { shareCode: code })}
+              onHistory={() => open('history', { shareCode: code })}
             />
           )
         })}
       </div>
 
-      <AssignShareDialog
-        open={isAssign && !!activeSlot}
-        onOpenChange={(open) => {
-          if (!open) close()
-        }}
-        shareCode={dialogShareCode}
-        part1={activeSlot?.part1}
-        part2={activeSlot?.part2}
-        users={userOptions}
-      />
-
       <UnassignShareDialog
         open={isUnassign && !!activeSlot}
-        onOpenChange={(open) => {
-          if (!open) close()
+        onOpenChange={(o) => {
+          if (!o) close()
         }}
         shareCode={dialogShareCode}
         part1={activeSlot?.part1}
@@ -139,8 +123,8 @@ function AdminShares() {
 
       <AssignmentHistorySheet
         open={isHistory && !!dialogShareCode}
-        onOpenChange={(open) => {
-          if (!open) close()
+        onOpenChange={(o) => {
+          if (!o) close()
         }}
         shareCode={dialogShareCode}
       />
