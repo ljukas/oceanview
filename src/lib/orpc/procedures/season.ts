@@ -1,21 +1,17 @@
-import { ORPCError } from '@orpc/server'
 import { z } from 'zod'
 import { realtime } from '~/lib/effects'
 import { adminProcedure, protectedProcedure } from '~/lib/orpc/context'
 import * as seasonService from '~/lib/services/season'
-import { SeasonDomainError } from '~/lib/services/season'
+import { SeasonDomainError, type SeasonDomainErrorCode } from '~/lib/services/season'
 import { SHARE_CODES, WEEKS_PER_SEASON } from '~/lib/shares/codes'
-import { m } from '~/paraglide/messages'
 
-function rethrowAsORPC(err: unknown): never {
-  if (!(err instanceof SeasonDomainError)) throw err
-  switch (err.code) {
-    case 'ALREADY_EXISTS':
-      throw new ORPCError('CONFLICT', { message: m.season_error_already_exists() })
-    case 'NOT_FOUND':
-      throw new ORPCError('NOT_FOUND', { message: m.season_error_not_found() })
-  }
-}
+// Code-only typed errors. Status only; the backend stays i18n-free and the client
+// localizes by code (see ~/lib/orpc/seasonErrorMessage). `satisfies` locks the keys
+// to the domain code union.
+const seasonErrors = {
+  ALREADY_EXISTS: { status: 409 },
+  NOT_FOUND: { status: 404 },
+} satisfies Record<SeasonDomainErrorCode, { status: number }>
 
 const seasonYearSchema = z.object({ year: z.number().int().min(2020).max(2100) })
 
@@ -79,38 +75,49 @@ export const seasonRouter = {
     return { year, startWeek: seasonService.SEASON_START_WEEK, startShare }
   }),
 
-  create: adminProcedure.input(createSeasonSchema).handler(async ({ input, context }) => {
-    let created: Awaited<ReturnType<typeof seasonService.createSeason>>
-    try {
-      created = await seasonService.createSeason(input)
-    } catch (err) {
-      rethrowAsORPC(err)
-    }
-    context.log.info('admin created season', { year: created.year })
-    await realtime.publish({ kind: 'season.changed' }, { source: context.user.id })
-    return created
-  }),
+  create: adminProcedure
+    .errors(seasonErrors)
+    .input(createSeasonSchema)
+    .handler(async ({ input, context, errors }) => {
+      let created: Awaited<ReturnType<typeof seasonService.createSeason>>
+      try {
+        created = await seasonService.createSeason(input)
+      } catch (err) {
+        if (err instanceof SeasonDomainError) throw errors[err.code]()
+        throw err
+      }
+      context.log.info('admin created season', { year: created.year })
+      await realtime.publish({ kind: 'season.changed' }, { source: context.user.id })
+      return created
+    }),
 
-  getByYear: adminProcedure.input(seasonYearSchema).handler(async ({ input }) => {
-    const row = await seasonService.findSeason(input.year)
-    if (!row) throw new ORPCError('NOT_FOUND', { message: m.season_error_not_found() })
-    return row
-  }),
+  getByYear: adminProcedure
+    .errors(seasonErrors)
+    .input(seasonYearSchema)
+    .handler(async ({ input, errors }) => {
+      const row = await seasonService.findSeason(input.year)
+      if (!row) throw errors.NOT_FOUND()
+      return row
+    }),
 
-  update: adminProcedure.input(updateSeasonSchema).handler(async ({ input, context }) => {
-    let updated: Awaited<ReturnType<typeof seasonService.updateSeason>>
-    try {
-      updated = await seasonService.updateSeason(input.year, {
-        startWeek: input.startWeek,
-        startShare: input.startShare,
-      })
-    } catch (err) {
-      rethrowAsORPC(err)
-    }
-    context.log.info('admin updated season', { year: input.year })
-    await realtime.publish({ kind: 'season.changed' }, { source: context.user.id })
-    return updated
-  }),
+  update: adminProcedure
+    .errors(seasonErrors)
+    .input(updateSeasonSchema)
+    .handler(async ({ input, context, errors }) => {
+      let updated: Awaited<ReturnType<typeof seasonService.updateSeason>>
+      try {
+        updated = await seasonService.updateSeason(input.year, {
+          startWeek: input.startWeek,
+          startShare: input.startShare,
+        })
+      } catch (err) {
+        if (err instanceof SeasonDomainError) throw errors[err.code]()
+        throw err
+      }
+      context.log.info('admin updated season', { year: input.year })
+      await realtime.publish({ kind: 'season.changed' }, { source: context.user.id })
+      return updated
+    }),
 
   delete: adminProcedure.input(seasonYearSchema).handler(async ({ input, context }) => {
     await seasonService.deleteSeason(input.year)

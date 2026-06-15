@@ -1,15 +1,13 @@
 import { randomUUID } from 'node:crypto'
-import { ORPCError } from '@orpc/server'
 import { z } from 'zod'
 import { queue, realtime, storage } from '~/lib/effects'
-import { stripEnvPrefix } from '~/lib/effects/storage'
+import { isRemoteOriginPathname, stripEnvPrefix } from '~/lib/effects/storage'
 import { SHARP_DECODABLE_MIME_SET } from '~/lib/image/blurhash'
 import { adminProcedure, protectedProcedure } from '~/lib/orpc/context'
 import * as documentService from '~/lib/services/document'
-import { DocumentDomainError } from '~/lib/services/document'
+import { DocumentDomainError, type DocumentDomainErrorCode } from '~/lib/services/document'
 import * as documentEventService from '~/lib/services/documentEvent'
 import * as fileService from '~/lib/services/file'
-import { m } from '~/paraglide/messages'
 import { joinFilename, replacePathnameBasename, safeFilename } from '~/utils/filename'
 
 // No mime whitelist (ADR-0010 §M): any contentType is accepted; the grid renders
@@ -22,31 +20,19 @@ const DOCUMENT_MAX_BYTES = 100_000_000
 // URLs but the adapter signature still requires one.
 const THUMBNAIL_URL_TTL_SECONDS = 3600
 
-// Exhaustive over DocumentDomainErrorCode (no default case, so a new code
-// breaks the build here). Shared with the bin router.
-export function rethrowDocumentErrorAsORPC(err: unknown): never {
-  if (!(err instanceof DocumentDomainError)) throw err
-  switch (err.code) {
-    case 'NOT_FOUND':
-      throw new ORPCError('NOT_FOUND', { message: m.document_error_not_found() })
-    case 'NOT_ADMIN':
-      throw new ORPCError('FORBIDDEN', { message: m.common_error_admin_only() })
-    case 'NOT_DELETED':
-      throw new ORPCError('BAD_REQUEST', { message: m.document_error_not_deleted() })
-    case 'CANNOT_DELETE_OTHERS_DOCUMENT':
-      throw new ORPCError('FORBIDDEN', {
-        message: m.document_error_delete_others(),
-      })
-    case 'CANNOT_EDIT_OTHERS_DOCUMENT':
-      throw new ORPCError('FORBIDDEN', {
-        message: m.document_error_edit_others(),
-      })
-    case 'FOLDER_NOT_FOUND':
-      throw new ORPCError('NOT_FOUND', { message: m.folder_error_not_found() })
-    case 'FOLDER_DELETED':
-      throw new ORPCError('BAD_REQUEST', { message: m.folder_error_deleted() })
-  }
-}
+// Code-only typed errors shared by the document mutating procedures and the bin
+// router. Status only; the backend stays i18n-free and the client localizes by
+// code (see ~/lib/orpc/documentErrorMessage). The `satisfies` locks the keys to
+// the domain code union, so adding a DocumentDomainError code forces an entry.
+export const documentErrors = {
+  NOT_FOUND: { status: 404 },
+  NOT_ADMIN: { status: 403 },
+  NOT_DELETED: { status: 400 },
+  CANNOT_DELETE_OTHERS_DOCUMENT: { status: 403 },
+  CANNOT_EDIT_OTHERS_DOCUMENT: { status: 403 },
+  FOLDER_NOT_FOUND: { status: 404 },
+  FOLDER_DELETED: { status: 400 },
+} satisfies Record<DocumentDomainErrorCode, { status: number }>
 
 export const documentRouter = {
   mintDocumentUpload: protectedProcedure
@@ -67,6 +53,13 @@ export const documentRouter = {
     }),
 
   confirmDocumentUpload: protectedProcedure
+    // The two boundary codes are upload-only; the upload UI is status-only so it
+    // never renders their message, hence no client mapping for them.
+    .errors({
+      ...documentErrors,
+      INVALID_PATH: { status: 403 },
+      FILE_NOT_IN_STORAGE: { status: 404 },
+    })
     .input(
       z.object({
         pathname: z.string().min(1).max(512),
@@ -75,16 +68,16 @@ export const documentRouter = {
         folderId: z.uuid().nullable().optional(),
       }),
     )
-    .handler(async ({ input, context }) => {
+    .handler(async ({ input, context, errors }) => {
       // The round-tripped pathname is adapter-final — env-prefixed in prod
       // (`prod/documents/...`), so the shape check must strip the prefix or
       // every production upload gets rejected here.
       if (!stripEnvPrefix(input.pathname).startsWith('documents/')) {
-        throw new ORPCError('FORBIDDEN', { message: m.document_error_invalid_path() })
+        throw errors.INVALID_PATH()
       }
       const blob = await storage.head('private', input.pathname)
       if (!blob) {
-        throw new ORPCError('NOT_FOUND', { message: m.file_error_not_in_storage() })
+        throw errors.FILE_NOT_IN_STORAGE()
       }
       let inserted: Awaited<ReturnType<typeof documentService.confirmUpload>>
       try {
@@ -97,7 +90,8 @@ export const documentRouter = {
           folderId: input.folderId ?? null,
         })
       } catch (err) {
-        rethrowDocumentErrorAsORPC(err)
+        if (err instanceof DocumentDomainError) throw errors[err.code]()
+        throw err
       }
       context.log.info('document uploaded', {
         documentId: inserted.document.id,
@@ -154,6 +148,10 @@ export const documentRouter = {
         thumbnailPathname: row.document.thumbnailPathname,
         uploadedAt: row.file.uploadedAt,
         ownerName: row.ownerName,
+        // Dev-only: true when the bytes live in a remote Vercel Blob store this
+        // (local) environment can't read — a prod row surfaced via the Neon
+        // branch whose file was never synced into RustFS. Always false in prod.
+        isRemoteOrigin: isRemoteOriginPathname(row.file.pathname),
       }))
     }),
 
@@ -176,8 +174,9 @@ export const documentRouter = {
   }),
 
   renameDocument: protectedProcedure
+    .errors(documentErrors)
     .input(z.object({ id: z.uuid(), name: z.string().min(1).max(255) }))
-    .handler(async ({ input, context }) => {
+    .handler(async ({ input, context, errors }) => {
       let updated: Awaited<ReturnType<typeof documentService.renameDocument>>
       try {
         updated = await documentService.renameDocument({
@@ -187,7 +186,8 @@ export const documentRouter = {
           actorRole: context.user.role ?? null,
         })
       } catch (err) {
-        rethrowDocumentErrorAsORPC(err)
+        if (err instanceof DocumentDomainError) throw errors[err.code]()
+        throw err
       }
       // Rename the stored byte so its basename — the prod (Vercel Blob) download
       // filename — tracks the new display name. Copy → repoint file.pathname →
@@ -226,8 +226,9 @@ export const documentRouter = {
     }),
 
   moveDocument: protectedProcedure
+    .errors(documentErrors)
     .input(z.object({ id: z.uuid(), folderId: z.uuid().nullable() }))
-    .handler(async ({ input, context }) => {
+    .handler(async ({ input, context, errors }) => {
       let updated: Awaited<ReturnType<typeof documentService.moveDocument>>
       try {
         updated = await documentService.moveDocument({
@@ -237,7 +238,8 @@ export const documentRouter = {
           actorRole: context.user.role ?? null,
         })
       } catch (err) {
-        rethrowDocumentErrorAsORPC(err)
+        if (err instanceof DocumentDomainError) throw errors[err.code]()
+        throw err
       }
       await realtime.publish(
         { kind: 'document.changed', ids: [updated.document.id] },
@@ -247,8 +249,9 @@ export const documentRouter = {
     }),
 
   deleteDocument: protectedProcedure
+    .errors(documentErrors)
     .input(z.object({ id: z.uuid() }))
-    .handler(async ({ input, context }) => {
+    .handler(async ({ input, context, errors }) => {
       let deleted: Awaited<ReturnType<typeof documentService.softDelete>>
       try {
         deleted = await documentService.softDelete({
@@ -257,7 +260,8 @@ export const documentRouter = {
           actingUserRole: context.user.role ?? null,
         })
       } catch (err) {
-        rethrowDocumentErrorAsORPC(err)
+        if (err instanceof DocumentDomainError) throw errors[err.code]()
+        throw err
       }
       context.log.info('document deleted', {
         documentId: deleted.document.id,
@@ -274,8 +278,9 @@ export const documentRouter = {
     }),
 
   restoreDocument: adminProcedure
+    .errors(documentErrors)
     .input(z.object({ id: z.uuid() }))
-    .handler(async ({ input, context }) => {
+    .handler(async ({ input, context, errors }) => {
       let restored: Awaited<ReturnType<typeof documentService.restoreDocument>>
       try {
         restored = await documentService.restoreDocument({
@@ -284,7 +289,8 @@ export const documentRouter = {
           actorRole: context.user.role ?? null,
         })
       } catch (err) {
-        rethrowDocumentErrorAsORPC(err)
+        if (err instanceof DocumentDomainError) throw errors[err.code]()
+        throw err
       }
       await realtime.publish(
         { kind: 'document.changed', ids: [restored.document.id] },
