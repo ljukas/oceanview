@@ -13,6 +13,7 @@ import {
   fileKindLabel,
   formatSize,
 } from '~/components/document/shared/documentHelpers'
+import { RemoteOriginBadge } from '~/components/document/shared/RemoteOriginBadge'
 import { Button } from '~/components/ui/button'
 import {
   DropdownMenu,
@@ -34,8 +35,10 @@ const dropdownComponents: MenuComponents = {
   Separator: DropdownMenuSeparator,
 }
 
-// The ⋮ trigger must not start a long-press or toggle the card — swallow the
-// pointer/click before they reach the card's handlers.
+// The ⋮ trigger and its menu content must not start a long-press or toggle the
+// card. The menu portals out in the DOM but is a React child of the card, so its
+// item clicks still bubble (React replays along the React tree) — swallow the
+// pointer/click on both before they reach the card's handlers.
 const swallow = {
   onPointerDown: (e: React.PointerEvent) => e.stopPropagation(),
   onClick: (e: React.MouseEvent) => e.stopPropagation(),
@@ -121,8 +124,11 @@ export function DocumentCard({
           className="size-10 shrink-0"
         />
         <div className="flex min-w-0 flex-1 flex-col">
-          <span className="truncate font-medium" title={name}>
-            {name}
+          <span className="flex min-w-0 items-center gap-1.5">
+            <span className="truncate font-medium" title={name}>
+              {name}
+            </span>
+            {doc.isRemoteOrigin ? <RemoteOriginBadge /> : null}
           </span>
           <span
             className={cn(
@@ -160,7 +166,7 @@ export function DocumentCard({
                 <MoreVerticalIcon />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
+            <DropdownMenuContent align="end" {...swallow}>
               <DocumentMenuItems groups={groups} components={dropdownComponents} />
             </DropdownMenuContent>
           </DropdownMenu>

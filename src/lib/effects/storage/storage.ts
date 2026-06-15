@@ -51,6 +51,25 @@ export function stripEnvPrefix(pathname: string): string {
   return pathname.replace(/^(?:prod|preview|dev)\//, '')
 }
 
+/**
+ * True only in local dev (the s3/RustFS adapter is active) for a file whose
+ * bytes live in a *remote* Vercel Blob store this environment can't read.
+ *
+ * Dev branches the prod Neon DB, so the dev database carries prod `file` rows
+ * whose `pathname` keeps its `prod/` / `preview/` Vercel-Blob prefix — but the
+ * bytes were never written to local RustFS. The s3 adapter never prefixes its
+ * own uploads, so the presence of that prefix *is* the "byte is remote" signal.
+ *
+ * Always false in production: there `S3_ENDPOINT` is unset (the vercelBlob
+ * adapter serves every `prod/`-prefixed file from the store it lives in), so
+ * this never flags a real prod file. Used to mark such rows in the dev UI and
+ * to return a friendly "run `pnpm storage:sync`" message instead of a 404.
+ */
+export function isRemoteOriginPathname(pathname: string): boolean {
+  if (!process.env.S3_ENDPOINT) return false
+  return /^(?:prod|preview)\//.test(pathname)
+}
+
 export type MintUploadResult = {
   pathname: string
   upload:

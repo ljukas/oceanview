@@ -29,6 +29,14 @@
 >
 > The byte-path itself (mint → direct PUT → confirm), the avatar flow, and the storage seam remain authoritative here — ADR-0010 consumes the seam, it doesn't change it. Separately on the same date: the seam widened to six methods (`put`, `copy` — see The seam), the adapter selector gained a `VITEST` short-circuit, and pathname env-prefixing got a single exported source of truth (`envPrefix`/`stripEnvPrefix`) after a production bug — details updated in the body below.
 
+> **Amended 2026-06-13. Prod-origin files in the Neon-branched dev DB.** Dev branches the prod Neon DB (per the dev-setup), so the dev database carries prod `file`/`document` rows — but their bytes live in the production Vercel Blob store, never in local RustFS, so opening one in dev would 404. The env-prefix is the discriminator: the `s3` adapter never prefixes its own uploads, so a `prod/` / `preview/` prefix on a pathname *is* the "byte is remote" signal. Codified as `isRemoteOriginPathname(pathname)` in `storage.ts` (true only when `S3_ENDPOINT` is set, i.e. local dev — always false in prod). Three pieces hang off it:
+>
+> - **`pnpm storage:sync`** (`scripts/syncProdStorage.mjs`, chained into `pnpm dev:up`) walks prod-prefixed pathnames in the dev DB, reads each byte from Vercel Blob (read-only, via the SDK directly — *not* the prefixing adapter), and PUTs it into RustFS under the same key. Idempotent (skips objects already present). Skips cleanly when `S3_ENDPOINT` or the `BLOB_*` read tokens are absent, so `dev:up` never breaks. Safe re: the `vercel env pull` guard — the running app still selects `s3` (S3_ENDPOINT wins); only this script consumes the blob tokens.
+> - **A dev-only "PROD" badge** on document rows (`isRemoteOrigin` flag on `listDocuments`, rendered by `RemoteOriginBadge`) marks rows whose bytes are remote-origin.
+> - **A friendly fallback** in `/api/files/{view,download}` (`remoteOriginUnavailable()`): for a remote-origin file absent from RustFS, an explanatory page instead of a redirect to a URL that 404s.
+>
+> **Deleting a prod-origin file in dev is safe** — prod is untouched on both axes. Soft-delete is a pure DB write on the **dev Neon branch** (branch writes never propagate to prod). Hard-delete (admin bin purge) deletes the dev-branch row, then `storage.delete` hits **local RustFS** (idempotent no-op on a missing key); it cannot reach prod Vercel Blob — the running app has no blob tokens wired in and uses the `s3` adapter/endpoint.
+
 ---
 
 ## Context
