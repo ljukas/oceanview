@@ -72,23 +72,26 @@ export function applyEnvPrefix(pathname: string): string {
 }
 
 /**
- * True only in local dev (the s3/RustFS adapter is active) for a file whose
- * bytes live in a *remote* Vercel Blob store this environment can't read.
+ * True for a stored pathname whose env prefix differs from the *current*
+ * environment's — a "foreign-origin" byte surfaced through a branched DB. Dev
+ * and preview both branch the prod Neon DB, so their databases carry prod `file`
+ * rows whose `pathname` keeps its `prod/` prefix. Two consequences hang off it:
  *
- * Dev branches the prod Neon DB, so the dev database carries prod `file` rows
- * whose `pathname` keeps its `prod/` / `preview/` Vercel-Blob prefix — but the
- * bytes were never written to local RustFS. The s3 adapter never prefixes its
- * own uploads, so the presence of that prefix *is* the "byte is remote" signal.
+ *   - **Dev** (s3/RustFS adapter — never prefixes its own uploads): the bytes
+ *     were never written locally, so the file routes return a friendly "run
+ *     `pnpm storage:sync`" page when `head` misses, and the UI shows a PROD badge.
+ *   - **Preview** (vercelBlob adapter — *shared* stores with prod): the bytes are
+ *     readable (resolved verbatim by `applyEnvPrefix`), so the file renders — but
+ *     prod *owns* the byte, so the adapter refuses to delete/overwrite it and the
+ *     UI still shows a PROD badge so an editor knows mutations here can't touch
+ *     the real file.
  *
- * Always false in production AND preview: there `S3_ENDPOINT` is unset and both
- * read the *same* Vercel Blob stores (only the env prefix differs), so a prod
- * `prod/`-prefixed byte resolves directly via `applyEnvPrefix` — nothing is
- * remote-origin. Used only in dev to mark such rows in the UI and return a
- * friendly "run `pnpm storage:sync`" message instead of a 404.
+ * False for a file in its own env (prefix == current env, e.g. every prod file
+ * in production) and for dev's own unprefixed uploads.
  */
 export function isRemoteOriginPathname(pathname: string): boolean {
-  if (!process.env.S3_ENDPOINT) return false
-  return /^(?:prod|preview)\//.test(pathname)
+  if (!ENV_PREFIX_RE.test(pathname)) return false
+  return !pathname.startsWith(envPrefix())
 }
 
 export type MintUploadResult = {

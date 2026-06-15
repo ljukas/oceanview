@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import { applyEnvPrefix, storage, stripEnvPrefix } from './storage'
+import { applyEnvPrefix, isRemoteOriginPathname, storage, stripEnvPrefix } from './storage'
 
 // Tests run with VERCEL_ENV unset → envPrefix() resolves to 'dev/'.
 test('applyEnvPrefix prepends the current env prefix to a logical path', () => {
@@ -17,6 +17,15 @@ test('applyEnvPrefix leaves an already-prefixed pathname untouched (no double-pr
 
 test('applyEnvPrefix and stripEnvPrefix round-trip a logical path', () => {
   expect(stripEnvPrefix(applyEnvPrefix('documents/x.pdf'))).toBe('documents/x.pdf')
+})
+
+test('isRemoteOriginPathname flags a foreign-env (prod) prefix, not the current env', () => {
+  // current env in tests is 'dev/'.
+  expect(isRemoteOriginPathname('prod/documents/x.pdf')).toBe(true)
+  expect(isRemoteOriginPathname('preview/avatars/u/a.png')).toBe(true)
+  // Own env and unprefixed (dev's s3 uploads) are local, not remote.
+  expect(isRemoteOriginPathname('dev/documents/x.pdf')).toBe(false)
+  expect(isRemoteOriginPathname('documents/x.pdf')).toBe(false)
 })
 
 test('mintUploadToken returns a pathname and a typed upload payload', async () => {

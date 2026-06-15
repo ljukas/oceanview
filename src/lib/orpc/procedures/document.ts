@@ -201,7 +201,12 @@ export const documentRouter = {
         joinFilename({ name: updated.document.name, extension: updated.document.extension }),
       )
       const newPathname = replacePathnameBasename(oldPathname, newBasename)
-      if (newPathname !== oldPathname) {
+      // A foreign-origin (prod) byte is shared into this env read-only (preview),
+      // or absent locally (dev). Moving it would mutate prod's store / fail, so
+      // skip the physical rename: the name change is already committed and the
+      // byte keeps its old basename — the same tolerated degradation as a storage
+      // failure below. Never reached in prod (prod files carry the prod prefix).
+      if (newPathname !== oldPathname && !isRemoteOriginPathname(oldPathname)) {
         try {
           await storage.copy('private', oldPathname, newPathname, updated.file.mime)
           await fileService.updatePathname({ fileId: updated.file.id, pathname: newPathname })
