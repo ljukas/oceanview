@@ -1,0 +1,187 @@
+# ADR 0015 — Visual Identity & Design Language
+
+- **Status**: Proposed
+- **Date**: 2026-06-17
+- **Deciders**: Lukas
+- **Decision in one line**: Adopt a "quiet nautical confidence" design language — a Linear-style **inset app-shell** with a shared centered **`PageContainer`**, a **self-hosted type pairing** of Cabinet Grotesk (headings) over Switzer (body/UI) tuned Linear-style, **one** signature nautical-blue accent (`--brand`, applied only to login/empty washes and the logo mark, never to `--primary`), and a slightly slower, `prefers-reduced-motion`-aware overlay choreography shared across dialog / alert-dialog / sheet.
+
+---
+
+## Context
+
+By mid-2026 Oceanview's UI was functional but read as **bland**: a flat default sidebar, full-bleed pages
+that each hand-rolled `flex flex-col gap-6 p-4 md:p-8`, a purely neutral palette whose only color
+(`--selected`) appeared in selection states, plain-text "Oceanview" branding, the default `@fontsource`
+Geist face, and instant 100 ms overlay fades. The brand blue `#156cdd` lived only in `public/favicon.svg`
+and the web manifest. The base is shadcn `radix-nova` + Tailwind v4 with oklch tokens in
+`src/styles/app.css`, dark mode via `.dark` + the `oceanview-theme` cookie.
+
+The goal is "striking but usable" for a calm internal tool used by ~10–20 sailboat co-owners. The risk with
+"make it bold" is loudness; the discipline adopted here is **three concentrated moves on a restrained
+canvas** — an inset shell, a distinctive type pairing, and one signature accent — rather than pervasive
+decoration. Crucially, the inset machinery already exists in `src/components/ui/sidebar.tsx`
+(`variant="inset"`) but was never deployed, so most of this is configuration plus a small amount of shared
+layout, not new infrastructure.
+
+This ADR owns the design **language** — shell, type, color, motion. It is consumed by ADR-0014 (command
+palette) and ADR-0016 (empty states), and by the login redesign. The implementation breakdown lives in
+`docs/plans/redesign-2026-06/`.
+
+## Decision (TL;DR)
+
+- **Inset app-shell.** Deploy `variant="inset"` on the sidebar; the sidebar background wraps a rounded,
+  shadowed `bg-background` panel. Page content is centered in a shared `PageContainer` with a small max-width
+  scale, replacing per-page padding.
+- **Typography.** Self-host two faces, both from **Fontshare** under the **ITF Free Font License**:
+  **Cabinet Grotesk** (variable) for headings and **Switzer** (variable) for body/UI. **Geist is removed.**
+  Body gets Linear-style tuning (tight negative tracking, optical sizing, tabular numerals in tables).
+  Heading hierarchy uses Cabinet Grotesk's variable weight axis throughout — page titles bold, section/dialog
+  titles at their own medium/semibold weight (no fall-back to the body face needed).
+- **Color & signature accent.** Promote `#156cdd` to a semantic `--brand` token (≈ the existing `--selected`
+  blue). Apply it in exactly two low-frequency places: a `.brand-wash` gradient on login and empty states,
+  and a `LogoMark`. `--primary` stays neutral.
+- **Motion & overlays.** Overlay + content of dialog / alert-dialog / sheet move from 100 ms to 200 ms
+  `ease-out` with the content rising 1px after the overlay dims; a global `prefers-reduced-motion` guard
+  near-instants all overlay animation.
+
+### Layout shell
+
+`AppSidebar` renders `<Sidebar collapsible="icon" variant="inset">`. `SidebarProvider` already paints
+`has-data-[variant=inset]:bg-sidebar`; `SidebarInset` already becomes `m-2 rounded-xl shadow-sm` under that
+variant. A new `src/components/layout/PageContainer.tsx` owns `mx-auto`, responsive padding
+(`px-4 py-6 md:px-8 md:py-10`), `gap-6`, and a `width` prop (`default ≈ max-w-5xl`, `prose ≈ max-w-2xl`,
+`full`). All ~6 routes that hand-rolled `flex flex-col gap-6 p-4 md:p-8` switch to it. Mobile (`<768px`) is
+unaffected: the sidebar is already a `Sheet` drawer and the inset margins are `md:`-gated, so the panel is
+full-bleed with comfortable padding.
+
+In light mode `--sidebar` (near-white) wraps a pure-white `--background` panel — the small lightness gap plus
+`shadow-sm` + `rounded-xl` makes the panel lift. In dark mode the panel is a darker recessed well than its
+wrap; both read as a distinct surface (the standard inset look). Text contrast is unchanged (`foreground` on
+`background`), so accessibility is preserved.
+
+### Typography & type scale
+
+Both faces are **self-hosted woff2 under `public/fonts/`** with `@font-face` declarations in `app.css`
+(`font-display: swap`). There is no `@fontsource` package for either — this manual hosting is the accepted
+cost of the chosen faces. (Oceanview is a non-commercial internal tool, so commercial-licensing concerns
+don't apply; both faces are ITF-FFL anyway, which permits commercial + web embedding regardless — see
+Alternative E for why the originally-considered dafont route was dropped.)
+
+- **Headings — Cabinet Grotesk.** Variable woff2 from **Fontshare** (Jérémie Hornus / ITF) under the **ITF
+  Free Font License** (free personal + commercial + web embedding); retain the license file in-repo. A
+  vintage-warm grotesque with softened terminals — the "quiet nautical confidence" character — with a full
+  Thin–Black variable axis, downloaded as woff2 directly (no manual conversion). `--font-heading:
+  'Cabinet Grotesk', var(--font-sans)`.
+- **Body/UI — Switzer.** Variable woff2 from Fontshare under the **ITF Free Font License** (free personal +
+  commercial); retain the license file in-repo. `--font-sans: 'Switzer', system-ui, sans-serif`.
+- **Linear-style body tuning** (`@layer base`): tight negative letter-spacing on body/UI (≈ `-0.011em`),
+  `font-optical-sizing: auto`, and `font-variant-numeric: tabular-nums` on numeric table cells (sizes, dates,
+  phone, share counts). This tuning — not an exotic typeface — is the bulk of the "Linear feel."
+- **Type scale.** An `@layer base` rule applies `font-heading tracking-tight` to `h1/h2/h3`. Page titles
+  become `font-bold` (was Geist `font-semibold`). Dialog/section titles use `font-medium`/`font-semibold`
+  **in Cabinet Grotesk** — its variable axis covers 500/600, so there is no fall-back to the body face.
+  `DialogTitle`/`SheetTitle`/`AlertDialogTitle` already consume `font-heading`, so all titles upgrade
+  automatically. Watch the longest **Swedish** strings (the primary locale) under `tracking-tight`;
+  `text-balance` on `h1` helps.
+
+### Color & signature accent
+
+New tokens in `:root` and `.dark`: `--brand` (light `oklch(0.56 0.18 256)`, dark `oklch(0.62 0.17 256)`) and
+`--brand-foreground`, registered in `@theme inline` as `--color-brand` / `--color-brand-foreground`. A
+`.brand-wash` component utility paints a soft radial `--brand`→transparent gradient, applied to the login
+wrapper and `Empty` surfaces **only**. An optional `src/components/Logo.tsx` (`LogoMark` + `Wordmark`, lifted
+from `favicon.svg`) puts a sailboat mark in a `--brand` tile in the sidebar header and login. `--primary` is
+deliberately left neutral.
+
+### Motion & overlays
+
+In `dialog.tsx`, `alert-dialog.tsx`, `sheet.tsx`: overlay fade `duration-100` → `duration-200 ease-out`;
+dialog/alert content `duration-100` → `duration-200 ease-out` plus `data-open:slide-in-from-top-1` so it rises
+after the scrim dims (perceived stagger — overlay is a pure fade, content fades+zooms+rises). Sheet keeps its
+200 ms slide; only its overlay timing is aligned. A single `@media (prefers-reduced-motion: reduce)` rule in
+`app.css` near-zeroes animation/transition duration for `[data-slot$="-overlay"]` and `[data-slot$="-content"]`.
+
+## Alternatives considered
+
+- **A. Make `--primary` the nautical blue.** Bolder, but tints every primary button and destroys the "calm"
+  brief; fights the neutral-slate base. Rejected — one accent in two placements instead.
+- **B. `variant="floating"` sidebar.** Rounds the *sidebar* into a card too; busier and less Linear-like than
+  `inset` (which floats only the content panel). Rejected.
+- **C. Keep per-page padding (no `PageContainer`).** Status quo; no centering on wide monitors and 6×
+  duplication. Rejected — the container is the one place that owns page layout.
+- **D. Keep Geist (or Schibsted Grotesk) for body.** Geist reads as "default Inter"; the owner explicitly
+  wanted Linear's direction. Switzer is Inter-adjacent with more warmth and is free-for-commercial. **Inter
+  Variable** (Linear's actual font) and **Hanken Grotesk** are documented drop-in body fallbacks (one-line
+  `--font-sans` swap).
+- **E. Alte Haas Grotesk (dafont) for headings — the original pick, dropped.** Alte Haas has the same
+  vintage-warm grotesque character, but it's a dafont freeware face whose terms live in a bundled
+  `licence.rtf`, so shipping it required *verifying web embedding + commercial use* — and it ships only fixed
+  **400/700** (forcing semibold titles onto the body face) and needs manual **OTF→woff2** conversion. Since
+  Oceanview is non-commercial the commercial-use half of that gate was moot, which **widened the field**: the
+  free-for-personal tier opened up, and — more usefully — Fontshare's own ITF-FFL **variable** grotesques
+  (Switzer's home, so commercial-safe regardless) match the brief while dissolving *both* Alte Haas costs.
+  **Cabinet Grotesk** was chosen (closest to the warm-grotesque character); **Clash Display** (more striking
+  than the calm brief) and **General Sans** (more neutral than wanted) were the other Fontshare candidates.
+  **Schibsted Grotesk / Hanken Grotesk** remain documented further fallbacks.
+- **F. Third-party font CDN.** Rejected — privacy + FOUT + offline; self-hosting is the established pattern.
+- **G. Longer (300 ms+) overlay motion.** Feels laggy for this CRUD-heavy app's repeated opens. 200 ms ceiling.
+
+## Architecture
+
+`PageContainer` (`src/components/layout/PageContainer.tsx`) is a deep-but-tiny module: one `width` prop hides
+the padding + centering + max-width decision from every route. `Logo` (`src/components/Logo.tsx`) centralizes
+the wordmark/mark and is shared with the login redesign. All color/motion/font decisions stay centralized in
+`src/styles/app.css` tokens and base/component layers; the overlay primitives only change class strings. The
+only new runtime assets are the two self-hosted font families under `public/fonts/`; no new npm dependency
+(and `@fontsource-variable/geist` is removed).
+
+## Verification
+
+- The project build succeeds with the new `@font-face` rules and Geist removed; no missing-font console
+  warnings.
+- Desktop ≥768px: inset panel floats with rounded corners + shadow; sidebar bg wraps; page content centered
+  within `max-w-5xl`/`prose`. Mobile <768px: sidebar is a drawer, panel full-bleed, padding comfortable.
+- Light and dark: panel separates from the wrap in both. Text contrast unchanged.
+- Headings render in Cabinet Grotesk; body in Switzer; numerals in tables are tabular/aligned; hierarchy
+  reads bold → semibold/medium, all in Cabinet Grotesk's variable axis.
+- `.brand-wash` visible on login + empty states in both themes; `--primary` buttons remain neutral; brand-tile
+  contrast (`--brand-foreground` on `--brand`) ≥ 4.5:1 in both themes.
+- Overlays open with a ~200 ms dim-then-rise; sheet slides from bottom on mobile. With OS "Reduce Motion" on,
+  overlays appear effectively instantly.
+- Longest Swedish page titles do not crowd/clip under `tracking-tight`.
+
+## Critical files
+
+- `src/components/AppSidebar.tsx` — `variant="inset"`.
+- `src/components/ui/sidebar.tsx` — existing inset classes (reference only).
+- `src/components/layout/PageContainer.tsx` — new shared centered container.
+- `src/styles/app.css` — `@font-face` (Cabinet Grotesk + Switzer), `--font-heading`/`--font-sans`, `--brand`
+  tokens, `.brand-wash`, base heading + body-tuning rules, reduced-motion guard; remove Geist import.
+- `public/fonts/` — self-hosted woff2 + retained license files for both faces.
+- `src/components/ui/{dialog,alert-dialog,sheet}.tsx` — overlay timing + content rise.
+- `src/components/Logo.tsx` (new, shared with login) and the ~6 routes migrating to `PageContainer`.
+
+## Consequences
+
+**Positive:** the shell reads as a deliberate, modern product at near-zero cost (machinery already existed);
+one place (`PageContainer`) owns page layout, ending 6× duplication and giving readable centering on wide
+screens; a distinctive heading face + a warmer Linear-tuned body + one signature blue make it "bold" without
+loud; overlays feel considered and finally respect reduced-motion; all design decisions are centralized in
+tokens/primitives, so the language is greppable and easy to retune.
+
+**Negative:** the inset frame slightly reduces usable width everywhere (intended); two **manually hosted**
+font families (woff2 to retain under `public/fonts/`, with license files) — more upkeep than `@fontsource`,
+though both download as ready woff2 from Fontshare (no conversion, and the variable axes mean no
+fixed-weight compromises); migrating ~6 routes to `PageContainer` is mechanical but touches several files;
+wide data views (document grid) must opt into `width="full"`; the brand blue overlaps `--selected`, so the
+two must be kept visually coherent.
+
+## Revisit triggers
+
+- **Manual font upkeep becomes a burden / FOUT is noticeable** → swap to the documented `@fontsource`
+  fallbacks (Inter or Hanken body; Schibsted heading) via a one-line token change.
+- **Pages routinely need full width** → reconsider whether `default` should be wider, or make `full` default.
+- **The brand wants more color presence** → re-open Alternative A (blue `--primary`) deliberately, not by drift.
+- **Overlay motion feels slow under heavy CRUD use** → step back toward 150 ms.
+- **A brand illustration system is wanted** → extend this ADR; ADR-0016 already defers empty-state
+  illustrations here.
