@@ -12,6 +12,7 @@ import {
   DocumentUpload,
   type DocumentUploadHandle,
 } from '~/components/document/upload/DocumentUpload'
+import { PageContainer } from '~/components/layout/PageContainer'
 import { Button } from '~/components/ui/button'
 import { useDocumentDnd } from '~/hooks/useDocumentDnd'
 import { useDocumentSelection } from '~/hooks/useDocumentSelection'
@@ -57,10 +58,10 @@ export function DocumentsDesktop({ activeFolderId, currentUser }: Props) {
 
   return (
     <DndContext {...dndContextProps}>
-      <div className="flex flex-col gap-4 p-4 md:p-8">
+      <PageContainer width="full" className="gap-4">
         <header className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex flex-col gap-1">
-            <h1 className="font-semibold text-3xl tracking-tight md:text-4xl">
+            <h1 className="font-bold text-3xl tracking-tight text-balance md:text-4xl">
               {m.nav_documents()}
             </h1>
             <p className="text-muted-foreground text-sm">{m.document_page_description_desktop()}</p>
@@ -106,7 +107,7 @@ export function DocumentsDesktop({ activeFolderId, currentUser }: Props) {
             />
           </div>
         </DocumentUpload>
-      </div>
+      </PageContainer>
 
       {createOpen ? (
         <CreateFolderDialog

@@ -8,6 +8,7 @@ import {
 } from '@tanstack/react-router'
 import { ArrowLeftIcon } from 'lucide-react'
 import { useMemo } from 'react'
+import { PageContainer } from '~/components/layout/PageContainer'
 import { ShareAssignForm } from '~/components/share/ShareAssignForm'
 import { Button } from '~/components/ui/button'
 import { orpc } from '~/lib/orpc/client'
@@ -65,14 +66,14 @@ function AssignSharePage() {
   if (!part1 || !part2) return <Navigate to="/admin/shares" replace />
 
   return (
-    <div className="flex flex-col gap-6 p-4 md:p-8">
+    <PageContainer width="prose">
       <Button variant="ghost" size="sm" className="-ml-2 self-start" onClick={goBack}>
         <ArrowLeftIcon />
         {m.common_back()}
       </Button>
 
       <header className="flex flex-col gap-2">
-        <h1 className="font-semibold text-2xl tracking-tight md:text-3xl">
+        <h1 className="font-bold text-2xl tracking-tight text-balance md:text-3xl">
           {m.share_assign_title({ code })}
         </h1>
         <p className="text-muted-foreground text-sm">{m.share_assign_description()}</p>
@@ -87,6 +88,6 @@ function AssignSharePage() {
           onDone={goBack}
         />
       </div>
-    </div>
+    </PageContainer>
   )
 }

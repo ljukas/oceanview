@@ -3,6 +3,7 @@ import { createFileRoute } from '@tanstack/react-router'
 import { PlusIcon } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { z } from 'zod'
+import { PageContainer } from '~/components/layout/PageContainer'
 import { PasskeySetupPrompt } from '~/components/passkey/PasskeySetupPrompt'
 import { CreateSeasonDialog } from '~/components/season/CreateSeasonDialog'
 import { DeleteSeasonDialog } from '~/components/season/DeleteSeasonDialog'
@@ -80,8 +81,10 @@ function Calendar() {
   }, [passkeyParam, navigate])
 
   return (
-    <div className="flex flex-col gap-6 p-4 md:p-8">
-      <h1 className="font-semibold text-2xl tracking-tight md:text-3xl">{m.nav_calendar()}</h1>
+    <PageContainer>
+      <h1 className="font-bold text-2xl tracking-tight text-balance md:text-3xl">
+        {m.nav_calendar()}
+      </h1>
       {isAdmin && (
         <div className="flex justify-end">
           <Button onClick={() => open('createSeason')}>
@@ -122,6 +125,6 @@ function Calendar() {
         onCreate={passkeyPrompt.create}
         onDismiss={passkeyPrompt.dismiss}
       />
-    </div>
+    </PageContainer>
   )
 }

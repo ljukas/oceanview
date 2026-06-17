@@ -15,6 +15,7 @@ import {
   DocumentUpload,
   type DocumentUploadHandle,
 } from '~/components/document/upload/DocumentUpload'
+import { PageContainer } from '~/components/layout/PageContainer'
 import { Button } from '~/components/ui/button'
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '~/components/ui/empty'
 import { useDocumentSelection } from '~/hooks/useDocumentSelection'
@@ -86,10 +87,10 @@ export function DocumentsMobile({ activeFolderId, currentUser }: Props) {
   const hasAnyRow = showUp || childFolders.length > 0 || visibleDocuments.length > 0
 
   return (
-    <div className="flex flex-col gap-4 p-4">
+    <PageContainer width="full" className="gap-4">
       <header className="flex flex-col gap-3">
         <div className="flex flex-col gap-1">
-          <h1 className="font-semibold text-3xl tracking-tight">{m.nav_documents()}</h1>
+          <h1 className="font-bold text-3xl tracking-tight text-balance">{m.nav_documents()}</h1>
           <p className="text-muted-foreground text-sm">{m.document_page_description_mobile()}</p>
         </div>
         <DocumentSearch />
@@ -178,6 +179,6 @@ export function DocumentsMobile({ activeFolderId, currentUser }: Props) {
           parentId={activeFolderId}
         />
       ) : null}
-    </div>
+    </PageContainer>
   )
 }

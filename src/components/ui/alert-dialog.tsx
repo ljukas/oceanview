@@ -28,7 +28,7 @@ function AlertDialogOverlay({
       data-slot="alert-dialog-overlay"
       className={cn(
         // enter/exit animations: fade in on open, fade out on close
-        'data-open:fade-in-0 data-closed:fade-out-0 duration-100 data-closed:animate-out data-open:animate-in',
+        'data-open:fade-in-0 data-closed:fade-out-0 duration-200 ease-out data-closed:animate-out data-open:animate-in',
         // positioning: full-screen backdrop above content layers
         'fixed inset-0 z-50',
         // appearance: dim + optional backdrop blur when supported
@@ -56,8 +56,8 @@ function AlertDialogContent({
         className={cn(
           // group container: lets children react to this content's data-size/data-slot state
           'group/alert-dialog-content',
-          // enter/exit animations: fade + zoom on open, reverse on close
-          'data-open:fade-in-0 data-open:zoom-in-95 data-closed:fade-out-0 data-closed:zoom-out-95 duration-100 data-closed:animate-out data-open:animate-in',
+          // enter/exit animations: fade + zoom + a 1px rise on open, reverse on close
+          'data-open:fade-in-0 data-open:zoom-in-95 data-open:slide-in-from-top-1 data-closed:fade-out-0 data-closed:zoom-out-95 duration-200 ease-out data-closed:animate-out data-open:animate-in',
           // positioning: centered above overlay
           'fixed top-1/2 left-1/2 z-50 -translate-x-1/2 -translate-y-1/2',
           // box/layout: grid panel with padding, rounding, ring border

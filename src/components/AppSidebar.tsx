@@ -1,5 +1,6 @@
 import { Link, linkOptions, useMatchRoute } from '@tanstack/react-router'
 import { AnchorIcon, CalendarIcon, FolderIcon, Trash2Icon, UsersIcon } from 'lucide-react'
+import { Wordmark } from '~/components/Logo'
 import {
   Sidebar,
   SidebarContent,
@@ -56,9 +57,9 @@ export function AppSidebar({ user }: { user: SidebarUser }) {
   }
 
   return (
-    <Sidebar collapsible="icon">
-      <SidebarHeader className="px-4 py-4">
-        <span className="font-semibold text-lg">Oceanview</span>
+    <Sidebar collapsible="icon" variant="inset">
+      <SidebarHeader className="px-2 py-3">
+        <Wordmark className="group-data-[collapsible=icon]:justify-center" />
       </SidebarHeader>
       <SidebarContent>
         <SidebarGroup>

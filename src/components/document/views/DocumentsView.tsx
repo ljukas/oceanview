@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import type { CurrentUser } from '~/components/document/shared/documentHelpers'
 import { DocumentsDesktop } from '~/components/document/views/DocumentsDesktop'
 import { DocumentsMobile } from '~/components/document/views/DocumentsMobile'
+import { PageContainer } from '~/components/layout/PageContainer'
 import { Skeleton } from '~/components/ui/skeleton'
 import { useIsCoarsePointer } from '~/hooks/useMobile'
 
@@ -38,7 +39,7 @@ export function DocumentsView({ activeFolderId, currentUser }: Props) {
 
 function DocumentsSkeleton() {
   return (
-    <div className="flex flex-col gap-4 p-4 md:p-8">
+    <PageContainer width="full" className="gap-4">
       <Skeleton className="h-10 w-48" />
       <Skeleton className="h-5 w-72" />
       <div className="flex flex-col gap-2 pt-4">
@@ -46,6 +47,6 @@ function DocumentsSkeleton() {
           <Skeleton key={i} className="h-14 w-full rounded-lg" />
         ))}
       </div>
-    </div>
+    </PageContainer>
   )
 }

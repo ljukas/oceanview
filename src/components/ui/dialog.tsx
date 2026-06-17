@@ -29,7 +29,7 @@ function DialogOverlay({
       data-slot="dialog-overlay"
       className={cn(
         // fade in/out with open state
-        'data-open:fade-in-0 data-closed:fade-out-0 duration-100 data-closed:animate-out data-open:animate-in',
+        'data-open:fade-in-0 data-closed:fade-out-0 duration-200 ease-out data-closed:animate-out data-open:animate-in',
         // full-screen scrim, blur backdrop where supported
         'fixed inset-0 isolate z-50 bg-black/10 supports-backdrop-filter:backdrop-blur-xs',
         className,
@@ -53,8 +53,8 @@ function DialogContent({
       <DialogPrimitive.Content
         data-slot="dialog-content"
         className={cn(
-          // enter/exit: fade + zoom with open state
-          'data-open:fade-in-0 data-open:zoom-in-95 data-closed:fade-out-0 data-closed:zoom-out-95 duration-100 data-closed:animate-out data-open:animate-in',
+          // enter/exit: fade + zoom + a 1px rise (after the scrim dims) with open state
+          'data-open:fade-in-0 data-open:zoom-in-95 data-open:slide-in-from-top-1 data-closed:fade-out-0 data-closed:zoom-out-95 duration-200 ease-out data-closed:animate-out data-open:animate-in',
           // centered fixed positioning
           'fixed top-1/2 left-1/2 z-50 -translate-x-1/2 -translate-y-1/2',
           // box styling

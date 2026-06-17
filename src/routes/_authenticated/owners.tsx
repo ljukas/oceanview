@@ -2,6 +2,7 @@ import { useQuery, useSuspenseQuery } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
 import { PlusIcon } from 'lucide-react'
 import { z } from 'zod'
+import { PageContainer } from '~/components/layout/PageContainer'
 import { Button } from '~/components/ui/button'
 import { ToggleGroup, ToggleGroupItem } from '~/components/ui/toggle-group'
 import { CreateUserDialog } from '~/components/user/CreateUserDialog'
@@ -95,9 +96,11 @@ function Owners() {
   const onRestore = (id: string) => open('restore', { userId: id, filter: 'deleted' })
 
   return (
-    <div className="flex flex-col gap-6 p-4 md:p-8">
+    <PageContainer>
       <header className="flex flex-col gap-2">
-        <h1 className="font-semibold text-2xl tracking-tight md:text-3xl">{m.owners_title()}</h1>
+        <h1 className="font-bold text-2xl tracking-tight text-balance md:text-3xl">
+          {m.owners_title()}
+        </h1>
         <p className="text-muted-foreground text-sm">{m.owners_description()}</p>
       </header>
 
@@ -177,7 +180,7 @@ function Owners() {
           />
         </>
       ) : null}
-    </div>
+    </PageContainer>
   )
 }
 

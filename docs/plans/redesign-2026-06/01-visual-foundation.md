@@ -1,7 +1,7 @@
 # 01 — Visual Foundation
 
 **ADR:** [0015 — Visual Identity & Design Language](../../adr/0015-visual-identity-and-design-language.md)
-**Status:** planned
+**Status:** ✅ implemented (2026-06-17)
 
 Covers the inset app-shell, a shared centered `PageContainer`, the self-hosted type pairing, the `--brand`
 accent, and the dialog-overlay motion polish.
