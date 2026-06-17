@@ -40,6 +40,9 @@ export function envPrefix(): string {
   }
 }
 
+/** Matches any env prefix (`prod/`, `preview/`, `dev/`) at the start of a pathname. */
+const ENV_PREFIX_RE = /^(?:prod|preview|dev)\//
+
 /**
  * Reduce an adapter-final pathname back to its logical form for validation.
  * `mintUploadToken` returns the final (possibly env-prefixed) pathname and the
@@ -48,7 +51,47 @@ export function envPrefix(): string {
  * prefix first or they reject every production upload.
  */
 export function stripEnvPrefix(pathname: string): string {
-  return pathname.replace(/^(?:prod|preview|dev)\//, '')
+  return pathname.replace(ENV_PREFIX_RE, '')
+}
+
+/**
+ * Prepend the current env prefix UNLESS the pathname already carries ANY env
+ * prefix. The vercelBlob adapter uses this to turn a logical path
+ * (`documents/x.pdf`) into the env-namespaced key it stores under.
+ *
+ * Recognizing all three prefixes — not just the current env's — matters because
+ * dev/preview Neon DBs branch prod, so a prod `file` row read from preview keeps
+ * its `prod/` pathname. That byte lives at `prod/…` in the shared Blob store, so
+ * it must be looked up verbatim; re-prefixing it to `preview/prod/…` 404s
+ * ("Blob not found"). Mirrors `stripEnvPrefix` so prefixing and stripping can't
+ * drift. Logical paths never start with an env prefix, so new uploads still get
+ * the current env's prefix.
+ */
+export function applyEnvPrefix(pathname: string): string {
+  return ENV_PREFIX_RE.test(pathname) ? pathname : `${envPrefix()}${pathname}`
+}
+
+/**
+ * True for a stored pathname whose env prefix differs from the *current*
+ * environment's — a "foreign-origin" byte surfaced through a branched DB. Dev
+ * and preview both branch the prod Neon DB, so their databases carry prod `file`
+ * rows whose `pathname` keeps its `prod/` prefix. Two consequences hang off it:
+ *
+ *   - **Dev** (s3/RustFS adapter — never prefixes its own uploads): the bytes
+ *     were never written locally, so the file routes return a friendly "run
+ *     `pnpm storage:sync`" page when `head` misses, and the UI shows a PROD badge.
+ *   - **Preview** (vercelBlob adapter — *shared* stores with prod): the bytes are
+ *     readable (resolved verbatim by `applyEnvPrefix`), so the file renders — but
+ *     prod *owns* the byte, so the adapter refuses to delete/overwrite it and the
+ *     UI still shows a PROD badge so an editor knows mutations here can't touch
+ *     the real file.
+ *
+ * False for a file in its own env (prefix == current env, e.g. every prod file
+ * in production) and for dev's own unprefixed uploads.
+ */
+export function isRemoteOriginPathname(pathname: string): boolean {
+  if (!ENV_PREFIX_RE.test(pathname)) return false
+  return !pathname.startsWith(envPrefix())
 }
 
 export type MintUploadResult = {

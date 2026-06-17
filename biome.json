@@ -119,6 +119,9 @@
         "rules": {
           "suspicious": {
             "noConsole": "off"
+          },
+          "style": {
+            "noRestrictedImports": "off"
           }
         }
       }

@@ -1,3 +1,4 @@
+import { isDefinedError } from '@orpc/client'
 import { useMutation, useQueryClient, useSuspenseQuery } from '@tanstack/react-query'
 import { FolderIcon, RotateCcwIcon, Trash2Icon } from 'lucide-react'
 import { useState } from 'react'
@@ -21,6 +22,8 @@ import { Badge } from '~/components/ui/badge'
 import { Button } from '~/components/ui/button'
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '~/components/ui/empty'
 import { orpc } from '~/lib/orpc/client'
+import { documentErrorMessage } from '~/lib/orpc/documentErrorMessage'
+import { folderErrorMessage } from '~/lib/orpc/folderErrorMessage'
 import { optimisticRemove } from '~/lib/orpc/optimistic'
 import { cn } from '~/lib/utils'
 import { m } from '~/paraglide/messages'
@@ -116,7 +119,9 @@ function BatchCard({ correlationId, items }: { correlationId: string; items: Arr
           (e) => e.correlationId === correlationId,
         ),
       onSuccess: () => toast.success(m.bin_restored_toast()),
-      onError: (err) => toast.error(err.message || m.bin_restore_error()),
+      // restoreFolder throws code-only typed errors; localize by code.
+      onError: (err) =>
+        toast.error(isDefinedError(err) ? folderErrorMessage(err.code) : m.bin_restore_error()),
       onSettled: invalidate,
     }),
   )
@@ -168,7 +173,8 @@ function LooseRow({ entry }: { entry: BinEntry }) {
     orpc.document.restoreDocument.mutationOptions({
       onMutate: removeFromBin,
       onSuccess: () => toast.success(m.bin_document_restored_toast()),
-      onError: (err) => toast.error(err.message || m.bin_restore_error()),
+      onError: (err) =>
+        toast.error(isDefinedError(err) ? documentErrorMessage(err.code) : m.bin_restore_error()),
       onSettled: invalidate,
     }),
   )
@@ -179,7 +185,8 @@ function LooseRow({ entry }: { entry: BinEntry }) {
         toast.success(m.bin_document_purged_toast())
         setConfirmHard(false)
       },
-      onError: (err) => toast.error(err.message || m.bin_purge_error()),
+      onError: (err) =>
+        toast.error(isDefinedError(err) ? documentErrorMessage(err.code) : m.bin_purge_error()),
       onSettled: invalidate,
     }),
   )

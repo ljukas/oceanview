@@ -1,5 +1,32 @@
 import { expect, test } from 'vitest'
-import { storage } from './storage'
+import { applyEnvPrefix, isRemoteOriginPathname, storage, stripEnvPrefix } from './storage'
+
+// Tests run with VERCEL_ENV unset → envPrefix() resolves to 'dev/'.
+test('applyEnvPrefix prepends the current env prefix to a logical path', () => {
+  expect(applyEnvPrefix('documents/x.pdf')).toBe('dev/documents/x.pdf')
+  expect(applyEnvPrefix('avatars/user-1/abc.png')).toBe('dev/avatars/user-1/abc.png')
+})
+
+test('applyEnvPrefix leaves an already-prefixed pathname untouched (no double-prefix)', () => {
+  // The preview "Blob not found" regression: a prod row read from another env
+  // must resolve verbatim in the shared store, never become preview/prod/….
+  expect(applyEnvPrefix('prod/documents/x.pdf')).toBe('prod/documents/x.pdf')
+  expect(applyEnvPrefix('preview/avatars/u/a.png')).toBe('preview/avatars/u/a.png')
+  expect(applyEnvPrefix('dev/documents/y.pdf')).toBe('dev/documents/y.pdf')
+})
+
+test('applyEnvPrefix and stripEnvPrefix round-trip a logical path', () => {
+  expect(stripEnvPrefix(applyEnvPrefix('documents/x.pdf'))).toBe('documents/x.pdf')
+})
+
+test('isRemoteOriginPathname flags a foreign-env (prod) prefix, not the current env', () => {
+  // current env in tests is 'dev/'.
+  expect(isRemoteOriginPathname('prod/documents/x.pdf')).toBe(true)
+  expect(isRemoteOriginPathname('preview/avatars/u/a.png')).toBe(true)
+  // Own env and unprefixed (dev's s3 uploads) are local, not remote.
+  expect(isRemoteOriginPathname('dev/documents/x.pdf')).toBe(false)
+  expect(isRemoteOriginPathname('documents/x.pdf')).toBe(false)
+})
 
 test('mintUploadToken returns a pathname and a typed upload payload', async () => {
   const result = await storage.mintUploadToken({

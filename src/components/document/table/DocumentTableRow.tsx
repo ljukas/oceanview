@@ -17,6 +17,7 @@ import {
   formatSize,
   seldocKey,
 } from '~/components/document/shared/documentHelpers'
+import { RemoteOriginBadge } from '~/components/document/shared/RemoteOriginBadge'
 import {
   DATE_CELL,
   KIND_CELL,
@@ -59,9 +60,11 @@ const contextComponents: MenuComponents = {
   Separator: ContextMenuSeparator,
 }
 
-// Interactive controls inside the row (thumbnail link, ⋮ trigger) must not
-// toggle row selection or start a drag — swallow pointer/click before they
-// reach the row's handlers.
+// Interactive controls inside the row (thumbnail link, ⋮ trigger) and the
+// portaled menu content must not toggle row selection or start a drag. Menus
+// portal out in the DOM but are React children of the row, so their item clicks
+// still bubble (React replays along the React tree) — swallow pointer/click on
+// all of them before they reach the row's handlers.
 const swallow = {
   onPointerDown: (e: React.PointerEvent) => e.stopPropagation(),
   onClick: (e: React.MouseEvent) => e.stopPropagation(),
@@ -199,8 +202,11 @@ export function DocumentTableRow({
                   />
                 </a>
                 <div className="flex min-w-0 flex-col">
-                  <span className="truncate font-medium" title={name}>
-                    {name}
+                  <span className="flex min-w-0 items-center gap-1.5">
+                    <span className="truncate font-medium" title={name}>
+                      {name}
+                    </span>
+                    {doc.isRemoteOrigin ? <RemoteOriginBadge /> : null}
                   </span>
                   {/* Typ + Ägare fold in here until they become columns at `lg`. */}
                   <span
@@ -274,14 +280,14 @@ export function DocumentTableRow({
                     <MoreVerticalIcon />
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
+                <DropdownMenuContent align="end" {...swallow}>
                   <DocumentMenuItems groups={dropdownGroups} components={dropdownComponents} />
                 </DropdownMenuContent>
               </DropdownMenu>
             </TableCell>
           </TableRow>
         </ContextMenuTrigger>
-        <ContextMenuContent>
+        <ContextMenuContent {...swallow}>
           <DocumentMenuItems groups={contextGroups} components={contextComponents} />
         </ContextMenuContent>
       </ContextMenu>

@@ -90,8 +90,8 @@ importers:
         specifier: ^2.4.0
         version: 2.4.0
       '@vercel/functions':
-        specifier: ^3.7.0
-        version: 3.7.0(@aws-sdk/credential-provider-web-identity@3.972.51)
+        specifier: ^3.7.1
+        version: 3.7.1(@aws-sdk/credential-provider-web-identity@3.972.51)(ws@8.21.0)
       '@vercel/queue':
         specifier: ^0.3.0
         version: 0.3.0
@@ -156,14 +156,14 @@ importers:
         specifier: ^15.0.0
         version: 15.0.0(react@19.2.7)
       react-email:
-        specifier: ^6.6.0
-        version: 6.6.0(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+        specifier: ^6.6.3
+        version: 6.6.3(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       react-phone-number-input:
         specifier: ^3.4.17
         version: 3.4.17(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       resend:
         specifier: ^6.12.4
-        version: 6.12.4(@react-email/render@2.0.8(react-dom@19.2.7(react@19.2.7))(react@19.2.7))
+        version: 6.12.4(@react-email/render@2.0.9(react-dom@19.2.7(react@19.2.7))(react@19.2.7))
       shadcn:
         specifier: ^4.11.0
         version: 4.11.0(typescript@6.0.3)
@@ -221,7 +221,7 @@ importers:
         version: 0.31.10
       nitro:
         specifier: 3.0.260603-beta
-        version: 3.0.260603-beta(@vercel/blob@2.4.0)(@vercel/functions@3.7.0(@aws-sdk/credential-provider-web-identity@3.972.51))(@vercel/queue@0.3.0)(chokidar@5.0.0)(dotenv@17.4.2)(drizzle-orm@0.45.2(kysely@0.28.17)(postgres@3.4.9))(ioredis@5.10.1)(jiti@2.7.0)(lru-cache@11.5.1)(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.4))
+        version: 3.0.260603-beta(@vercel/blob@2.4.0)(@vercel/functions@3.7.1(@aws-sdk/credential-provider-web-identity@3.972.51)(ws@8.21.0))(@vercel/queue@0.3.0)(chokidar@5.0.0)(dotenv@17.4.2)(drizzle-orm@0.45.2(kysely@0.28.17)(postgres@3.4.9))(ioredis@5.10.1)(jiti@2.7.0)(lru-cache@11.5.1)(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.4))
       pino-pretty:
         specifier: ^13.1.3
         version: 13.1.3
@@ -2397,8 +2397,8 @@ packages:
   '@radix-ui/rect@1.1.2':
     resolution: {integrity: sha512-xnXE7wG13PI+cxieVssYXlQJuYVRhH9NBoxt3KNwzghDIA69GMm7d4wXRouHIYjE+KvS6U/MsMO73NdS2MH9ZA==}
 
-  '@react-email/render@2.0.8':
-    resolution: {integrity: sha512-5udvVr3U/WuGJZfLdLBOhkzrqRWd2Q5ZYmF7ppcy7FzWcwgshdqLMNqJOXcVzAXJXg/2bm7D+WGJzTtZOZMQnQ==}
+  '@react-email/render@2.0.9':
+    resolution: {integrity: sha512-M89LiXy2q+9tmQ4VMR0rYGuEe6NJ6HhZsSxBMoLwIia5fVOLcZQcZe2GEO0nAkLZspDjEhn7mtMRPmeMKECEdQ==}
     engines: {node: '>=20.0.0'}
     peerDependencies:
       react: ^18.0 || ^19.0 || ^19.0.0-rc
@@ -3169,13 +3169,16 @@ packages:
     resolution: {integrity: sha512-LMRMEai3Z+BODyxGcU9+KiWrS/UElNiOLKiNRfGNt2Vu3NTEmXgFeXG9wBfocAnTe5yJCX/DY6k3k7S/LkPp/g==}
     engines: {node: '>= 18'}
 
-  '@vercel/functions@3.7.0':
-    resolution: {integrity: sha512-Dzcs1CHRP0aV/dFHUJ8BEMcKjbsPZZoKyyCSCbHRev+Qlj96q1pKKTXcc9m9p7U/kJz7+Dl+GgPHUFGMEKYUOQ==}
+  '@vercel/functions@3.7.1':
+    resolution: {integrity: sha512-7PsCL2Vz4MKz4t+Nxu8u4mu/t66y1xv9I0njb3EYoFoFCsXchOChT7YFgXZYFQiUXFEifBpnoLma4e+ep7cKKA==}
     engines: {node: '>= 20'}
     peerDependencies:
       '@aws-sdk/credential-provider-web-identity': '*'
+      ws: '>=8'
     peerDependenciesMeta:
       '@aws-sdk/credential-provider-web-identity':
+        optional: true
+      ws:
         optional: true
 
   '@vercel/oidc@3.6.1':
@@ -4978,8 +4981,8 @@ packages:
     peerDependencies:
       react: '>= 16.8 || 18.0.0'
 
-  react-email@6.6.0:
-    resolution: {integrity: sha512-YNOLCMcGqwcvRTzFo2qMVD5D8Ro9aw0Y+PxO1LhqQT+qbkRvdUxmrVXffUxEcDeIFAcoOe7luCbkwIZPpPDFxQ==}
+  react-email@6.6.3:
+    resolution: {integrity: sha512-kYpkIh00X771MQ4JDKX1Exqj+gRUeNPp/44oHSpo3zvUjnieatpNUu5ssF+me/Ure89J6E6I61ybcr131XDOMw==}
     engines: {node: '>=20.0.0'}
     hasBin: true
     peerDependencies:
@@ -5706,18 +5709,6 @@ packages:
   wrappy@1.0.2:
     resolution: {integrity: sha512-l4Sp/DRseor9wL6EvV2+TuQn63dMkPjZ/sp9XkghTEbV9KlPS1xUsZ3u7/IQO4wxtcFB4bgpQPRcR3QCvezPcQ==}
 
-  ws@8.20.0:
-    resolution: {integrity: sha512-sAt8BhgNbzCtgGbt2OxmpuryO63ZoDk/sqaB/znQm94T4fCEsy/yV+7CdC1kJhOU9lboAEU7R3kquuycDoibVA==}
-    engines: {node: '>=10.0.0'}
-    peerDependencies:
-      bufferutil: ^4.0.1
-      utf-8-validate: '>=5.0.2'
-    peerDependenciesMeta:
-      bufferutil:
-        optional: true
-      utf-8-validate:
-        optional: true
-
   ws@8.20.1:
     resolution: {integrity: sha512-It4dO0K5v//JtTXuPkfEOaI3uUN87iYPnqo/ZzqCoG3g8uhA66QUMs/SrM0YK7/NAu+r4LMh/9dq2A7k+rHs+w==}
     engines: {node: '>=10.0.0'}
@@ -6211,7 +6202,7 @@ snapshots:
     dependencies:
       '@babel/code-frame': 7.29.7
       '@babel/generator': 7.29.7
-      '@babel/parser': 7.27.0
+      '@babel/parser': 7.29.7
       '@babel/template': 7.29.7
       '@babel/types': 7.29.7
       debug: 4.4.3
@@ -7940,7 +7931,7 @@ snapshots:
 
   '@radix-ui/rect@1.1.2': {}
 
-  '@react-email/render@2.0.8(react-dom@19.2.7(react@19.2.7))(react@19.2.7)':
+  '@react-email/render@2.0.9(react-dom@19.2.7(react@19.2.7))(react@19.2.7)':
     dependencies:
       html-to-text: 9.0.5
       prettier: 3.8.4
@@ -8671,15 +8662,12 @@ snapshots:
     dependencies:
       execa: 5.1.1
 
-  '@vercel/functions@3.7.0(@aws-sdk/credential-provider-web-identity@3.972.51)':
+  '@vercel/functions@3.7.1(@aws-sdk/credential-provider-web-identity@3.972.51)(ws@8.21.0)':
     dependencies:
       '@vercel/oidc': 3.6.1
-      ws: 8.20.0
     optionalDependencies:
       '@aws-sdk/credential-provider-web-identity': 3.972.51
-    transitivePeerDependencies:
-      - bufferutil
-      - utf-8-validate
+      ws: 8.21.0
 
   '@vercel/oidc@3.6.1':
     dependencies:
@@ -9909,7 +9897,7 @@ snapshots:
 
   nf3@0.3.17: {}
 
-  nitro@3.0.260603-beta(@vercel/blob@2.4.0)(@vercel/functions@3.7.0(@aws-sdk/credential-provider-web-identity@3.972.51))(@vercel/queue@0.3.0)(chokidar@5.0.0)(dotenv@17.4.2)(drizzle-orm@0.45.2(kysely@0.28.17)(postgres@3.4.9))(ioredis@5.10.1)(jiti@2.7.0)(lru-cache@11.5.1)(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.4)):
+  nitro@3.0.260603-beta(@vercel/blob@2.4.0)(@vercel/functions@3.7.1(@aws-sdk/credential-provider-web-identity@3.972.51)(ws@8.21.0))(@vercel/queue@0.3.0)(chokidar@5.0.0)(dotenv@17.4.2)(drizzle-orm@0.45.2(kysely@0.28.17)(postgres@3.4.9))(ioredis@5.10.1)(jiti@2.7.0)(lru-cache@11.5.1)(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.4)):
     dependencies:
       consola: 3.4.2
       crossws: 0.4.6(srvx@0.11.16)
@@ -9924,7 +9912,7 @@ snapshots:
       rolldown: 1.1.0
       srvx: 0.11.16
       unenv: 2.0.0-rc.24
-      unstorage: 2.0.0-alpha.7(@vercel/blob@2.4.0)(@vercel/functions@3.7.0(@aws-sdk/credential-provider-web-identity@3.972.51))(chokidar@5.0.0)(db0@0.3.4(drizzle-orm@0.45.2(kysely@0.28.17)(postgres@3.4.9)))(ioredis@5.10.1)(lru-cache@11.5.1)(ofetch@2.0.0-alpha.3)
+      unstorage: 2.0.0-alpha.7(@vercel/blob@2.4.0)(@vercel/functions@3.7.1(@aws-sdk/credential-provider-web-identity@3.972.51)(ws@8.21.0))(chokidar@5.0.0)(db0@0.3.4(drizzle-orm@0.45.2(kysely@0.28.17)(postgres@3.4.9)))(ioredis@5.10.1)(lru-cache@11.5.1)(ofetch@2.0.0-alpha.3)
     optionalDependencies:
       '@vercel/queue': 0.3.0
       dotenv: 17.4.2
@@ -10333,11 +10321,11 @@ snapshots:
       prop-types: 15.8.1
       react: 19.2.7
 
-  react-email@6.6.0(react-dom@19.2.7(react@19.2.7))(react@19.2.7):
+  react-email@6.6.3(react-dom@19.2.7(react@19.2.7))(react@19.2.7):
     dependencies:
       '@babel/parser': 7.27.0
       '@babel/traverse': 7.27.0
-      '@react-email/render': 2.0.8(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+      '@react-email/render': 2.0.9(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       chokidar: 4.0.3
       commander: 13.1.0
       conf: 15.1.0
@@ -10431,12 +10419,12 @@ snapshots:
 
   require-from-string@2.0.2: {}
 
-  resend@6.12.4(@react-email/render@2.0.8(react-dom@19.2.7(react@19.2.7))(react@19.2.7)):
+  resend@6.12.4(@react-email/render@2.0.9(react-dom@19.2.7(react@19.2.7))(react@19.2.7)):
     dependencies:
       postal-mime: 2.7.4
       standardwebhooks: 1.0.0
     optionalDependencies:
-      '@react-email/render': 2.0.8(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+      '@react-email/render': 2.0.9(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
 
   resolve-from@4.0.0: {}
 
@@ -10907,10 +10895,10 @@ snapshots:
       picomatch: 4.0.4
       webpack-virtual-modules: 0.6.2
 
-  unstorage@2.0.0-alpha.7(@vercel/blob@2.4.0)(@vercel/functions@3.7.0(@aws-sdk/credential-provider-web-identity@3.972.51))(chokidar@5.0.0)(db0@0.3.4(drizzle-orm@0.45.2(kysely@0.28.17)(postgres@3.4.9)))(ioredis@5.10.1)(lru-cache@11.5.1)(ofetch@2.0.0-alpha.3):
+  unstorage@2.0.0-alpha.7(@vercel/blob@2.4.0)(@vercel/functions@3.7.1(@aws-sdk/credential-provider-web-identity@3.972.51)(ws@8.21.0))(chokidar@5.0.0)(db0@0.3.4(drizzle-orm@0.45.2(kysely@0.28.17)(postgres@3.4.9)))(ioredis@5.10.1)(lru-cache@11.5.1)(ofetch@2.0.0-alpha.3):
     optionalDependencies:
       '@vercel/blob': 2.4.0
-      '@vercel/functions': 3.7.0(@aws-sdk/credential-provider-web-identity@3.972.51)
+      '@vercel/functions': 3.7.1(@aws-sdk/credential-provider-web-identity@3.972.51)(ws@8.21.0)
       chokidar: 5.0.0
       db0: 0.3.4(drizzle-orm@0.45.2(kysely@0.28.17)(postgres@3.4.9))
       ioredis: 5.10.1
@@ -11017,8 +11005,6 @@ snapshots:
       stackback: 0.0.2
 
   wrappy@1.0.2: {}
-
-  ws@8.20.0: {}
 
   ws@8.20.1: {}
 

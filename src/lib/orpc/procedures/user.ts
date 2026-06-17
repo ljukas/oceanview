@@ -1,4 +1,3 @@
-import { ORPCError } from '@orpc/server'
 import { z } from 'zod'
 import { auth } from '~/lib/auth'
 import { realtime } from '~/lib/effects'
@@ -6,7 +5,7 @@ import { adminProcedure, protectedProcedure } from '~/lib/orpc/context'
 import type { SharePartRow } from '~/lib/services/share'
 import * as shareService from '~/lib/services/share'
 import * as userService from '~/lib/services/user'
-import { UserDomainError } from '~/lib/services/user'
+import { UserDomainError, type UserDomainErrorCode } from '~/lib/services/user'
 import { m } from '~/paraglide/messages'
 
 function surnameKey(name: string): string {
@@ -36,21 +35,17 @@ const userInputSchema = z.object({
   role: roleSchema,
 })
 
-function rethrowAsORPC(err: unknown, context: 'update' | 'delete' | 'restore'): never {
-  if (!(err instanceof UserDomainError)) throw err
-  switch (err.code) {
-    case 'NOT_FOUND':
-      throw new ORPCError('NOT_FOUND', { message: m.user_error_not_found() })
-    case 'TARGET_DELETED':
-      throw new ORPCError('CONFLICT', { message: m.user_error_target_deleted() })
-    case 'CANNOT_ACT_ON_SELF':
-      throw new ORPCError('FORBIDDEN', {
-        message: context === 'delete' ? m.user_error_delete_self() : m.user_error_demote_self(),
-      })
-    case 'LAST_ADMIN':
-      throw new ORPCError('CONFLICT', { message: m.user_error_last_admin() })
-  }
-}
+// Code-only typed errors for the user mutating procedures. Status only; the
+// backend stays i18n-free and the client localizes by code (see
+// ~/lib/orpc/userErrorMessage). `satisfies` locks the keys to the domain code
+// union. CANNOT_ACT_ON_SELF stays a single code — its "delete-self" vs
+// "demote-self" phrasing is resolved client-side from the dialog's context.
+const userErrors = {
+  NOT_FOUND: { status: 404 },
+  TARGET_DELETED: { status: 409 },
+  CANNOT_ACT_ON_SELF: { status: 403 },
+  LAST_ADMIN: { status: 409 },
+} satisfies Record<UserDomainErrorCode, { status: number }>
 
 export const userRouter = {
   me: protectedProcedure.handler(async ({ context }) => {
@@ -94,13 +89,14 @@ export const userRouter = {
       )
   }),
 
-  getById: adminProcedure.input(z.object({ id: z.uuid() })).handler(async ({ input }) => {
-    const target = await userService.findActiveById(input.id)
-    if (!target) {
-      throw new ORPCError('NOT_FOUND', { message: m.user_error_not_found() })
-    }
-    return target
-  }),
+  getById: adminProcedure
+    .errors(userErrors)
+    .input(z.object({ id: z.uuid() }))
+    .handler(async ({ input, errors }) => {
+      const target = await userService.findActiveById(input.id)
+      if (!target) throw errors.NOT_FOUND()
+      return target
+    }),
 
   create: adminProcedure.input(userInputSchema).handler(async ({ input, context }) => {
     const created = await userService.createAsAdmin(input)
@@ -110,8 +106,9 @@ export const userRouter = {
   }),
 
   update: adminProcedure
+    .errors(userErrors)
     .input(userInputSchema.extend({ id: z.uuid() }))
-    .handler(async ({ input, context }) => {
+    .handler(async ({ input, context, errors }) => {
       try {
         const updated = await userService.updateAsAdmin(context.user.id, input.id, {
           name: input.name,
@@ -126,31 +123,40 @@ export const userRouter = {
         )
         return updated
       } catch (err) {
-        rethrowAsORPC(err, 'update')
+        if (err instanceof UserDomainError) throw errors[err.code]()
+        throw err
       }
     }),
 
-  delete: adminProcedure.input(z.object({ id: z.uuid() })).handler(async ({ input, context }) => {
-    try {
-      await userService.softDeleteAsAdmin(context.user.id, input.id)
-    } catch (err) {
-      rethrowAsORPC(err, 'delete')
-    }
-    await auth.api.revokeUserSessions({
-      body: { userId: input.id },
-      headers: context.headers,
-    })
-    context.log.info('admin soft-deleted user', { targetId: input.id })
-    await realtime.publish({ kind: 'user.changed', ids: [input.id] }, { source: context.user.id })
-  }),
+  delete: adminProcedure
+    .errors(userErrors)
+    .input(z.object({ id: z.uuid() }))
+    .handler(async ({ input, context, errors }) => {
+      try {
+        await userService.softDeleteAsAdmin(context.user.id, input.id)
+      } catch (err) {
+        if (err instanceof UserDomainError) throw errors[err.code]()
+        throw err
+      }
+      await auth.api.revokeUserSessions({
+        body: { userId: input.id },
+        headers: context.headers,
+      })
+      context.log.info('admin soft-deleted user', { targetId: input.id })
+      await realtime.publish({ kind: 'user.changed', ids: [input.id] }, { source: context.user.id })
+    }),
 
-  restore: adminProcedure.input(z.object({ id: z.uuid() })).handler(async ({ input, context }) => {
-    try {
-      await userService.restoreAsAdmin(input.id)
-    } catch (err) {
-      rethrowAsORPC(err, 'restore')
-    }
-    context.log.info('admin restored user', { targetId: input.id })
-    await realtime.publish({ kind: 'user.changed', ids: [input.id] }, { source: context.user.id })
-  }),
+  restore: adminProcedure
+    .errors(userErrors)
+    .input(z.object({ id: z.uuid() }))
+    .handler(async ({ input, context, errors }) => {
+      try {
+        await userService.restoreAsAdmin(input.id)
+      } catch (err) {
+        if (err instanceof UserDomainError) throw errors[err.code]()
+        throw err
+      }
+      context.log.info('admin restored user', { targetId: input.id })
+      await realtime.publish({ kind: 'user.changed', ids: [input.id] }, { source: context.user.id })
+    }),
 }

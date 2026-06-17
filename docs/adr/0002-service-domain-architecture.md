@@ -330,3 +330,59 @@ Manual smoke test:
 - A service grows enough invariants that the guarded-operation file becomes hard to read (~500 lines). Split into multiple files inside the entity folder; the barrel stays one line.
 - A real need emerges to call a service from a non-HTTP context where throwing isn't the right control flow (e.g. a batch job that wants to collect all failures rather than abort on the first). At that point evaluate a `Result<T, E>` variant of the public surface.
 - The Swedish messages spread to a third location (today: only `rethrowAsORPC` + form field placeholders). A shared message catalogue might become worth its weight.
+
+---
+
+## Amendment (2026-06-13, extended 2026-06-14): folder, document, user & season errors are code-only; the client localizes
+
+The `folder` router no longer maps `FolderDomainError.code` to a Swedish
+`ORPCError` on the server. Instead each mutating procedure declares the codes as
+**oRPC typed errors** (`.errors(folderErrors)`, status only — no message, no
+`data`) and rethrows code-only: `if (err instanceof FolderDomainError) throw
+errors[err.code](); throw err`. The client owns folder-error i18n via
+`src/lib/orpc/folderErrorMessage.ts` (an exhaustive `switch` over the code union,
+imported as a *type only* so no service runtime leaks into the bundle).
+
+Why:
+- The discriminated code survives to the client type-safely (`isDefinedError(err)`
+  narrows `err.code`), which let `RenameFolderDialog` surface the user-fixable
+  `NAME_TAKEN_IN_PARENT` as an inline field error rather than a toast.
+- Applying it to one procedure while the rest of the router stayed message-based
+  would split a router's error handling in two, so each router migrates as a
+  whole and its `rethrow*AsORPC` helper is deleted.
+
+**Extended to the `document` router (2026-06-14).** Same shape: `documentErrors`
+is exported from `procedures/document.ts` and reused by the bin router
+(`hardDeleteDocument`); the client localizes via `src/lib/orpc/documentErrorMessage.ts`.
+`confirmDocumentUpload`'s two upload-boundary errors (`INVALID_PATH`,
+`FILE_NOT_IN_STORAGE`) are typed too — scoped to that procedure via a merged
+`.errors({ ...documentErrors, … })` — but need no client mapping because the
+upload UI is status-only. `isDefinedError` is the discriminator in mixed dialogs
+(`MoveDialog`): folder error → `folderErrorMessage`, document error →
+`documentErrorMessage`.
+
+**Extended to the `user` router (2026-06-14).** Same shape: `userErrors` in
+`procedures/user.ts`; client localizes via `src/lib/orpc/userErrorMessage.ts`.
+The wrinkle was `CANNOT_ACT_ON_SELF`, whose message was context-dependent on the
+server (`rethrowAsORPC(err, context)` → "can't delete yourself" vs "can't demote
+yourself"). We **kept the code single** (the transport code equals the domain
+code, so the backend stays uniform and `satisfies Record<UserDomainErrorCode>`)
+and moved the contextual phrasing to the client: `userErrorMessage(code,
+selfAction)` picks delete-vs-demote, and the two dialogs pass their own context
+(`DeleteUserDialog` → `'delete'`, `EditUserDialog` → `'demote'`). This is exactly
+this ADR's "the English code is single; the human translation is contextual" —
+now resolved at the presentation layer. `create` stays message-based (its errors
+come from the Better Auth admin API, not a `UserDomainError`).
+
+**Extended to the `season` router (2026-06-14).** Same shape: `seasonErrors`
+(`ALREADY_EXISTS` / `NOT_FOUND`) in `procedures/season.ts`; client localizes via
+`src/lib/orpc/seasonErrorMessage.ts`. `CreateSeasonDialog` / `EditSeasonDialog`
+map by code; `DeleteSeasonDialog` is unchanged (`delete` is a blind delete that
+throws no `SeasonDomainError`).
+
+This is an **alternative** to the `rethrowAsORPC` pattern above, not a
+replacement of it. `share` is the lone remaining router on the Swedish-`ORPCError`
+mapping (a sanctioned follow-up). Prefer this code-only style when a client needs
+to branch on the specific failure (inline field errors, contextual or distinct
+recovery UI); the message-mapping style remains fine when the client only needs to
+show the message.

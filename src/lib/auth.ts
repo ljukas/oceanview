@@ -15,24 +15,31 @@ import { email as emailEffect } from './effects'
 import { logger } from './logger/server'
 import * as userService from './services/user'
 
-// On Vercel previews each deployment has its own hostname (e.g.
-// `oceanview-<hash>-...vercel.app`), so BETTER_AUTH_URL (pinned to prod)
-// would fail Better Auth's origin check AND send magic links pointing
-// back to prod instead of the preview the user is testing.
+// On Vercel previews each deployment has its own hostname, so BETTER_AUTH_URL
+// (pinned to prod) would fail Better Auth's origin check AND send magic links
+// back to prod instead of the preview being tested. Prefer VERCEL_BRANCH_URL
+// (the stable branch alias) so magic links + sessions survive re-pushes to the
+// same PR; fall back to VERCEL_URL (the per-deployment hash) if the alias is
+// somehow absent.
 const resolveBaseURL = () => {
-  if (process.env.VERCEL_ENV === 'preview' && process.env.VERCEL_URL) {
-    return `https://${process.env.VERCEL_URL}`
+  if (process.env.VERCEL_ENV === 'preview') {
+    if (process.env.VERCEL_BRANCH_URL) return `https://${process.env.VERCEL_BRANCH_URL}`
+    if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`
   }
   return process.env.BETTER_AUTH_URL
 }
 
-// VERCEL_URL is the unique deployment hash hostname; VERCEL_BRANCH_URL
-// is the stable branch alias. Trust the alias too so either entry point
-// works on a preview.
+// VERCEL_BRANCH_URL is the stable branch alias; VERCEL_URL is the unique
+// deployment hash hostname. Trust both so a preview opened via either entry
+// point passes the origin check (baseURL is auto-trusted, but list both
+// explicitly so it's obvious).
 const resolveTrustedOrigins = () => {
   const origins: string[] = []
   if (process.env.VERCEL_BRANCH_URL) {
     origins.push(`https://${process.env.VERCEL_BRANCH_URL}`)
+  }
+  if (process.env.VERCEL_URL) {
+    origins.push(`https://${process.env.VERCEL_URL}`)
   }
   return origins
 }

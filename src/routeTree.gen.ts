@@ -21,10 +21,11 @@ import { Route as AuthenticatedDocumentsIndexRouteImport } from './routes/_authe
 import { Route as ApiRpcSplatRouteImport } from './routes/api/rpc/$'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 import { Route as AuthenticatedDocumentsSplatRouteImport } from './routes/_authenticated/documents.$'
-import { Route as AuthenticatedAdminSharesRouteImport } from './routes/_authenticated/admin/shares'
+import { Route as AuthenticatedAdminSharesIndexRouteImport } from './routes/_authenticated/admin/shares.index'
 import { Route as ApiFilesViewIdRouteImport } from './routes/api/files/view.$id'
 import { Route as ApiFilesDownloadIdRouteImport } from './routes/api/files/download.$id'
 import { Route as AuthenticatedAdminDocumentsBinRouteImport } from './routes/_authenticated/admin/documents.bin'
+import { Route as AuthenticatedAdminSharesAssignShareCodeRouteImport } from './routes/_authenticated/admin/shares.assign.$shareCode'
 
 const SignedInRoute = SignedInRouteImport.update({
   id: '/signed-in',
@@ -87,10 +88,10 @@ const AuthenticatedDocumentsSplatRoute =
     path: '/documents/$',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
-const AuthenticatedAdminSharesRoute =
-  AuthenticatedAdminSharesRouteImport.update({
-    id: '/shares',
-    path: '/shares',
+const AuthenticatedAdminSharesIndexRoute =
+  AuthenticatedAdminSharesIndexRouteImport.update({
+    id: '/shares/',
+    path: '/shares/',
     getParentRoute: () => AuthenticatedAdminRoute,
   } as any)
 const ApiFilesViewIdRoute = ApiFilesViewIdRouteImport.update({
@@ -109,6 +110,12 @@ const AuthenticatedAdminDocumentsBinRoute =
     path: '/documents/bin',
     getParentRoute: () => AuthenticatedAdminRoute,
   } as any)
+const AuthenticatedAdminSharesAssignShareCodeRoute =
+  AuthenticatedAdminSharesAssignShareCodeRouteImport.update({
+    id: '/shares/assign/$shareCode',
+    path: '/shares/assign/$shareCode',
+    getParentRoute: () => AuthenticatedAdminRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AuthenticatedIndexRoute
@@ -118,7 +125,6 @@ export interface FileRoutesByFullPath {
   '/admin': typeof AuthenticatedAdminRouteWithChildren
   '/owners': typeof AuthenticatedOwnersRoute
   '/api/log': typeof ApiLogRoute
-  '/admin/shares': typeof AuthenticatedAdminSharesRoute
   '/documents/$': typeof AuthenticatedDocumentsSplatRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/rpc/$': typeof ApiRpcSplatRoute
@@ -126,6 +132,8 @@ export interface FileRoutesByFullPath {
   '/admin/documents/bin': typeof AuthenticatedAdminDocumentsBinRoute
   '/api/files/download/$id': typeof ApiFilesDownloadIdRoute
   '/api/files/view/$id': typeof ApiFilesViewIdRoute
+  '/admin/shares/': typeof AuthenticatedAdminSharesIndexRoute
+  '/admin/shares/assign/$shareCode': typeof AuthenticatedAdminSharesAssignShareCodeRoute
 }
 export interface FileRoutesByTo {
   '/login': typeof LoginRoute
@@ -135,7 +143,6 @@ export interface FileRoutesByTo {
   '/owners': typeof AuthenticatedOwnersRoute
   '/api/log': typeof ApiLogRoute
   '/': typeof AuthenticatedIndexRoute
-  '/admin/shares': typeof AuthenticatedAdminSharesRoute
   '/documents/$': typeof AuthenticatedDocumentsSplatRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/rpc/$': typeof ApiRpcSplatRoute
@@ -143,6 +150,8 @@ export interface FileRoutesByTo {
   '/admin/documents/bin': typeof AuthenticatedAdminDocumentsBinRoute
   '/api/files/download/$id': typeof ApiFilesDownloadIdRoute
   '/api/files/view/$id': typeof ApiFilesViewIdRoute
+  '/admin/shares': typeof AuthenticatedAdminSharesIndexRoute
+  '/admin/shares/assign/$shareCode': typeof AuthenticatedAdminSharesAssignShareCodeRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -154,7 +163,6 @@ export interface FileRoutesById {
   '/_authenticated/owners': typeof AuthenticatedOwnersRoute
   '/api/log': typeof ApiLogRoute
   '/_authenticated/': typeof AuthenticatedIndexRoute
-  '/_authenticated/admin/shares': typeof AuthenticatedAdminSharesRoute
   '/_authenticated/documents/$': typeof AuthenticatedDocumentsSplatRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/rpc/$': typeof ApiRpcSplatRoute
@@ -162,6 +170,8 @@ export interface FileRoutesById {
   '/_authenticated/admin/documents/bin': typeof AuthenticatedAdminDocumentsBinRoute
   '/api/files/download/$id': typeof ApiFilesDownloadIdRoute
   '/api/files/view/$id': typeof ApiFilesViewIdRoute
+  '/_authenticated/admin/shares/': typeof AuthenticatedAdminSharesIndexRoute
+  '/_authenticated/admin/shares/assign/$shareCode': typeof AuthenticatedAdminSharesAssignShareCodeRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -173,7 +183,6 @@ export interface FileRouteTypes {
     | '/admin'
     | '/owners'
     | '/api/log'
-    | '/admin/shares'
     | '/documents/$'
     | '/api/auth/$'
     | '/api/rpc/$'
@@ -181,6 +190,8 @@ export interface FileRouteTypes {
     | '/admin/documents/bin'
     | '/api/files/download/$id'
     | '/api/files/view/$id'
+    | '/admin/shares/'
+    | '/admin/shares/assign/$shareCode'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/login'
@@ -190,7 +201,6 @@ export interface FileRouteTypes {
     | '/owners'
     | '/api/log'
     | '/'
-    | '/admin/shares'
     | '/documents/$'
     | '/api/auth/$'
     | '/api/rpc/$'
@@ -198,6 +208,8 @@ export interface FileRouteTypes {
     | '/admin/documents/bin'
     | '/api/files/download/$id'
     | '/api/files/view/$id'
+    | '/admin/shares'
+    | '/admin/shares/assign/$shareCode'
   id:
     | '__root__'
     | '/_authenticated'
@@ -208,7 +220,6 @@ export interface FileRouteTypes {
     | '/_authenticated/owners'
     | '/api/log'
     | '/_authenticated/'
-    | '/_authenticated/admin/shares'
     | '/_authenticated/documents/$'
     | '/api/auth/$'
     | '/api/rpc/$'
@@ -216,6 +227,8 @@ export interface FileRouteTypes {
     | '/_authenticated/admin/documents/bin'
     | '/api/files/download/$id'
     | '/api/files/view/$id'
+    | '/_authenticated/admin/shares/'
+    | '/_authenticated/admin/shares/assign/$shareCode'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -315,11 +328,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedDocumentsSplatRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
-    '/_authenticated/admin/shares': {
-      id: '/_authenticated/admin/shares'
+    '/_authenticated/admin/shares/': {
+      id: '/_authenticated/admin/shares/'
       path: '/shares'
-      fullPath: '/admin/shares'
-      preLoaderRoute: typeof AuthenticatedAdminSharesRouteImport
+      fullPath: '/admin/shares/'
+      preLoaderRoute: typeof AuthenticatedAdminSharesIndexRouteImport
       parentRoute: typeof AuthenticatedAdminRoute
     }
     '/api/files/view/$id': {
@@ -343,17 +356,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAdminDocumentsBinRouteImport
       parentRoute: typeof AuthenticatedAdminRoute
     }
+    '/_authenticated/admin/shares/assign/$shareCode': {
+      id: '/_authenticated/admin/shares/assign/$shareCode'
+      path: '/shares/assign/$shareCode'
+      fullPath: '/admin/shares/assign/$shareCode'
+      preLoaderRoute: typeof AuthenticatedAdminSharesAssignShareCodeRouteImport
+      parentRoute: typeof AuthenticatedAdminRoute
+    }
   }
 }
 
 interface AuthenticatedAdminRouteChildren {
-  AuthenticatedAdminSharesRoute: typeof AuthenticatedAdminSharesRoute
   AuthenticatedAdminDocumentsBinRoute: typeof AuthenticatedAdminDocumentsBinRoute
+  AuthenticatedAdminSharesIndexRoute: typeof AuthenticatedAdminSharesIndexRoute
+  AuthenticatedAdminSharesAssignShareCodeRoute: typeof AuthenticatedAdminSharesAssignShareCodeRoute
 }
 
 const AuthenticatedAdminRouteChildren: AuthenticatedAdminRouteChildren = {
-  AuthenticatedAdminSharesRoute: AuthenticatedAdminSharesRoute,
   AuthenticatedAdminDocumentsBinRoute: AuthenticatedAdminDocumentsBinRoute,
+  AuthenticatedAdminSharesIndexRoute: AuthenticatedAdminSharesIndexRoute,
+  AuthenticatedAdminSharesAssignShareCodeRoute:
+    AuthenticatedAdminSharesAssignShareCodeRoute,
 }
 
 const AuthenticatedAdminRouteWithChildren =

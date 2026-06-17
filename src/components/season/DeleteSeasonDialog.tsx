@@ -12,6 +12,7 @@ import {
 } from '~/components/ui/alert-dialog'
 import { Spinner } from '~/components/ui/spinner'
 import { orpc } from '~/lib/orpc/client'
+import { optimisticRemove } from '~/lib/orpc/optimistic'
 import { m } from '~/paraglide/messages'
 
 type Props = {
@@ -53,14 +54,18 @@ function DeleteSeasonBody({ year, onDone }: { year: number; onDone: () => void }
 
   const deleteMutation = useMutation(
     orpc.season.delete.mutationOptions({
-      onSuccess: async () => {
-        await queryClient.invalidateQueries({ queryKey: orpc.season.key() })
-        toast.success(m.season_deleted())
-        onDone()
+      // Drop the year row from the schedule grid before the round-trip; the row
+      // vanishing is the confirmation, so there's no success toast.
+      onMutate: ({ year }) =>
+        optimisticRemove(queryClient, orpc.season.listSchedules.queryKey(), (s) => s.year === year),
+      // onError/onSettled live on useMutation (not the mutate call) so they still
+      // run after the instant close below. onSettled re-syncs the grid, reverting
+      // the optimistic removal on failure. season.delete declares no typed errors,
+      // so a generic toast is all there is to map.
+      onError: () => {
+        toast.error(m.season_delete_error())
       },
-      onError: (err) => {
-        toast.error(err.message || m.season_delete_error())
-      },
+      onSettled: () => queryClient.invalidateQueries({ queryKey: orpc.season.key() }),
     }),
   )
 
@@ -79,7 +84,10 @@ function DeleteSeasonBody({ year, onDone }: { year: number; onDone: () => void }
           disabled={deleteMutation.isPending}
           onClick={(e) => {
             e.preventDefault()
+            // Optimistic instant-close: onMutate drops the row, we close now, and
+            // onError/onSettled reconcile in the background.
             deleteMutation.mutate({ year })
+            onDone()
           }}
         >
           {deleteMutation.isPending && <Spinner data-icon="inline-start" />}

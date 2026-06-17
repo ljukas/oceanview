@@ -128,7 +128,6 @@
   "document_rename_description_extension": "Change the name. The file extension can't be changed.",
   "document_rename_error": "Couldn't rename",
   "document_rename_title": "Rename document",
-  "document_renamed_toast": "The document was renamed",
   "document_selection_clear": "Clear selection",
   "document_selection_count": "{count} selected",
   "document_selection_exit": "Exit selection",

@@ -2,13 +2,13 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { z } from 'zod'
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '~/components/ui/dialog'
+  ResponsiveDialog,
+  ResponsiveDialogContent,
+  ResponsiveDialogDescription,
+  ResponsiveDialogFooter,
+  ResponsiveDialogHeader,
+  ResponsiveDialogTitle,
+} from '~/components/ui/responsive-dialog'
 import { useAppForm } from '~/hooks/form'
 import { orpc } from '~/lib/orpc/client'
 import type { AdminPartRow } from '~/lib/orpc/procedures/share'
@@ -100,12 +100,16 @@ function UnassignShareDialogBody({
   ]
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>{m.share_unassign_title({ code: shareCode })}</DialogTitle>
-          <DialogDescription>{m.share_unassign_description()}</DialogDescription>
-        </DialogHeader>
+    <ResponsiveDialog open={open} onOpenChange={onOpenChange}>
+      <ResponsiveDialogContent className="sm:max-w-md">
+        <ResponsiveDialogHeader>
+          <ResponsiveDialogTitle>
+            {m.share_unassign_title({ code: shareCode })}
+          </ResponsiveDialogTitle>
+          <ResponsiveDialogDescription>
+            {m.share_unassign_description()}
+          </ResponsiveDialogDescription>
+        </ResponsiveDialogHeader>
         <form
           onSubmit={(e) => {
             e.preventDefault()
@@ -123,7 +127,7 @@ function UnassignShareDialogBody({
             name="on"
             children={(field) => <field.DateField label={m.share_field_from()} />}
           />
-          <DialogFooter className="mt-2">
+          <ResponsiveDialogFooter className="mt-2">
             <form.AppForm>
               <form.CancelButton onClick={() => onOpenChange(false)}>
                 {m.common_cancel()}
@@ -133,9 +137,9 @@ function UnassignShareDialogBody({
                 pendingLabel={m.share_unassign_pending()}
               />
             </form.AppForm>
-          </DialogFooter>
+          </ResponsiveDialogFooter>
         </form>
-      </DialogContent>
-    </Dialog>
+      </ResponsiveDialogContent>
+    </ResponsiveDialog>
   )
 }

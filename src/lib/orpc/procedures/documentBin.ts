@@ -1,8 +1,9 @@
 import { z } from 'zod'
 import { realtime, storage } from '~/lib/effects'
 import { adminProcedure } from '~/lib/orpc/context'
-import { rethrowDocumentErrorAsORPC } from '~/lib/orpc/procedures/document'
+import { documentErrors } from '~/lib/orpc/procedures/document'
 import * as documentService from '~/lib/services/document'
+import { DocumentDomainError } from '~/lib/services/document'
 import * as folderService from '~/lib/services/folder'
 
 export const binRouter = {
@@ -11,8 +12,9 @@ export const binRouter = {
   // Folder cascade hard-delete is deferred (ADR-0010); admins restore folder
   // subtrees instead. Only individual documents can be permanently purged.
   hardDeleteDocument: adminProcedure
+    .errors(documentErrors)
     .input(z.object({ id: z.uuid() }))
-    .handler(async ({ input, context }) => {
+    .handler(async ({ input, context, errors }) => {
       let result: Awaited<ReturnType<typeof documentService.hardDeleteDocument>>
       try {
         result = await documentService.hardDeleteDocument({
@@ -21,7 +23,8 @@ export const binRouter = {
           actorRole: context.user.role ?? null,
         })
       } catch (err) {
-        rethrowDocumentErrorAsORPC(err)
+        if (err instanceof DocumentDomainError) throw errors[err.code]()
+        throw err
       }
       // Row + history are committed; now drop the bytes. Best-effort — a failed
       // storage delete leaves an orphaned blob but the DB is already consistent.

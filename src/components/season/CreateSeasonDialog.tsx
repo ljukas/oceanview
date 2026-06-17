@@ -1,17 +1,19 @@
+import { isDefinedError } from '@orpc/client'
 import { useMutation, useQueryClient, useSuspenseQuery } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { z } from 'zod'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '~/components/ui/dialog'
 import { FieldGroup } from '~/components/ui/field'
+import {
+  ResponsiveDialog,
+  ResponsiveDialogContent,
+  ResponsiveDialogDescription,
+  ResponsiveDialogFooter,
+  ResponsiveDialogHeader,
+  ResponsiveDialogTitle,
+} from '~/components/ui/responsive-dialog'
 import { useAppForm } from '~/hooks/form'
 import { orpc } from '~/lib/orpc/client'
+import { seasonErrorMessage } from '~/lib/orpc/seasonErrorMessage'
 import { SHARE_CODES } from '~/lib/shares/codes'
 import { m } from '~/paraglide/messages'
 
@@ -61,7 +63,7 @@ function CreateSeasonDialogInner({ onOpenChange }: { onOpenChange: (open: boolea
         onOpenChange(false)
       },
       onError: (err) => {
-        toast.error(err.message || m.season_create_error())
+        toast.error(isDefinedError(err) ? seasonErrorMessage(err.code) : m.season_create_error())
       },
     }),
   )
@@ -83,12 +85,12 @@ function CreateSeasonDialogInner({ onOpenChange }: { onOpenChange: (open: boolea
   })
 
   return (
-    <Dialog open onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-sm">
-        <DialogHeader>
-          <DialogTitle>{m.season_create_title()}</DialogTitle>
-          <DialogDescription>{m.season_create_description()}</DialogDescription>
-        </DialogHeader>
+    <ResponsiveDialog open onOpenChange={onOpenChange}>
+      <ResponsiveDialogContent className="sm:max-w-sm">
+        <ResponsiveDialogHeader>
+          <ResponsiveDialogTitle>{m.season_create_title()}</ResponsiveDialogTitle>
+          <ResponsiveDialogDescription>{m.season_create_description()}</ResponsiveDialogDescription>
+        </ResponsiveDialogHeader>
         <form
           onSubmit={(e) => {
             e.preventDefault()
@@ -134,16 +136,16 @@ function CreateSeasonDialogInner({ onOpenChange }: { onOpenChange: (open: boolea
             />
           </FieldGroup>
 
-          <DialogFooter className="mt-6">
+          <ResponsiveDialogFooter className="mt-6">
             <form.AppForm>
               <form.CancelButton onClick={() => onOpenChange(false)}>
                 {m.common_cancel()}
               </form.CancelButton>
               <form.SubmitButton label={m.season_create_submit()} />
             </form.AppForm>
-          </DialogFooter>
+          </ResponsiveDialogFooter>
         </form>
-      </DialogContent>
-    </Dialog>
+      </ResponsiveDialogContent>
+    </ResponsiveDialog>
   )
 }

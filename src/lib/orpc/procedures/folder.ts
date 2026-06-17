@@ -1,46 +1,34 @@
-import { ORPCError } from '@orpc/server'
 import { z } from 'zod'
 import { realtime } from '~/lib/effects'
 import { adminProcedure, protectedProcedure } from '~/lib/orpc/context'
 import * as folderService from '~/lib/services/folder'
-import { FolderDomainError } from '~/lib/services/folder'
-import { m } from '~/paraglide/messages'
+import { FolderDomainError, type FolderDomainErrorCode } from '~/lib/services/folder'
 
-function rethrowAsORPC(err: unknown): never {
-  if (!(err instanceof FolderDomainError)) throw err
-  switch (err.code) {
-    case 'NOT_FOUND':
-      throw new ORPCError('NOT_FOUND', { message: m.folder_error_not_found() })
-    case 'NOT_ADMIN':
-      throw new ORPCError('FORBIDDEN', { message: m.common_error_admin_only() })
-    case 'NAME_TAKEN_IN_PARENT':
-      throw new ORPCError('CONFLICT', { message: m.folder_error_name_taken() })
-    case 'INVALID_NAME':
-      throw new ORPCError('BAD_REQUEST', { message: m.folder_error_invalid_name() })
-    case 'PARENT_NOT_FOUND':
-      throw new ORPCError('NOT_FOUND', { message: m.folder_error_parent_not_found() })
-    case 'CANNOT_MOVE_INTO_DESCENDANT':
-      throw new ORPCError('BAD_REQUEST', {
-        message: m.folder_error_move_into_descendant(),
-      })
-    case 'ALREADY_DELETED':
-      throw new ORPCError('BAD_REQUEST', { message: m.folder_error_already_deleted() })
-    case 'PARENT_DELETED':
-      throw new ORPCError('BAD_REQUEST', {
-        message: m.folder_error_parent_deleted(),
-      })
-  }
-}
+// Code-only typed errors shared by all folder mutating procedures. Status only;
+// messages are NOT here — the backend stays i18n-free and the client localizes
+// by code (see ~/lib/orpc/folderErrorMessage). The `satisfies` locks the keys to
+// the domain code union, so adding a FolderDomainError code forces an entry here.
+const folderErrors = {
+  NOT_FOUND: { status: 404 },
+  NOT_ADMIN: { status: 403 },
+  NAME_TAKEN_IN_PARENT: { status: 409 },
+  INVALID_NAME: { status: 400 },
+  PARENT_NOT_FOUND: { status: 404 },
+  CANNOT_MOVE_INTO_DESCENDANT: { status: 400 },
+  ALREADY_DELETED: { status: 400 },
+  PARENT_DELETED: { status: 400 },
+} satisfies Record<FolderDomainErrorCode, { status: number }>
 
 export const folderRouter = {
   createFolder: protectedProcedure
+    .errors(folderErrors)
     .input(
       z.object({
         parentId: z.uuid().nullable().optional(),
         name: z.string().min(1).max(255),
       }),
     )
-    .handler(async ({ input, context }) => {
+    .handler(async ({ input, context, errors }) => {
       let created: Awaited<ReturnType<typeof folderService.createFolder>>
       try {
         created = await folderService.createFolder({
@@ -49,7 +37,8 @@ export const folderRouter = {
           createdBy: context.user.id,
         })
       } catch (err) {
-        rethrowAsORPC(err)
+        if (err instanceof FolderDomainError) throw errors[err.code]()
+        throw err
       }
       await realtime.publish(
         { kind: 'folder.changed', ids: [created.id] },
@@ -59,8 +48,9 @@ export const folderRouter = {
     }),
 
   renameFolder: adminProcedure
+    .errors(folderErrors)
     .input(z.object({ id: z.uuid(), name: z.string().min(1).max(255) }))
-    .handler(async ({ input, context }) => {
+    .handler(async ({ input, context, errors }) => {
       let updated: Awaited<ReturnType<typeof folderService.renameFolderAsAdmin>>
       try {
         updated = await folderService.renameFolderAsAdmin({
@@ -70,7 +60,8 @@ export const folderRouter = {
           actorRole: context.user.role ?? null,
         })
       } catch (err) {
-        rethrowAsORPC(err)
+        if (err instanceof FolderDomainError) throw errors[err.code]()
+        throw err
       }
       // Descendant document haystacks changed too.
       await realtime.publish(
@@ -82,8 +73,9 @@ export const folderRouter = {
     }),
 
   moveFolder: adminProcedure
+    .errors(folderErrors)
     .input(z.object({ id: z.uuid(), newParentId: z.uuid().nullable() }))
-    .handler(async ({ input, context }) => {
+    .handler(async ({ input, context, errors }) => {
       let updated: Awaited<ReturnType<typeof folderService.moveFolderAsAdmin>>
       try {
         updated = await folderService.moveFolderAsAdmin({
@@ -93,7 +85,8 @@ export const folderRouter = {
           actorRole: context.user.role ?? null,
         })
       } catch (err) {
-        rethrowAsORPC(err)
+        if (err instanceof FolderDomainError) throw errors[err.code]()
+        throw err
       }
       await realtime.publish(
         { kind: 'folder.changed', ids: [updated.id] },
@@ -104,8 +97,9 @@ export const folderRouter = {
     }),
 
   softDeleteFolder: adminProcedure
+    .errors(folderErrors)
     .input(z.object({ id: z.uuid() }))
-    .handler(async ({ input, context }) => {
+    .handler(async ({ input, context, errors }) => {
       let result: Awaited<ReturnType<typeof folderService.softDeleteFolderAsAdmin>>
       try {
         result = await folderService.softDeleteFolderAsAdmin({
@@ -114,7 +108,8 @@ export const folderRouter = {
           actorRole: context.user.role ?? null,
         })
       } catch (err) {
-        rethrowAsORPC(err)
+        if (err instanceof FolderDomainError) throw errors[err.code]()
+        throw err
       }
       context.log.info('folder soft-deleted', {
         folderId: input.id,
@@ -129,8 +124,9 @@ export const folderRouter = {
     }),
 
   restoreFolder: adminProcedure
+    .errors(folderErrors)
     .input(z.object({ correlationId: z.uuid() }))
-    .handler(async ({ input, context }) => {
+    .handler(async ({ input, context, errors }) => {
       let result: Awaited<ReturnType<typeof folderService.restoreByCorrelationAsAdmin>>
       try {
         result = await folderService.restoreByCorrelationAsAdmin({
@@ -139,7 +135,8 @@ export const folderRouter = {
           actorRole: context.user.role ?? null,
         })
       } catch (err) {
-        rethrowAsORPC(err)
+        if (err instanceof FolderDomainError) throw errors[err.code]()
+        throw err
       }
       context.log.info('folder subtree restored', {
         correlationId: input.correlationId,

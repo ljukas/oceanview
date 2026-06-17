@@ -1,16 +1,18 @@
+import { isDefinedError } from '@orpc/client'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { z } from 'zod'
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '~/components/ui/dialog'
+  ResponsiveDialog,
+  ResponsiveDialogContent,
+  ResponsiveDialogDescription,
+  ResponsiveDialogFooter,
+  ResponsiveDialogHeader,
+  ResponsiveDialogTitle,
+} from '~/components/ui/responsive-dialog'
 import { useAppForm } from '~/hooks/form'
 import { orpc } from '~/lib/orpc/client'
+import { folderErrorMessage } from '~/lib/orpc/folderErrorMessage'
 import { optimisticPatch } from '~/lib/orpc/optimistic'
 import { m } from '~/paraglide/messages'
 
@@ -46,7 +48,6 @@ export function RenameFolderDialog({ open, onOpenChange, folder }: Props) {
         toast.success(m.folder_renamed_toast())
         onOpenChange(false)
       },
-      onError: (err) => toast.error(err.message || m.folder_rename_error()),
       onSettled: () =>
         Promise.all([
           queryClient.invalidateQueries({ queryKey: orpc.folder.key() }),
@@ -58,18 +59,34 @@ export function RenameFolderDialog({ open, onOpenChange, folder }: Props) {
   const form = useAppForm({
     defaultValues: { name: folder.name },
     validators: { onSubmit: schema },
-    onSubmit: async ({ value }) => {
-      await renameMutation.mutateAsync({ id: folder.id, name: value.name })
+    onSubmit: async ({ value, formApi }) => {
+      try {
+        await renameMutation.mutateAsync({ id: folder.id, name: value.name })
+      } catch (err) {
+        // `catch` widens to `unknown`; recover the mutation's typed error union so
+        // `isDefinedError` can narrow the code (the runtime guard keeps it safe).
+        const e = err as NonNullable<typeof renameMutation.error>
+        // A name clash is user-fixable, so surface it inline on the field and keep
+        // the dialog open; a passing Zod re-validation on the next submit clears
+        // this slot. Other folder errors are not fixable here → toast.
+        if (isDefinedError(e) && e.code === 'NAME_TAKEN_IN_PARENT') {
+          formApi.setErrorMap({ onSubmit: { fields: { name: m.folder_error_name_taken() } } })
+        } else if (isDefinedError(e)) {
+          toast.error(folderErrorMessage(e.code))
+        } else {
+          toast.error(m.folder_rename_error())
+        }
+      }
     },
   })
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>{m.folder_rename_title()}</DialogTitle>
-          <DialogDescription>{m.folder_rename_description()}</DialogDescription>
-        </DialogHeader>
+    <ResponsiveDialog open={open} onOpenChange={onOpenChange}>
+      <ResponsiveDialogContent className="sm:max-w-md">
+        <ResponsiveDialogHeader>
+          <ResponsiveDialogTitle>{m.folder_rename_title()}</ResponsiveDialogTitle>
+          <ResponsiveDialogDescription>{m.folder_rename_description()}</ResponsiveDialogDescription>
+        </ResponsiveDialogHeader>
         <form
           onSubmit={(e) => {
             e.preventDefault()
@@ -82,16 +99,16 @@ export function RenameFolderDialog({ open, onOpenChange, folder }: Props) {
             )}
           </form.AppField>
 
-          <DialogFooter className="mt-6">
+          <ResponsiveDialogFooter className="mt-6">
             <form.AppForm>
               <form.CancelButton onClick={() => onOpenChange(false)}>
                 {m.common_cancel()}
               </form.CancelButton>
               <form.SubmitButton label={m.common_save()} />
             </form.AppForm>
-          </DialogFooter>
+          </ResponsiveDialogFooter>
         </form>
-      </DialogContent>
-    </Dialog>
+      </ResponsiveDialogContent>
+    </ResponsiveDialog>
   )
 }

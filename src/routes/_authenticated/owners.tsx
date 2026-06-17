@@ -1,5 +1,5 @@
 import { useQuery, useSuspenseQuery } from '@tanstack/react-query'
-import { createFileRoute, useMatchRoute } from '@tanstack/react-router'
+import { createFileRoute } from '@tanstack/react-router'
 import { PlusIcon } from 'lucide-react'
 import { z } from 'zod'
 import { Button } from '~/components/ui/button'
@@ -9,6 +9,7 @@ import { DeleteUserDialog } from '~/components/user/DeleteUserDialog'
 import { EditUserDialog } from '~/components/user/EditUserDialog'
 import { type OwnerRow, OwnersTable } from '~/components/user/OwnersTable'
 import { RestoreUserDialog } from '~/components/user/RestoreUserDialog'
+import { useUrlDialog } from '~/hooks/useUrlDialog'
 import { orpc } from '~/lib/orpc/client'
 import { m } from '~/paraglide/messages'
 import { seo } from '~/utils/seo'
@@ -18,6 +19,9 @@ const ownersSearchSchema = z.object({
   dialog: z.enum(['create', 'edit', 'delete', 'restore']).optional(),
   userId: z.string().optional(),
 })
+
+type OwnersSearch = z.infer<typeof ownersSearchSchema>
+type OwnersDialog = NonNullable<OwnersSearch['dialog']>
 
 export const Route = createFileRoute('/_authenticated/owners')({
   head: () => ({
@@ -59,13 +63,18 @@ function Owners() {
   const showDeleted = isAdmin && filter === 'deleted'
 
   const navigate = Route.useNavigate()
-  const matchRoute = useMatchRoute()
   const userId = Route.useSearch({ select: (s) => s.userId })
+  const dialog = Route.useSearch({ select: (s) => s.dialog })
+  const { isOpen, open, close } = useUrlDialog<OwnersDialog, OwnersSearch>({
+    current: dialog,
+    navigate,
+    clearKeys: ['userId'],
+  })
 
-  const isCreate = isAdmin && !!matchRoute({ to: '/owners', search: { dialog: 'create' } })
-  const isEdit = isAdmin && !!matchRoute({ to: '/owners', search: { dialog: 'edit' } })
-  const isDelete = isAdmin && !!matchRoute({ to: '/owners', search: { dialog: 'delete' } })
-  const isRestore = isAdmin && !!matchRoute({ to: '/owners', search: { dialog: 'restore' } })
+  const isCreate = isAdmin && isOpen('create')
+  const isEdit = isAdmin && isOpen('edit')
+  const isDelete = isAdmin && isOpen('delete')
+  const isRestore = isAdmin && isOpen('restore')
 
   const editUserId = isEdit ? userId : undefined
   const deleteUserId = isDelete ? userId : undefined
@@ -81,12 +90,9 @@ function Owners() {
     ? deletedUsers?.find((u) => u.id === restoreUserId)?.name
     : undefined
 
-  const closeModal = () => navigate({ to: '.', search: showDeleted ? { filter: 'deleted' } : {} })
-
-  const onEdit = (id: string) => navigate({ to: '.', search: { dialog: 'edit', userId: id } })
-  const onDelete = (id: string) => navigate({ to: '.', search: { dialog: 'delete', userId: id } })
-  const onRestore = (id: string) =>
-    navigate({ to: '.', search: { filter: 'deleted', dialog: 'restore', userId: id } })
+  const onEdit = (id: string) => open('edit', { userId: id })
+  const onDelete = (id: string) => open('delete', { userId: id })
+  const onRestore = (id: string) => open('restore', { userId: id, filter: 'deleted' })
 
   return (
     <div className="flex flex-col gap-6 p-4 md:p-8">
@@ -100,7 +106,7 @@ function Owners() {
           {showDeleted ? (
             <div />
           ) : (
-            <Button onClick={() => navigate({ to: '.', search: { dialog: 'create' } })}>
+            <Button onClick={() => open('create')}>
               <PlusIcon />
               {m.owners_create_button()}
             </Button>
@@ -144,21 +150,21 @@ function Owners() {
           <CreateUserDialog
             open={isCreate}
             onOpenChange={(open) => {
-              if (!open) closeModal()
+              if (!open) close()
             }}
           />
           <EditUserDialog
             open={isEdit && editUserId !== undefined}
             userId={editUserId}
             onOpenChange={(open) => {
-              if (!open) closeModal()
+              if (!open) close()
             }}
           />
           <DeleteUserDialog
             open={isDelete && deleteUserId !== undefined}
             userId={deleteUserId}
             onOpenChange={(open) => {
-              if (!open) closeModal()
+              if (!open) close()
             }}
           />
           <RestoreUserDialog
@@ -166,7 +172,7 @@ function Owners() {
             userId={restoreUserId}
             userName={restoreUserName}
             onOpenChange={(open) => {
-              if (!open) closeModal()
+              if (!open) close()
             }}
           />
         </>

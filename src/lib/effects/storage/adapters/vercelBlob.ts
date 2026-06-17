@@ -8,7 +8,7 @@ import {
   put,
 } from '@vercel/blob'
 import { generateClientTokenFromReadWriteToken } from '@vercel/blob/client'
-import { envPrefix, type StorageEffects } from '../storage'
+import { applyEnvPrefix, isRemoteOriginPathname, type StorageEffects } from '../storage'
 
 const TOKEN_TTL_MS = 5 * 60 * 1000
 
@@ -25,20 +25,19 @@ function tokenFor(access: 'public' | 'private'): string {
   return token
 }
 
-const PREFIX = envPrefix()
-const fullPath = (pathname: string) =>
-  pathname.startsWith(PREFIX) ? pathname : `${PREFIX}${pathname}`
-
 /**
  * Two-store Vercel Blob adapter. The `access` parameter routes to the right
  * read-write token (BLOB_PUBLIC_READ_WRITE_TOKEN vs BLOB_PRIVATE_READ_WRITE_TOKEN).
- * Pathnames are env-prefixed inside the adapter so callers think in logical
- * terms (`avatars/{userId}/{slug}`, `documents/{folder}/{name}`); the prefixed
- * form is what the browser SDK uses and what we store on metadata rows.
+ * Pathnames are env-prefixed inside the adapter (`applyEnvPrefix`) so callers
+ * think in logical terms (`avatars/{userId}/{slug}`, `documents/{folder}/{name}`);
+ * the prefixed form is what the browser SDK uses and what we store on metadata
+ * rows. `applyEnvPrefix` leaves an already-prefixed pathname untouched, so a
+ * cross-env (`prod/…`) row read from preview resolves in the shared store
+ * instead of being double-prefixed to a non-existent key.
  */
 export const vercelBlob: StorageEffects = {
   async mintUploadToken({ access, pathname, contentType, maxBytes }) {
-    const prefixed = fullPath(pathname)
+    const prefixed = applyEnvPrefix(pathname)
     const clientToken = await generateClientTokenFromReadWriteToken({
       token: tokenFor(access),
       pathname: prefixed,
@@ -53,7 +52,7 @@ export const vercelBlob: StorageEffects = {
 
   async head(access, pathname) {
     try {
-      const result = await head(fullPath(pathname), { token: tokenFor(access) })
+      const result = await head(applyEnvPrefix(pathname), { token: tokenFor(access) })
       return { url: result.url, contentType: result.contentType, size: result.size }
     } catch (err) {
       if (err instanceof BlobNotFoundError) return null
@@ -62,13 +61,20 @@ export const vercelBlob: StorageEffects = {
   },
 
   async delete(access, pathname) {
-    await del(fullPath(pathname), { token: tokenFor(access) })
+    // The store is shared across environments. A foreign-origin byte (e.g. a
+    // prod file surfaced through a branched preview DB) is owned by the env its
+    // prefix names; deleting it here would destroy *that* env's object. No-op —
+    // the metadata row is branch-local and already gone. In production this never
+    // triggers (prod files carry the current prefix); it exists to stop a preview
+    // hard-delete or rename from reaching into prod.
+    if (isRemoteOriginPathname(pathname)) return
+    await del(applyEnvPrefix(pathname), { token: tokenFor(access) })
   },
 
   async put(access, pathname, bytes, contentType) {
     // allowOverwrite so a re-run of the (idempotent) worker replaces the
     // existing derived asset rather than throwing on the same pathname.
-    await put(fullPath(pathname), bytes, {
+    await put(applyEnvPrefix(pathname), bytes, {
       access,
       token: tokenFor(access),
       contentType,
@@ -78,10 +84,15 @@ export const vercelBlob: StorageEffects = {
   },
 
   async copy(access, fromPathname, toPathname, contentType) {
+    // Backstop against writing into another env's namespace from a branched DB.
+    // `renameDocument` already skips the byte move for a foreign-origin source,
+    // so this only fires defensively. (Reading/copying a prod byte into a new
+    // prod key would still mutate the shared prod store.)
+    if (isRemoteOriginPathname(fromPathname) || isRemoteOriginPathname(toPathname)) return
     // `copy` does not carry the source content type over, so we re-pass the
     // file's stored mime. `addRandomSuffix: false` keeps the destination
     // pathname exactly as computed (its basename is the prod download name).
-    await blobCopy(fullPath(fromPathname), fullPath(toPathname), {
+    await blobCopy(applyEnvPrefix(fromPathname), applyEnvPrefix(toPathname), {
       access,
       token: tokenFor(access),
       contentType,
@@ -90,7 +101,7 @@ export const vercelBlob: StorageEffects = {
   },
 
   async getReadUrl(access, pathname, ttlSeconds, _opts) {
-    const prefixed = fullPath(pathname)
+    const prefixed = applyEnvPrefix(pathname)
     if (access === 'public') {
       const result = await head(prefixed, { token: tokenFor('public') })
       return result.url
