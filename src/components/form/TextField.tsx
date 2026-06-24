@@ -18,6 +18,7 @@ type Props = {
   placeholder?: string
   autoFocus?: boolean
   inputClassName?: string
+  inputSize?: ComponentProps<typeof Input>['size']
   srOnlyLabel?: boolean
   onKeyDown?: KeyboardEventHandler<HTMLInputElement>
   /**
@@ -35,6 +36,7 @@ export function TextField({
   placeholder,
   autoFocus,
   inputClassName,
+  inputSize,
   srOnlyLabel,
   onKeyDown,
   suffix,
@@ -71,7 +73,7 @@ export function TextField({
           </InputGroupAddon>
         </InputGroup>
       ) : (
-        <Input className={inputClassName} {...sharedInputProps} />
+        <Input size={inputSize} className={inputClassName} {...sharedInputProps} />
       )}
       {description ? <FieldDescription>{description}</FieldDescription> : null}
       <FieldError errors={field.state.meta.errors} />

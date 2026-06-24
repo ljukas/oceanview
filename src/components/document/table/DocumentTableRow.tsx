@@ -1,6 +1,7 @@
 import { useDraggable } from '@dnd-kit/core'
 import type { Row } from '@tanstack/react-table'
 import { MoreVerticalIcon } from 'lucide-react'
+import { useCallback } from 'react'
 import { DocumentRowDialogs } from '~/components/document/actions/DocumentRowDialogs'
 import { DocumentThumbnail } from '~/components/document/shared/DocumentThumbnail'
 import {
@@ -41,8 +42,10 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '~/components/ui/dropdown-menu'
+import { RowActions } from '~/components/ui/row-actions'
 import { TableCell, TableRow } from '~/components/ui/table'
 import { useDialogState } from '~/hooks/useDialogState'
+import { useScrollIntoViewOnce } from '~/hooks/useScrollIntoViewOnce'
 import { formatDate } from '~/lib/i18n/format'
 import { cn } from '~/lib/utils'
 import { m } from '~/paraglide/messages'
@@ -73,6 +76,7 @@ const swallow = {
 export function DocumentTableRow({
   row,
   currentUser,
+  isFocused,
   isSelected,
   selectedDocIds,
   selectedFolderIds,
@@ -84,6 +88,7 @@ export function DocumentTableRow({
 }: {
   row: Row<DocumentRow>
   currentUser: CurrentUser
+  isFocused: boolean
   isSelected: boolean
   selectedDocIds: Array<string>
   selectedFolderIds: Array<string>
@@ -106,6 +111,18 @@ export function DocumentTableRow({
     id: documentDragId(doc.id),
     data: { documentId: doc.id },
   })
+
+  // Scroll this row into view when the command palette navigated here (`?focus`).
+  const focusRef = useScrollIntoViewOnce<HTMLTableRowElement>(isFocused)
+  // Merge dnd-kit's draggable ref with the focus-scroll ref. Memoized so React
+  // doesn't detach/reattach (and dnd-kit doesn't re-measure) on every render.
+  const setRowRef = useCallback(
+    (node: HTMLTableRowElement | null) => {
+      setNodeRef(node)
+      focusRef.current = node
+    },
+    [setNodeRef, focusRef],
+  )
 
   const openFile = () => window.open(`/api/files/view/${doc.id}`, '_blank', 'noopener,noreferrer')
 
@@ -149,7 +166,7 @@ export function DocumentTableRow({
       >
         <ContextMenuTrigger asChild>
           <TableRow
-            ref={setNodeRef}
+            ref={setRowRef}
             {...attributes}
             {...listeners}
             tabIndex={0}
@@ -171,15 +188,15 @@ export function DocumentTableRow({
               }
             }}
             className={cn(
-              'cursor-default select-none outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset',
-              // macOS-style solid selection: the whole row goes accent-blue with
-              // light text. Overrides the row's default hover AND the base row's
-              // `has-aria-expanded:bg-muted/50` so opening the ⋮ menu keeps the
-              // dark surface — otherwise the light text lands on light gray and
-              // the row's content vanishes.
+              'group/row cursor-default select-none outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset',
+              // Linear-style washed selection: a light blue fill (normal text on
+              // top), driven via `--row-bg` (painted + rounded by the cells, and
+              // merged across adjacent selected rows). Holds through hover and an
+              // open ⋮ menu so the fill doesn't flip back to grey.
               isSelected &&
-                'bg-selected text-selected-foreground hover:bg-selected has-aria-expanded:bg-selected',
+                '[--row-bg:var(--selected-wash)] hover:[--row-bg:var(--selected-wash)] has-aria-expanded:[--row-bg:var(--selected-wash)]',
               isDragging && 'opacity-50',
+              isFocused && 'doc-focus-flash',
             )}
           >
             <TableCell>
@@ -209,19 +226,14 @@ export function DocumentTableRow({
                     {doc.isRemoteOrigin ? <RemoteOriginBadge /> : null}
                   </span>
                   {/* Typ + Ägare fold in here until they become columns at `lg`. */}
-                  <span
-                    className={cn(
-                      'truncate text-xs lg:hidden',
-                      isSelected ? 'text-selected-foreground/80' : 'text-muted-foreground',
-                    )}
-                  >
+                  <span className={cn('truncate text-xs lg:hidden', 'text-muted-foreground')}>
                     {`${kind} • ${doc.ownerName}`}
                   </span>
                   {/* Uppladdad + Storlek fold in here until they become columns at `md`. */}
                   <span
                     className={cn(
                       'truncate text-xs tabular-nums md:hidden',
-                      isSelected ? 'text-selected-foreground/80' : 'text-muted-foreground',
+                      'text-muted-foreground',
                     )}
                   >
                     {`${formatDate(doc.uploadedAt)} • ${formatSize(doc.sizeBytes)}`}
@@ -230,60 +242,39 @@ export function DocumentTableRow({
               </div>
             </TableCell>
 
-            <TableCell
-              className={cn(
-                KIND_CELL,
-                'truncate',
-                isSelected ? 'text-selected-foreground/80' : 'text-muted-foreground',
-              )}
-              title={kind}
-            >
+            <TableCell className={cn(KIND_CELL, 'truncate', 'text-muted-foreground')} title={kind}>
               {kind}
             </TableCell>
-            <TableCell
-              className={cn(
-                DATE_CELL,
-                'tabular-nums',
-                isSelected ? 'text-selected-foreground/80' : 'text-muted-foreground',
-              )}
-            >
+            <TableCell className={cn(DATE_CELL, 'tabular-nums', 'text-muted-foreground')}>
               {formatDate(doc.uploadedAt)}
             </TableCell>
-            <TableCell
-              className={cn(
-                OWNER_CELL,
-                'truncate',
-                isSelected ? 'text-selected-foreground/80' : 'text-muted-foreground',
-              )}
-            >
+            <TableCell className={cn(OWNER_CELL, 'truncate', 'text-muted-foreground')}>
               {doc.ownerName}
             </TableCell>
             <TableCell
-              className={cn(
-                SIZE_CELL,
-                'text-right tabular-nums',
-                isSelected ? 'text-selected-foreground/80' : 'text-muted-foreground',
-              )}
+              className={cn(SIZE_CELL, 'text-right tabular-nums', 'text-muted-foreground')}
             >
               {formatSize(doc.sizeBytes)}
             </TableCell>
 
             <TableCell className="pl-0 text-right">
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    aria-label={m.document_actions_label()}
-                    {...swallow}
-                  >
-                    <MoreVerticalIcon />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" {...swallow}>
-                  <DocumentMenuItems groups={dropdownGroups} components={dropdownComponents} />
-                </DropdownMenuContent>
-              </DropdownMenu>
+              <RowActions>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label={m.document_actions_label()}
+                      {...swallow}
+                    >
+                      <MoreVerticalIcon />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" {...swallow}>
+                    <DocumentMenuItems groups={dropdownGroups} components={dropdownComponents} />
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </RowActions>
             </TableCell>
           </TableRow>
         </ContextMenuTrigger>

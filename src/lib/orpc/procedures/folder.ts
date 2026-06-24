@@ -8,7 +8,7 @@ import { FolderDomainError, type FolderDomainErrorCode } from '~/lib/services/fo
 // messages are NOT here — the backend stays i18n-free and the client localizes
 // by code (see ~/lib/orpc/folderErrorMessage). The `satisfies` locks the keys to
 // the domain code union, so adding a FolderDomainError code forces an entry here.
-const folderErrors = {
+export const folderErrors = {
   NOT_FOUND: { status: 404 },
   NOT_ADMIN: { status: 403 },
   NAME_TAKEN_IN_PARENT: { status: 409 },
@@ -16,6 +16,7 @@ const folderErrors = {
   PARENT_NOT_FOUND: { status: 404 },
   CANNOT_MOVE_INTO_DESCENDANT: { status: 400 },
   ALREADY_DELETED: { status: 400 },
+  NOT_DELETED: { status: 400 },
   PARENT_DELETED: { status: 400 },
 } satisfies Record<FolderDomainErrorCode, { status: number }>
 

@@ -1,21 +1,21 @@
-// Copied verbatim from Resend's react-email demo
-// (apps/demo/emails/05-Studio/theme.ts, MIT — © 2024 Plus Five Five, Inc.).
-// Source: https://github.com/resend/react-email/tree/canary/apps/demo/emails/05-Studio
+// Email Tailwind config for Oceanview's brand ("quiet nautical confidence",
+// ADR-0015). The typographic scale + addUtilities plugin originate from Resend's
+// react-email demo (apps/demo/emails/05-Studio, MIT — © 2024 Plus Five Five,
+// Inc.); the colors and fonts are Oceanview's. Brand blue #156cdd is the sRGB of
+// --brand oklch(0.56 0.18 256) in src/styles/app.css. Fonts are a system stack
+// only: custom web fonts don't render in Gmail/Outlook, so we don't ship them.
 
-import type { TailwindConfig } from 'react-email'
+import { pixelBasedPreset, type TailwindConfig } from 'react-email'
 import plugin from 'tailwindcss/plugin'
 
 const colors = {
-  bg: '#DCE1E4',
-  'bg-2': '#FFF',
-  'bg-3': '#F6F6F6',
-  'bg-4': '#F0F0F0',
-  fg: '#332C2C',
-  'fg-2': '#726A6A',
-  'fg-3': '#A2A9AA',
-  stroke: '#F0F0F0',
-  'button-border': '#E8E9E9',
-  'tip-badge': '#5B6E7A',
+  bg: '#EEF2F6', // light, faintly cool page behind the card
+  card: '#FFFFFF',
+  fg: '#1C1D1F', // near-black body/heading text
+  'fg-muted': '#6B7280', // secondary / supporting text
+  border: '#E6E9EE',
+  brand: '#156CDD', // nautical-blue accent (CTA, logo mark)
+  'brand-fg': '#FFFFFF', // text on the brand button
 } as const
 
 const fontScale = {
@@ -84,7 +84,9 @@ const fontSizeTheme = Object.fromEntries(
   ]),
 )
 
-export const techTailwindConfig: TailwindConfig = {
+export const emailTailwindConfig: TailwindConfig = {
+  // pixelBasedPreset emits px instead of rem so spacing utilities survive Outlook.
+  presets: [pixelBasedPreset],
   plugins: [
     plugin(({ addVariant, addUtilities }) => {
       addVariant('mobile', '@media (max-width: 600px)')
@@ -100,12 +102,19 @@ export const techTailwindConfig: TailwindConfig = {
       fontSize: fontSizeTheme,
       colors,
       fontFamily: {
-        sans: ['Inter', 'Arial', 'sans-serif'],
-        geist: ['Geist', 'Inter', 'Arial', 'sans-serif'],
+        sans: [
+          '-apple-system',
+          'BlinkMacSystemFont',
+          '"Segoe UI"',
+          'Roboto',
+          'Helvetica',
+          'Arial',
+          'sans-serif',
+        ],
       },
       boxShadow: {
-        button:
-          '0px 7px 2px 0px rgba(22,29,29,0),0px 5px 2px 0px rgba(22,29,29,0.01),0px 3px 2px 0px rgba(22,29,29,0.05),0px 1px 1px 0px rgba(22,29,29,0.09),0px 0px 1px 0px rgba(22,29,29,0.1)',
+        // soft elevation for the white card
+        card: '0px 1px 2px rgba(16,24,40,0.04), 0px 8px 24px rgba(16,24,40,0.06)',
       },
     },
   },

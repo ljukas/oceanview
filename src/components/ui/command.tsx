@@ -171,7 +171,7 @@ function CommandItem({
   // override. Lucide icons stroke with `currentColor`, so an uncolored icon already
   // follows the item's `data-selected:text-foreground` via inheritance — the override
   // was redundant for those and only clobbered icons that set their own color (e.g.
-  // the file-type icons in DocumentSearch). Leaving it out lets colored icons keep
+  // the file-type icons in CommandPalette). Leaving it out lets colored icons keep
   // their color when selected, with no extra rule.
   return (
     <CommandPrimitive.Item

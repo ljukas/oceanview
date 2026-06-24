@@ -2,6 +2,7 @@ import { useSuspenseQuery } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
 import { useMemo } from 'react'
 import { z } from 'zod'
+import { PageContainer } from '~/components/layout/PageContainer'
 import { AssignmentHistorySheet } from '~/components/share/AssignmentHistorySheet'
 import { SharePartCard } from '~/components/share/SharePartCard'
 import { UnassignShareDialog } from '~/components/share/UnassignShareDialog'
@@ -80,12 +81,12 @@ function AdminShares() {
   const activeSlot = dialogShareCode ? byCode.get(dialogShareCode) : undefined
 
   return (
-    <div className="flex flex-col gap-6 p-4 md:p-8">
+    <PageContainer>
       <header className="flex flex-col gap-2">
         <span className="font-semibold text-primary text-xs uppercase tracking-wider">
           {m.user_role_admin()}
         </span>
-        <h1 className="font-semibold text-3xl tracking-tight md:text-4xl">
+        <h1 className="font-bold text-3xl tracking-tight text-balance md:text-4xl">
           {m.share_manage_title()}
         </h1>
         <p className="text-muted-foreground text-sm">{m.share_manage_description()}</p>
@@ -128,6 +129,6 @@ function AdminShares() {
         }}
         shareCode={dialogShareCode}
       />
-    </div>
+    </PageContainer>
   )
 }

@@ -6,6 +6,7 @@ export type FolderDomainErrorCode =
   | 'PARENT_NOT_FOUND'
   | 'CANNOT_MOVE_INTO_DESCENDANT'
   | 'ALREADY_DELETED'
+  | 'NOT_DELETED'
   | 'PARENT_DELETED'
 
 export class FolderDomainError extends Error {

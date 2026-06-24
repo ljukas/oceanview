@@ -1,5 +1,14 @@
 import { Link, linkOptions, useMatchRoute } from '@tanstack/react-router'
-import { AnchorIcon, CalendarIcon, FolderIcon, Trash2Icon, UsersIcon } from 'lucide-react'
+import {
+  AnchorIcon,
+  CalendarIcon,
+  FolderIcon,
+  SearchIcon,
+  Trash2Icon,
+  UsersIcon,
+} from 'lucide-react'
+import { useCommandPalette } from '~/components/command/useCommandPalette'
+import { Wordmark } from '~/components/Logo'
 import {
   Sidebar,
   SidebarContent,
@@ -14,6 +23,7 @@ import {
   useSidebar,
 } from '~/components/ui/sidebar'
 import { SidebarUserMenu } from '~/components/user/UserMenu'
+import { useModKeyLabel } from '~/hooks/useModKeyLabel'
 import { m } from '~/paraglide/messages'
 
 type SidebarUser = {
@@ -38,6 +48,8 @@ type NavItem = (typeof mainNavItems)[number] | (typeof adminNavItems)[number]
 export function AppSidebar({ user }: { user: SidebarUser }) {
   const matchRoute = useMatchRoute()
   const { setOpenMobile } = useSidebar()
+  const { setOpen: setCommandOpen } = useCommandPalette()
+  const hotkeyLabel = useModKeyLabel()
 
   const isAdmin = user.role === 'admin'
 
@@ -56,9 +68,31 @@ export function AppSidebar({ user }: { user: SidebarUser }) {
   }
 
   return (
-    <Sidebar collapsible="icon">
-      <SidebarHeader className="px-4 py-4">
-        <span className="font-semibold text-lg">Oceanview</span>
+    <Sidebar collapsible="icon" variant="inset">
+      <SidebarHeader className="gap-2 px-2 py-3">
+        <Wordmark className="group-data-[collapsible=icon]:justify-center" />
+        {/* Desktop rail only: on mobile the search lives in the header bar
+            (the sidebar is a drawer behind the hamburger). */}
+        <SidebarMenu className="hidden md:flex">
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              onClick={() => {
+                setOpenMobile(false)
+                setCommandOpen(true)
+              }}
+              tooltip={m.cmd_trigger_label()}
+              className="text-muted-foreground"
+            >
+              <SearchIcon />
+              <span>{m.cmd_trigger_label()}</span>
+              {hotkeyLabel ? (
+                <kbd className="pointer-events-none ml-auto hidden h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] group-data-[collapsible=icon]:hidden sm:inline-flex">
+                  {hotkeyLabel}
+                </kbd>
+              ) : null}
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
       </SidebarHeader>
       <SidebarContent>
         <SidebarGroup>

@@ -29,7 +29,7 @@ function SheetOverlay({
       data-slot="sheet-overlay"
       className={cn(
         // open/close fade
-        'data-open:fade-in-0 data-closed:fade-out-0 duration-100 data-closed:animate-out data-open:animate-in',
+        'data-open:fade-in-0 data-closed:fade-out-0 duration-200 ease-out data-closed:animate-out data-open:animate-in',
         // full-screen scrim + backdrop blur
         'fixed inset-0 z-50 bg-black/10 supports-backdrop-filter:backdrop-blur-xs',
         className,

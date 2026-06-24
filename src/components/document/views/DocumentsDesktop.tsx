@@ -3,7 +3,6 @@ import { FolderIcon, FolderPlusIcon, UploadIcon } from 'lucide-react'
 import { useRef, useState } from 'react'
 import { DocumentSelectionBar } from '~/components/document/actions/DocumentSelectionBar'
 import { CreateFolderDialog } from '~/components/document/dialogs/CreateFolderDialog'
-import { DocumentSearch } from '~/components/document/shared/DocumentSearch'
 import { DocumentThumbnail } from '~/components/document/shared/DocumentThumbnail'
 import { type CurrentUser, documentDisplayName } from '~/components/document/shared/documentHelpers'
 import { FolderBreadcrumb } from '~/components/document/shared/FolderBreadcrumb'
@@ -12,6 +11,7 @@ import {
   DocumentUpload,
   type DocumentUploadHandle,
 } from '~/components/document/upload/DocumentUpload'
+import { PageContainer } from '~/components/layout/PageContainer'
 import { Button } from '~/components/ui/button'
 import { useDocumentDnd } from '~/hooks/useDocumentDnd'
 import { useDocumentSelection } from '~/hooks/useDocumentSelection'
@@ -22,6 +22,8 @@ type Props = {
   /** Resolved folder id from the URL, or null for the virtual root. */
   activeFolderId: string | null
   currentUser: CurrentUser
+  /** Document id to scroll to + flash (command-palette `?focus`), or null. */
+  focusedDocId: string | null
 }
 
 /**
@@ -30,7 +32,7 @@ type Props = {
  * open, and drag-and-drop moves. The touch tree (`DocumentsMobile`) is a
  * separate component; `DocumentsView` picks between them by pointer type.
  */
-export function DocumentsDesktop({ activeFolderId, currentUser }: Props) {
+export function DocumentsDesktop({ activeFolderId, currentUser, focusedDocId }: Props) {
   const { folders, visibleDocuments } = useDocumentsData(activeFolderId)
   const {
     isAdmin,
@@ -57,15 +59,14 @@ export function DocumentsDesktop({ activeFolderId, currentUser }: Props) {
 
   return (
     <DndContext {...dndContextProps}>
-      <div className="flex flex-col gap-4 p-4 md:p-8">
-        <header className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div className="flex flex-col gap-1">
-            <h1 className="font-semibold text-3xl tracking-tight md:text-4xl">
-              {m.nav_documents()}
-            </h1>
-            <p className="text-muted-foreground text-sm">{m.document_page_description_desktop()}</p>
-          </div>
-          <DocumentSearch />
+      <PageContainer width="full" fill className="gap-4">
+        <header className="flex flex-col gap-2">
+          <h1 className="font-bold text-2xl tracking-tight text-balance md:text-3xl">
+            {m.nav_documents()}
+          </h1>
+          <p className="max-w-2xl text-muted-foreground text-sm">
+            {m.document_page_description_desktop()}
+          </p>
         </header>
 
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -82,8 +83,12 @@ export function DocumentsDesktop({ activeFolderId, currentUser }: Props) {
           </div>
         </div>
 
-        <DocumentUpload ref={uploadRef} folderId={activeFolderId}>
-          <div className="flex flex-col gap-4">
+        <DocumentUpload
+          ref={uploadRef}
+          folderId={activeFolderId}
+          className="flex min-h-0 flex-1 flex-col"
+        >
+          <div className="flex min-h-0 flex-1 flex-col gap-4">
             <DocumentSelectionBar
               selectedDocIds={selectedDocIds}
               selectedFolderIds={selectedFolderIds}
@@ -96,6 +101,7 @@ export function DocumentsDesktop({ activeFolderId, currentUser }: Props) {
               currentUser={currentUser}
               folders={folders}
               activeFolderId={activeFolderId}
+              focusedDocId={focusedDocId}
               isAdmin={isAdmin}
               selected={selected}
               setSelected={setSelected}
@@ -103,10 +109,11 @@ export function DocumentsDesktop({ activeFolderId, currentUser }: Props) {
               selectedFolderIds={selectedFolderIds}
               canActOnAll={canActOnAll}
               clearSelection={clearSelection}
+              onUpload={() => uploadRef.current?.open()}
             />
           </div>
         </DocumentUpload>
-      </div>
+      </PageContainer>
 
       {createOpen ? (
         <CreateFolderDialog

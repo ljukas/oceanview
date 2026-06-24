@@ -10,6 +10,7 @@ const MAX_BYTES = 100_000_000
 type Props = {
   folderId: string | null
   children: ReactNode
+  className?: string
 }
 
 export type DocumentUploadHandle = { open: () => void }
@@ -23,7 +24,7 @@ export type DocumentUploadHandle = { open: () => void }
  * page toolbar).
  */
 export const DocumentUpload = forwardRef<DocumentUploadHandle, Props>(function DocumentUpload(
-  { folderId, children },
+  { folderId, children, className },
   ref,
 ) {
   const { enqueue } = useUploadQueue()
@@ -57,6 +58,7 @@ export const DocumentUpload = forwardRef<DocumentUploadHandle, Props>(function D
       className={cn(
         'relative rounded-lg transition-colors',
         isDragActive && 'outline-dashed outline-2 outline-ring outline-offset-4',
+        className,
       )}
     >
       <input {...getInputProps()} />
