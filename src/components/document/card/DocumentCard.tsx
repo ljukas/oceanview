@@ -25,6 +25,7 @@ import {
 } from '~/components/ui/dropdown-menu'
 import { useDialogState } from '~/hooks/useDialogState'
 import { useLongPress } from '~/hooks/useLongPress'
+import { useScrollIntoViewOnce } from '~/hooks/useScrollIntoViewOnce'
 import { formatDate } from '~/lib/i18n/format'
 import { cn } from '~/lib/utils'
 import { m } from '~/paraglide/messages'
@@ -54,6 +55,7 @@ export function DocumentCard({
   doc,
   currentUser,
   selectMode,
+  isFocused,
   isSelected,
   onActivate,
   onToggle,
@@ -62,6 +64,7 @@ export function DocumentCard({
   doc: DocumentRow
   currentUser: CurrentUser
   selectMode: boolean
+  isFocused: boolean
   isSelected: boolean
   /** Tap when not in select mode → open the file. */
   onActivate: () => void
@@ -76,6 +79,9 @@ export function DocumentCard({
   const kind = fileKindLabel(doc)
 
   const { longPressHandlers, didLongPress } = useLongPress(onEnterSelect)
+
+  // Scroll this card into view when the command palette navigated here (`?focus`).
+  const focusRef = useScrollIntoViewOnce<HTMLDivElement>(isFocused)
 
   // The ⋮ acts on this one document only (single-item actions).
   const groups = buildDocActions({
@@ -92,6 +98,7 @@ export function DocumentCard({
     <>
       {/* biome-ignore lint/a11y/useSemanticElements: a div carries the tap + long-press gesture; a native button would fight the nested ⋮ menu and select checkbox. */}
       <div
+        ref={focusRef}
         {...longPressHandlers}
         role="button"
         tabIndex={0}
@@ -113,6 +120,7 @@ export function DocumentCard({
           isSelected
             ? 'bg-selected text-selected-foreground'
             : 'bg-card hover:bg-muted/50 active:bg-muted',
+          isFocused && 'doc-focus-flash',
         )}
       >
         <DocumentThumbnail

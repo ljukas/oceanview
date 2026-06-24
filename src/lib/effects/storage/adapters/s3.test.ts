@@ -11,15 +11,20 @@ beforeAll(() => {
   process.env.S3_SECRET_ACCESS_KEY ??= 'test-secret'
 })
 
-// Each mocked sign call records the GetObjectCommand's ResponseContentDisposition
-// so we can assert what the adapter put on the request. A sentinel distinguishes
-// "not set" from "no call".
+// Each mocked sign call records the command's ResponseContentDisposition and
+// CacheControl so we can assert what the adapter put on the request. A sentinel
+// distinguishes "not set" from "no call".
 const NOT_CAPTURED = Symbol('not captured')
 let lastDisposition: string | undefined | typeof NOT_CAPTURED = NOT_CAPTURED
+let lastCacheControl: string | undefined | typeof NOT_CAPTURED = NOT_CAPTURED
 vi.mock('@aws-sdk/s3-request-presigner', () => ({
   getSignedUrl: vi.fn(
-    async (_client: unknown, command: { input: { ResponseContentDisposition?: string } }) => {
+    async (
+      _client: unknown,
+      command: { input: { ResponseContentDisposition?: string; CacheControl?: string } },
+    ) => {
       lastDisposition = command.input.ResponseContentDisposition
+      lastCacheControl = command.input.CacheControl
       return 'https://signed.example/url'
     },
   ),
@@ -41,6 +46,51 @@ test('getReadUrl omits ResponseContentDisposition when no downloadFilename', asy
   lastDisposition = NOT_CAPTURED
   await s3.getReadUrl('private', 'documents/x/manual.pdf', 60)
   expect(lastDisposition).toBeUndefined()
+})
+
+test('mintUploadToken bakes immutable Cache-Control into public uploads', async () => {
+  const { s3 } = await import('./s3')
+  lastCacheControl = NOT_CAPTURED
+  const minted = await s3.mintUploadToken({
+    access: 'public',
+    pathname: 'avatars/u/abc.png',
+    contentType: 'image/png',
+    maxBytes: 5_000_000,
+  })
+  // Signed onto the PUT command…
+  expect(lastCacheControl).toBe('public, max-age=31536000, immutable')
+  // …and echoed in the headers the browser must replay (or S3 returns 403).
+  if (minted.upload.kind !== 'presigned-put') throw new Error('expected presigned-put')
+  expect(minted.upload.headers?.['Cache-Control']).toBe('public, max-age=31536000, immutable')
+})
+
+test('mintUploadToken sets no Cache-Control on private uploads', async () => {
+  const { s3 } = await import('./s3')
+  lastCacheControl = NOT_CAPTURED
+  const minted = await s3.mintUploadToken({
+    access: 'private',
+    pathname: 'documents/u/manual.pdf',
+    contentType: 'application/pdf',
+    maxBytes: 5_000_000,
+  })
+  expect(lastCacheControl).toBeUndefined()
+  if (minted.upload.kind !== 'presigned-put') throw new Error('expected presigned-put')
+  expect(minted.upload.headers?.['Cache-Control']).toBeUndefined()
+})
+
+test('put sets immutable Cache-Control on public objects only', async () => {
+  const { PutObjectCommand, S3Client } = await import('@aws-sdk/client-s3')
+  const sendSpy = vi.spyOn(S3Client.prototype, 'send').mockResolvedValue(undefined as never)
+  const { s3 } = await import('./s3')
+
+  await s3.put('public', 'thumbnails/x.webp', Buffer.from('a'), 'image/webp')
+  await s3.put('private', 'documents/y.pdf', Buffer.from('b'), 'application/pdf')
+
+  const first = sendSpy.mock.calls[0][0] as InstanceType<typeof PutObjectCommand>
+  const second = sendSpy.mock.calls[1][0] as InstanceType<typeof PutObjectCommand>
+  expect(first.input.CacheControl).toBe('public, max-age=31536000, immutable')
+  expect(second.input.CacheControl).toBeUndefined()
+  sendSpy.mockRestore()
 })
 
 test('copy issues a CopyObjectCommand with REPLACE metadata', async () => {

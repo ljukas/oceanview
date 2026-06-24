@@ -9,6 +9,7 @@ import {
   ArrowDownIcon,
   ArrowUpDownIcon,
   ArrowUpIcon,
+  LifeBuoyIcon,
   MoreVerticalIcon,
   PencilIcon,
   RotateCcwIcon,
@@ -26,6 +27,8 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '~/components/ui/dropdown-menu'
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '~/components/ui/empty'
+import { RowActions } from '~/components/ui/row-actions'
 import {
   Table,
   TableBody,
@@ -122,66 +125,70 @@ export function OwnersTable({
   })
   const rows = table.getRowModel().rows
 
-  // name + (role) + (email) + (phone/date) + (shares unless deleted) + (actions if admin)
-  const columnCount = 4 + (showDeleted ? 0 : 1) + (isAdmin ? 1 : 0)
+  // The active list always holds at least one owner, so only the deleted filter
+  // can be empty. It's a happy zero-state (nobody removed), so we lean into the
+  // nautical brand: a lifebuoy medallion + warm copy (ADR-0015/0016).
+  if (showDeleted && rows.length === 0) {
+    return (
+      <Empty className="brand-wash rounded-lg border">
+        <EmptyHeader>
+          <EmptyMedia
+            variant="icon"
+            className="size-14 rounded-full bg-brand/10 text-brand ring-1 ring-brand/20"
+          >
+            <LifeBuoyIcon className="size-7" />
+          </EmptyMedia>
+          <EmptyTitle>{m.owners_empty_deleted_title()}</EmptyTitle>
+          <EmptyDescription>{m.owners_empty_deleted_description()}</EmptyDescription>
+        </EmptyHeader>
+      </Empty>
+    )
+  }
 
   return (
-    <div className="rounded-lg border">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <SortableHead column={table.getColumn('name')} label={m.user_field_name()} />
+    <Table containerClassName="min-h-0 md:-mx-4">
+      <TableHeader className="sticky top-0 z-10 bg-background">
+        <TableRow>
+          <SortableHead column={table.getColumn('name')} label={m.user_field_name()} />
+          <SortableHead
+            column={table.getColumn('role')}
+            label={m.user_field_role()}
+            className={ROLE_CELL}
+          />
+          <TableHead className={EMAIL_CELL}>{m.user_field_email()}</TableHead>
+          <TableHead className={PHONE_CELL}>
+            {showDeleted ? m.owners_header_deleted() : m.user_field_phone()}
+          </TableHead>
+          {showDeleted ? null : (
             <SortableHead
-              column={table.getColumn('role')}
-              label={m.user_field_role()}
-              className={ROLE_CELL}
+              column={table.getColumn('shares')}
+              label={m.owners_header_shares()}
+              className={SHARES_CELL}
             />
-            <TableHead className={EMAIL_CELL}>{m.user_field_email()}</TableHead>
-            <TableHead className={PHONE_CELL}>
-              {showDeleted ? m.owners_header_deleted() : m.user_field_phone()}
-            </TableHead>
-            {showDeleted ? null : (
-              <SortableHead
-                column={table.getColumn('shares')}
-                label={m.owners_header_shares()}
-                className={SHARES_CELL}
-              />
-            )}
-            {isAdmin ? (
-              <TableHead className="w-10">
-                <span className="sr-only">{m.common_actions()}</span>
-              </TableHead>
-            ) : null}
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {rows.length === 0 ? (
-            <TableRow className="hover:bg-transparent">
-              <TableCell
-                colSpan={columnCount}
-                className="py-8 text-center text-muted-foreground text-sm"
-              >
-                {showDeleted ? m.owners_empty_deleted() : m.owners_empty()}
-              </TableCell>
-            </TableRow>
-          ) : (
-            rows.map((row) => (
-              <OwnerTableRow
-                key={row.original.id}
-                owner={row.original}
-                isSelf={row.original.id === currentUserId}
-                isOnline={onlineSet.has(row.original.id)}
-                isAdmin={isAdmin}
-                showDeleted={showDeleted}
-                onEdit={onEdit}
-                onDelete={onDelete}
-                onRestore={onRestore}
-              />
-            ))
           )}
-        </TableBody>
-      </Table>
-    </div>
+          {isAdmin ? (
+            <TableHead className="w-10">
+              <span className="sr-only">{m.common_actions()}</span>
+            </TableHead>
+          ) : null}
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {rows.map((row) => (
+          <OwnerTableRow
+            key={row.original.id}
+            owner={row.original}
+            isSelf={row.original.id === currentUserId}
+            isOnline={onlineSet.has(row.original.id)}
+            isAdmin={isAdmin}
+            showDeleted={showDeleted}
+            onEdit={onEdit}
+            onDelete={onDelete}
+            onRestore={onRestore}
+          />
+        ))}
+      </TableBody>
+    </Table>
   )
 }
 
@@ -210,7 +217,7 @@ function OwnerTableRow({
   const shares = collapseShares(owner.shares)
 
   return (
-    <TableRow>
+    <TableRow className="group/row">
       <TableCell>
         <div className="flex min-w-0 items-center gap-3">
           <Avatar className="size-9 shrink-0">
@@ -323,38 +330,40 @@ function OwnerTableRow({
 
       {isAdmin ? (
         <TableCell className="text-right">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                aria-label={m.owners_actions_for({ name: owner.name })}
-              >
-                <MoreVerticalIcon />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              {showDeleted ? (
-                <DropdownMenuItem onSelect={() => onRestore(owner.id)}>
-                  <RotateCcwIcon />
-                  {m.common_restore()}
-                </DropdownMenuItem>
-              ) : (
-                <>
-                  <DropdownMenuItem onSelect={() => onEdit(owner.id)}>
-                    <PencilIcon />
-                    {m.common_edit()}
+          <RowActions>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label={m.owners_actions_for({ name: owner.name })}
+                >
+                  <MoreVerticalIcon />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                {showDeleted ? (
+                  <DropdownMenuItem onSelect={() => onRestore(owner.id)}>
+                    <RotateCcwIcon />
+                    {m.common_restore()}
                   </DropdownMenuItem>
-                  {isSelf ? null : (
-                    <DropdownMenuItem variant="destructive" onSelect={() => onDelete(owner.id)}>
-                      <Trash2Icon />
-                      {m.common_delete()}
+                ) : (
+                  <>
+                    <DropdownMenuItem onSelect={() => onEdit(owner.id)}>
+                      <PencilIcon />
+                      {m.common_edit()}
                     </DropdownMenuItem>
-                  )}
-                </>
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
+                    {isSelf ? null : (
+                      <DropdownMenuItem variant="destructive" onSelect={() => onDelete(owner.id)}>
+                        <Trash2Icon />
+                        {m.common_delete()}
+                      </DropdownMenuItem>
+                    )}
+                  </>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </RowActions>
         </TableCell>
       ) : null}
     </TableRow>

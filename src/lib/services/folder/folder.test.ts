@@ -8,6 +8,7 @@ import {
   createFolder,
   findActiveFolderById,
   findFolderById,
+  hardDeleteFolderAsAdmin,
   listBin,
   listChildren,
   listDescendants,
@@ -308,6 +309,111 @@ test('restoreByCorrelationAsAdmin when a sibling reused the deleted name raises 
       actorRole: 'admin',
     }),
   ).rejects.toMatchObject({ name: 'FolderDomainError', code: 'NAME_TAKEN_IN_PARENT' })
+})
+
+test('hardDeleteFolderAsAdmin purges a nested subtree (folders + documents + files) leaf-first', async () => {
+  const ownerId = await insertMember('anna@test.oceanview.local', 'Anna')
+  const adminId = await insertMember('admin@test.oceanview.local', 'Admin', 'admin')
+  // Three levels deep exercises the leaf-first ordering against the `restrict` FK.
+  const root = await createFolder({ parentId: null, name: 'Manuals', createdBy: adminId })
+  const child = await createFolder({ parentId: root.id, name: 'Engine', createdBy: adminId })
+  const grandchild = await createFolder({ parentId: child.id, name: 'Oil', createdBy: adminId })
+  const doc1 = await insertDocumentInFolder(ownerId, grandchild.id, 'spec.pdf')
+  const doc2 = await insertDocumentInFolder(ownerId, root.id, 'history.pdf')
+
+  const del = await softDeleteFolderAsAdmin({ id: root.id, actorId: adminId, actorRole: 'admin' })
+
+  const result = await hardDeleteFolderAsAdmin({
+    id: root.id,
+    actorId: adminId,
+    actorRole: 'admin',
+  })
+  expect(result.foldersPurged).toBe(3)
+  expect(result.documentsPurged).toBe(2)
+  expect(result.privatePathnames.sort()).toEqual([doc1.file.pathname, doc2.file.pathname].sort())
+  expect(result.correlationId).not.toBe(del.correlationId)
+
+  // Folders, documents and file rows are physically gone.
+  expect(await findFolderById(root.id)).toBeNull()
+  expect(await findFolderById(child.id)).toBeNull()
+  expect(await findFolderById(grandchild.id)).toBeNull()
+  expect(await documentService.findById(doc1.document.id)).toBeNull()
+  expect(await documentService.findById(doc2.document.id)).toBeNull()
+  for (const fileId of [doc1.file.id, doc2.file.id]) {
+    const [row] = await db.select({ id: file.id }).from(file).where(eq(file.id, fileId))
+    expect(row).toBeUndefined()
+  }
+
+  // hard_delete history survives with the folder_id/document_id nulled.
+  const folderEvents = await db
+    .select({ id: folderEvent.id })
+    .from(folderEvent)
+    .where(
+      and(eq(folderEvent.correlationId, result.correlationId), eq(folderEvent.kind, 'hard_delete')),
+    )
+  expect(folderEvents).toHaveLength(3)
+  const docEvents = await db
+    .select({ id: documentEvent.id })
+    .from(documentEvent)
+    .where(
+      and(
+        eq(documentEvent.correlationId, result.correlationId),
+        eq(documentEvent.kind, 'hard_delete'),
+      ),
+    )
+  expect(docEvents).toHaveLength(2)
+})
+
+test('hardDeleteFolderAsAdmin also purges a document soft-deleted individually inside the subtree', async () => {
+  // The correlation-id edge case: a document binned on its own keeps a different
+  // correlation id yet still physically lives in the folder. A purge-by-subtree
+  // must sweep it too, or its `restrict` FK would block the folder delete.
+  const ownerId = await insertMember('anna@test.oceanview.local', 'Anna')
+  const adminId = await insertMember('admin@test.oceanview.local', 'Admin', 'admin')
+  const root = await createFolder({ parentId: null, name: 'Manuals', createdBy: adminId })
+  const stray = await insertDocumentInFolder(ownerId, root.id, 'stray.pdf')
+
+  // Bin the document on its own first, then the folder.
+  await documentService.softDelete({
+    id: stray.document.id,
+    actingUserId: adminId,
+    actingUserRole: 'admin',
+  })
+  await softDeleteFolderAsAdmin({ id: root.id, actorId: adminId, actorRole: 'admin' })
+
+  const result = await hardDeleteFolderAsAdmin({
+    id: root.id,
+    actorId: adminId,
+    actorRole: 'admin',
+  })
+  expect(result.documentsPurged).toBe(1)
+  expect(await findFolderById(root.id)).toBeNull()
+  const [fileRow] = await db.select({ id: file.id }).from(file).where(eq(file.id, stray.file.id))
+  expect(fileRow).toBeUndefined()
+})
+
+test('hardDeleteFolderAsAdmin by non-admin raises NOT_ADMIN', async () => {
+  const adminId = await insertMember('admin@test.oceanview.local', 'Admin', 'admin')
+  const f = await createFolder({ parentId: null, name: 'Manuals', createdBy: adminId })
+  await softDeleteFolderAsAdmin({ id: f.id, actorId: adminId, actorRole: 'admin' })
+  await expect(
+    hardDeleteFolderAsAdmin({ id: f.id, actorId: adminId, actorRole: 'user' }),
+  ).rejects.toMatchObject({ name: 'FolderDomainError', code: 'NOT_ADMIN' })
+})
+
+test('hardDeleteFolderAsAdmin on a missing folder raises NOT_FOUND', async () => {
+  const adminId = await insertMember('admin@test.oceanview.local', 'Admin', 'admin')
+  await expect(
+    hardDeleteFolderAsAdmin({ id: MISSING_ID, actorId: adminId, actorRole: 'admin' }),
+  ).rejects.toMatchObject({ name: 'FolderDomainError', code: 'NOT_FOUND' })
+})
+
+test('hardDeleteFolderAsAdmin on a live (not-binned) folder raises NOT_DELETED', async () => {
+  const adminId = await insertMember('admin@test.oceanview.local', 'Admin', 'admin')
+  const f = await createFolder({ parentId: null, name: 'Manuals', createdBy: adminId })
+  await expect(
+    hardDeleteFolderAsAdmin({ id: f.id, actorId: adminId, actorRole: 'admin' }),
+  ).rejects.toMatchObject({ name: 'FolderDomainError', code: 'NOT_DELETED' })
 })
 
 test('listChildren / listDescendants honor deletedAt IS NULL', async () => {

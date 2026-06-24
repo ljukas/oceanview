@@ -98,6 +98,9 @@
   --accent-foreground: oklch(0.205 0 0);
   --selected: oklch(0.55 0.19 258);
   --selected-foreground: oklch(0.985 0 0);
+  /* Linear-style washed selection: a light blue tint (normal dark text on top),
+     used as the table row selection fill instead of the solid --selected. */
+  --selected-wash: color-mix(in oklab, var(--selected) 16%, transparent);
   /* Signature nautical accent — used only on brand washes + the logo mark; kept
      visually coherent with --selected (same blue family). --primary stays neutral. */
   --brand: oklch(0.56 0.18 256);
@@ -153,6 +156,7 @@
   --accent-foreground: oklch(0.985 0 0);
   --selected: oklch(0.58 0.18 258);
   --selected-foreground: oklch(0.985 0 0);
+  --selected-wash: color-mix(in oklab, var(--selected) 26%, transparent);
   --brand: oklch(0.62 0.17 256);
   --brand-foreground: oklch(0.145 0 0);
   --destructive: oklch(0.704 0.191 22.216);
@@ -227,5 +231,58 @@
       color-mix(in oklch, var(--brand) 14%, transparent),
       transparent 60%
     );
+  }
+
+  /* One-shot brand ring on the document the command palette navigated to (the
+     `?focus=<id>` row/card). Honours Reduce Motion: no flash, just the scroll. */
+  @media (prefers-reduced-motion: no-preference) {
+    @keyframes doc-focus-flash {
+      0%,
+      60% {
+        box-shadow: inset 0 0 0 2px var(--brand);
+      }
+      100% {
+        box-shadow: inset 0 0 0 2px transparent;
+      }
+    }
+    .doc-focus-flash {
+      animation: doc-focus-flash 2.2s ease-out;
+    }
+  }
+
+  /* Row corner radii the cells consume (--row-rt top, --row-rb bottom). Keyed on
+     `[data-slot='table'] tbody tr` (the table + tag) rather than the row's own
+     `data-slot`: DocumentTableRow renders its <TableRow> as <ContextMenuTrigger
+     asChild>, and the trigger's `data-slot="context-menu-trigger"` clobbers the
+     row's `data-slot="table-row"`, so a row-data-slot selector would skip every
+     document row. The <table>'s data-slot and `aria-selected` both survive.
+     Defined here (not as a utility) so the merge overrides below — same layer —
+     out-specify the default; a utility would sit in the later `utilities` layer. */
+  [data-slot='table'] tbody tr {
+    /* `--radius` is the real :root token (== rounded-lg); `--radius-lg` lives in
+       `@theme inline` and isn't emitted as a custom property, so it'd be undefined here. */
+    --row-rt: var(--radius);
+    --row-rb: var(--radius);
+  }
+  /* Round the row pill's outer corners (the end cells). Plain CSS so the radius
+     reliably reads --row-rt/--row-rb; the bg (--row-bg) is clipped to it. */
+  [data-slot='table'] tbody tr > td:first-child {
+    border-top-left-radius: var(--row-rt);
+    border-bottom-left-radius: var(--row-rb);
+  }
+  [data-slot='table'] tbody tr > td:last-child {
+    border-top-right-radius: var(--row-rt);
+    border-bottom-right-radius: var(--row-rb);
+  }
+
+  /* Adjacent selected table rows merge into one rounded block: flatten the
+     corners where two selected rows meet, so only each run's outer corners
+     stay rounded (Linear-style). The cells read --row-rt/--row-rb. Scoped to
+     aria-selected rows, so non-selectable tables (Owners) are unaffected. */
+  [data-slot='table'] tbody tr[aria-selected='true'] + tr[aria-selected='true'] {
+    --row-rt: 0px;
+  }
+  [data-slot='table'] tbody tr[aria-selected='true']:has(+ tr[aria-selected='true']) {
+    --row-rb: 0px;
   }
 }

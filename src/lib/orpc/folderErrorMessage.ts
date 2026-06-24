@@ -22,6 +22,8 @@ export function folderErrorMessage(code: FolderDomainErrorCode): string {
       return m.folder_error_move_into_descendant()
     case 'ALREADY_DELETED':
       return m.folder_error_already_deleted()
+    case 'NOT_DELETED':
+      return m.folder_error_not_deleted()
     case 'PARENT_DELETED':
       return m.folder_error_parent_deleted()
   }

@@ -8,9 +8,10 @@ type Props = {
   pendingLabel?: string
   className?: string
   variant?: ComponentProps<typeof Button>['variant']
+  size?: ComponentProps<typeof Button>['size']
 }
 
-export function SubmitButton({ label, pendingLabel, className, variant }: Props) {
+export function SubmitButton({ label, pendingLabel, className, variant, size }: Props) {
   const form = useFormContext()
 
   return (
@@ -20,6 +21,7 @@ export function SubmitButton({ label, pendingLabel, className, variant }: Props)
         <Button
           type="submit"
           variant={variant}
+          size={size}
           className={className}
           disabled={!canSubmit || isSubmitting}
         >

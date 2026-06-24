@@ -1,76 +1,45 @@
-# 02 — Login Redesign (split panel)
+# 02 — Login Redesign (centered, branded)
 
 **ADR:** applies [0015 — Visual Identity](../../adr/0015-visual-identity-and-design-language.md)
-**Status:** planned
-**Depends on:** the `--brand` token + `Logo` component from [plan 01](./01-visual-foundation.md).
+**Status:** ✅ implemented (2026-06-18)
 
-Family.co + Linear-inspired split: a branded nautical **left panel** with the login card hosted in a clean
-centered **"window"** on the right. All auth logic is reused verbatim — only the page chrome changes.
+A **centered, branded** login (Linear / Aave-style) — **not** a split panel (the earlier split-panel draft was
+wrong; the reference products center the form on a branded page). The brand `LogoMark` sits above a **card-less**
+stack of controls on a subtle `.brand-wash`. All sign-in logic is reused; only presentation changed.
 
 ---
 
-## Reused as-is (do not touch the logic)
-- `src/components/login/{LoginFormCard,WelcomeBackCard,MagicLinkSentCard,SignedInCard}.tsx` — re-housed, not
-  rewritten.
-- Magic-link + passkey conditional logic, autofill (`usePasskeys.ts`), browser-session welcome-back, the hidden
-  `webauthn-anchor` input, the loader/`beforeLoad`, and `LocaleSwitcherInline`.
+## What changed
 
-## New component
-- `src/components/Logo.tsx` (shared with plan 01):
-  - `<LogoMark className?>` — sailboat glyph as inline SVG (lift the paths from `public/favicon.svg`),
-    `currentColor` strokes, `role="img"` + `aria-label="Oceanview"` (decorative copies `aria-hidden`).
-  - `<Wordmark className?>` — `LogoMark` + "Oceanview" set in `font-heading`.
+- **`src/routes/login.tsx`** — wrapper is now `brand-wash relative grid min-h-svh place-items-center p-4`
+  with a centered `max-w-sm` column: `<LogoMark className="size-12" />` above the existing three-way state
+  switch (`MagicLinkSentCard` / `WelcomeBackCard` / `LoginFormCard`). Locale switcher stays top-right.
+- **Card-less components** — `LoginFormCard`, `WelcomeBackCard`, `MagicLinkSentCard` dropped their `Card`
+  chrome; each renders a flat centered fragment (an `<h1 class="font-heading font-semibold text-2xl
+  tracking-tight">` title + muted `<p>` description + full-width controls). Sign-in logic, hooks, the
+  `useAppForm` form, the `passkeyFirst` ordering, and the avatar are unchanged.
+- **No automatic passkey prompt** — removed `useSignInPasskeyAutofill` (the conditional-mediation hook), the
+  hidden `webauthn-anchor` input, and the `webauthn` autocomplete token. The password-manager / browser passkey
+  prompt no longer fires on load; users press the explicit **"Logga in med passkey"** button (still
+  `useSignInPasskey`, modal mediation).
+- **i18n** — new key `login_title`: sv "Välkommen till Oceanview" / en "Welcome to Oceanview" (the default
+  state's heading — the mark carries the brand). Returning users keep "Välkommen tillbaka".
 
-## `src/routes/login.tsx` (body only)
-
-Replace `grid min-h-svh place-items-center p-4` with a responsive split:
-
-```tsx
-return (
-  <div className="grid min-h-svh lg:grid-cols-2">
-    {/* LEFT — brand panel; hidden < lg */}
-    <aside className="brand-wash relative hidden flex-col justify-between overflow-hidden bg-brand p-10 text-brand-foreground lg:flex">
-      <Wordmark className="relative" />
-      <p className="relative max-w-sm text-lg text-brand-foreground/80">{m.login_tagline()}</p>
-    </aside>
-
-    {/* RIGHT — the "window": centered card host */}
-    <main className="relative grid place-items-center p-4 sm:p-8">
-      <div className="absolute top-4 right-4"><LocaleSwitcherInline /></div>
-      <div className="mb-6 lg:hidden"><Wordmark /></div>
-      {/* existing card switch — verbatim */}
-      {sentTo ? <MagicLinkSentCard … /> : savedLogin ? <WelcomeBackCard … /> : <LoginFormCard … />}
-      <input … webauthn-anchor … />
-    </main>
-  </div>
-)
-```
-
-Notes:
-- The brand panel uses the semantic `bg-brand` / `text-brand-foreground` tokens (from plan 01) — never the raw
-  `#156cdd`. Until `--brand` exists, stand in with `bg-primary`.
-- The "window" feel is the right `<main>`; reuse the shell's rounded surface tokens for consistency rather than
-  re-deriving radius.
-- Cards already cap at `max-w-sm` and drop in unchanged.
-- `MagicLinkSentCard`/`SignedInCard` keep "Oceanview" as text for now; optionally swap their `CardTitle` to
-  `<LogoMark>` later (nice-to-have, not required).
-
-## i18n
-- New key `login_tagline` in `messages/{sv,en}.json` (sv source). E.g. sv "Allt om båten, på ett ställe." /
-  en "Everything about the boat, in one place." Run `pnpm i18n:compile` if editing outside `pnpm dev`.
-
-## Responsive / a11y
-- `lg:grid-cols-2`; left `<aside>` is `hidden lg:flex`; compact `<Wordmark>` shows `lg:hidden`.
-- Decorative gradient/illustration layers `aria-hidden`; `LogoMark` carries an accessible name.
-- Focus order: locale switcher → wordmark → form (DOM order already gives this).
-- Contrast: white text on `bg-brand` passes AA; verify the `/80` tagline opacity over the wash.
+## Reused as-is
+All auth behavior: `useAppForm`, `usePasskeySupport`, `authClient.signIn.{magicLink,passkey}`, `useAwaitSignIn`,
+`useSignInPasskey`, `switchToOtherEmail`, loader/`beforeLoad`, `LocaleSwitcherInline`, `Logo`, `--brand` /
+`.brand-wash`.
 
 ## Critical files
-- `src/routes/login.tsx`, `src/components/Logo.tsx` (new), `messages/{sv,en}.json`.
-- Depends on `src/styles/app.css` `--brand` token (plan 01).
+- `src/routes/login.tsx`
+- `src/components/login/{LoginFormCard,WelcomeBackCard,MagicLinkSentCard}.tsx`
+- `src/hooks/usePasskeys.ts` (removed the autofill hook)
+- `messages/{sv,en}.json` (`login_title`)
 
-## Verify
-- Split renders ≥ lg; single column + compact wordmark < lg.
-- All four card states render and function; passkey button shows only when supported; locale switcher reachable.
-- Brand panel contrast AA; `LogoMark` has an accessible name.
-- sv + en, light + dark, mobile + desktop.
+## Verified
+Build green. `/login` in Chrome, light + dark: centered brand-wash page, blue `LogoMark`, card-less floating
+controls; default state titled "Välkommen till Oceanview", welcome-back state for a saved login; **no automatic
+passkey popup**; explicit passkey button present; console clean.
+
+## Out of scope (optional follow-up)
+- `/signed-in` route + `SignedInCard` still use a `Card` — flatten later for consistency.

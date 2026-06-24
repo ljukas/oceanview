@@ -131,37 +131,6 @@ export function useSignInPasskey(options: { onSignedIn: () => void }) {
   return { signIn, pending }
 }
 
-export function useSignInPasskeyAutofill(options: { onSignedIn: () => void }) {
-  const { onSignedIn } = options
-
-  useEffect(() => {
-    // isConditionalMediationAvailable() returns a Promise — await it before invoking
-    // autofill, and skip if the effect was torn down while we waited.
-    let active = true
-    async function start() {
-      const canConditional = await window.PublicKeyCredential?.isConditionalMediationAvailable?.()
-      if (!canConditional || !active) return
-
-      void authClient.signIn.passkey({
-        autoFill: true,
-        fetchOptions: {
-          onSuccess: () => {
-            onSignedIn()
-          },
-          onError: ({ error }) => {
-            if (error?.code === 'NotAllowedError') return
-            toast.error(error?.message ?? m.passkey_signin_error())
-          },
-        },
-      })
-    }
-    void start()
-    return () => {
-      active = false
-    }
-  }, [onSignedIn])
-}
-
 // Drives the explanatory "create a passkey" prompt shown right after sign-in. We never
 // auto-open the OS dialog — only the prompt's button does. `open` is true only when the
 // caller enables it, the user has no passkeys yet, the device isn't in the dismissal

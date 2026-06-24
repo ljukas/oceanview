@@ -38,12 +38,12 @@ function SelectTrigger({
       className={cn(
         // base box
         'flex w-fit select-none items-center justify-between gap-1.5 whitespace-nowrap rounded-lg border border-input bg-transparent py-2 pr-2 pl-2.5 text-sm outline-none transition-colors',
-        // focus ring
-        'focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50',
+        // focus: thin brand-blue border highlight (no glow)
+        'focus-visible:border-brand focus-visible:ring-1 focus-visible:ring-brand',
         // disabled
         'disabled:cursor-not-allowed disabled:opacity-50',
-        // invalid (aria-invalid + dark)
-        'aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40',
+        // invalid (aria-invalid): thin destructive edge, matching the focus weight
+        'aria-invalid:border-destructive aria-invalid:ring-1 aria-invalid:ring-destructive/50',
         // size variants
         'data-[size=default]:h-8 data-[size=sm]:h-7 data-[size=sm]:rounded-[min(var(--radius-md),10px)]',
         // lay out the selected value: single line, icon+text row

@@ -96,12 +96,12 @@ function Owners() {
   const onRestore = (id: string) => open('restore', { userId: id, filter: 'deleted' })
 
   return (
-    <PageContainer>
+    <PageContainer width="full" fill>
       <header className="flex flex-col gap-2">
         <h1 className="font-bold text-2xl tracking-tight text-balance md:text-3xl">
           {m.owners_title()}
         </h1>
-        <p className="text-muted-foreground text-sm">{m.owners_description()}</p>
+        <p className="max-w-2xl text-muted-foreground text-sm">{m.owners_description()}</p>
       </header>
 
       {isAdmin ? (

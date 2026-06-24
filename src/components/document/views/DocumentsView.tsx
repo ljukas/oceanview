@@ -10,6 +10,8 @@ type Props = {
   /** Resolved folder id from the URL, or null for the virtual root. */
   activeFolderId: string | null
   currentUser: CurrentUser
+  /** Document id to scroll to + flash (command-palette `?focus`), or null. */
+  focusedDocId: string | null
 }
 
 /**
@@ -23,7 +25,7 @@ type Props = {
  * wrong-tree flash and a hydration mismatch. The data is primed by the route
  * loaders, so the swap to the real tree is immediate.
  */
-export function DocumentsView({ activeFolderId, currentUser }: Props) {
+export function DocumentsView({ activeFolderId, currentUser, focusedDocId }: Props) {
   const coarse = useIsCoarsePointer()
   const [mounted, setMounted] = useState(false)
   useEffect(() => setMounted(true), [])
@@ -31,9 +33,17 @@ export function DocumentsView({ activeFolderId, currentUser }: Props) {
   if (!mounted) return <DocumentsSkeleton />
 
   return coarse ? (
-    <DocumentsMobile activeFolderId={activeFolderId} currentUser={currentUser} />
+    <DocumentsMobile
+      activeFolderId={activeFolderId}
+      currentUser={currentUser}
+      focusedDocId={focusedDocId}
+    />
   ) : (
-    <DocumentsDesktop activeFolderId={activeFolderId} currentUser={currentUser} />
+    <DocumentsDesktop
+      activeFolderId={activeFolderId}
+      currentUser={currentUser}
+      focusedDocId={focusedDocId}
+    />
   )
 }
 

@@ -19,10 +19,10 @@ function InputGroup({ className, ...props }: React.ComponentProps<'div'>) {
         'in-data-[slot=combobox-content]:focus-within:border-inherit in-data-[slot=combobox-content]:focus-within:ring-0',
         // block alignment / textarea → grow to auto height and stack children in a column
         'has-[>[data-align=block-end]]:h-auto has-[>[data-align=block-start]]:h-auto has-[>textarea]:h-auto has-[>[data-align=block-end]]:flex-col has-[>[data-align=block-start]]:flex-col',
-        // focus-within ring: when the control child is keyboard-focused, draw ring + border
-        'has-[[data-slot=input-group-control]:focus-visible]:border-ring has-[[data-slot=input-group-control]:focus-visible]:ring-3 has-[[data-slot=input-group-control]:focus-visible]:ring-ring/50',
-        // invalid state: when an aria-invalid child is present, switch border + ring to destructive
-        'has-[[data-slot][aria-invalid=true]]:border-destructive has-[[data-slot][aria-invalid=true]]:ring-3 has-[[data-slot][aria-invalid=true]]:ring-destructive/20 dark:has-[[data-slot][aria-invalid=true]]:ring-destructive/40',
+        // focus-within: thin brand-blue border highlight when the control child is keyboard-focused (no glow)
+        'has-[[data-slot=input-group-control]:focus-visible]:border-brand has-[[data-slot=input-group-control]:focus-visible]:ring-1 has-[[data-slot=input-group-control]:focus-visible]:ring-brand',
+        // invalid state: when an aria-invalid child is present, switch to a thin destructive edge
+        'has-[[data-slot][aria-invalid=true]]:border-destructive has-[[data-slot][aria-invalid=true]]:ring-1 has-[[data-slot][aria-invalid=true]]:ring-destructive/50',
         // disabled state: dim and tint the box when a disabled child is present
         'has-disabled:bg-input/50 has-disabled:opacity-50 dark:has-disabled:bg-input/80',
         // dark mode base background
@@ -144,7 +144,7 @@ function InputGroupText({ className, ...props }: React.ComponentProps<'span'>) {
   )
 }
 
-function InputGroupInput({ className, ...props }: React.ComponentProps<'input'>) {
+function InputGroupInput({ className, ...props }: React.ComponentProps<typeof Input>) {
   return (
     <Input
       data-slot="input-group-control"

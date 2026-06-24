@@ -45,10 +45,13 @@ export function DocumentBin() {
 
   if (entries.length === 0) {
     return (
-      <Empty className="rounded-lg border">
+      <Empty className="brand-wash rounded-lg border">
         <EmptyHeader>
-          <EmptyMedia variant="icon">
-            <Trash2Icon />
+          <EmptyMedia
+            variant="icon"
+            className="size-14 rounded-full bg-brand/10 text-brand ring-1 ring-brand/20"
+          >
+            <Trash2Icon className="size-7" />
           </EmptyMedia>
           <EmptyTitle>{m.bin_empty_title()}</EmptyTitle>
           <EmptyDescription>{m.bin_empty_description()}</EmptyDescription>
@@ -102,22 +105,25 @@ function batchContents(subfolderCount: number, documentCount: number): string {
 function BatchCard({ correlationId, items }: { correlationId: string; items: Array<BinEntry> }) {
   const queryClient = useQueryClient()
   const invalidate = useBinInvalidate()
+  const [confirmHard, setConfirmHard] = useState(false)
   const root = batchRoot(items)
   const folderCount = items.filter((i) => i.kind === 'folder').length
   const documentCount = items.filter((i) => i.kind === 'document').length
   const contents = batchContents(folderCount - 1, documentCount)
   const deletedAt = items[0]?.deletedAt
 
+  // The whole batch leaves the bin together — drop every entry sharing this
+  // correlation id before the round-trip.
+  const removeBatch = () =>
+    optimisticRemove(
+      queryClient,
+      orpc.bin.list.queryKey(),
+      (e) => e.correlationId === correlationId,
+    )
+
   const restore = useMutation(
     orpc.folder.restoreFolder.mutationOptions({
-      // The whole batch leaves the bin together — drop every entry sharing this
-      // correlation id before the round-trip.
-      onMutate: () =>
-        optimisticRemove(
-          queryClient,
-          orpc.bin.list.queryKey(),
-          (e) => e.correlationId === correlationId,
-        ),
+      onMutate: removeBatch,
       onSuccess: () => toast.success(m.bin_restored_toast()),
       // restoreFolder throws code-only typed errors; localize by code.
       onError: (err) =>
@@ -125,6 +131,20 @@ function BatchCard({ correlationId, items }: { correlationId: string; items: Arr
       onSettled: invalidate,
     }),
   )
+  const hardDelete = useMutation(
+    orpc.bin.hardDeleteFolder.mutationOptions({
+      onMutate: removeBatch,
+      onSuccess: () => {
+        toast.success(m.bin_folder_purged_toast())
+        setConfirmHard(false)
+      },
+      onError: (err) =>
+        toast.error(isDefinedError(err) ? folderErrorMessage(err.code) : m.bin_purge_error()),
+      onSettled: invalidate,
+    }),
+  )
+
+  const busy = restore.isPending || hardDelete.isPending
 
   return (
     <div className="flex items-center justify-between gap-3 rounded-lg border bg-card p-4">
@@ -142,15 +162,58 @@ function BatchCard({ correlationId, items }: { correlationId: string; items: Arr
           ) : null}
         </div>
       </div>
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={() => restore.mutate({ correlationId })}
-        disabled={restore.isPending}
-      >
-        <RotateCcwIcon data-icon="inline-start" />
-        {m.bin_restore()}
-      </Button>
+      <div className="flex shrink-0 items-center gap-2">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => restore.mutate({ correlationId })}
+          disabled={busy}
+        >
+          <RotateCcwIcon data-icon="inline-start" />
+          {m.bin_restore()}
+        </Button>
+        {root ? (
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label={m.bin_purge()}
+            className="text-destructive hover:text-destructive"
+            onClick={() => setConfirmHard(true)}
+            disabled={busy}
+          >
+            <Trash2Icon />
+          </Button>
+        ) : null}
+      </div>
+
+      {root ? (
+        <AlertDialog open={confirmHard} onOpenChange={setConfirmHard}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>{m.bin_purge_confirm_title({ name: root.name })}</AlertDialogTitle>
+              <AlertDialogDescription>
+                {m.bin_purge_folder_confirm_description()}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => setConfirmHard(false)}
+                disabled={hardDelete.isPending}
+              >
+                {m.common_cancel()}
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={() => hardDelete.mutate({ id: root.id })}
+                disabled={hardDelete.isPending}
+              >
+                {m.bin_purge()}
+              </Button>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      ) : null}
     </div>
   )
 }

@@ -455,6 +455,110 @@ export async function restoreByCorrelationAsAdmin(input: {
   })
 }
 
+export type HardDeleteResult = {
+  privatePathnames: Array<string>
+  publicPathnames: Array<string>
+  foldersPurged: number
+  documentsPurged: number
+  correlationId: string
+}
+
+// Permanently purge a soft-deleted folder and its entire physical subtree —
+// every descendant folder plus every document inside them. Operates on the
+// physical subtree (path prefix), NOT the soft-delete correlationId: a document
+// soft-deleted individually keeps its own correlation id yet still lives inside
+// the folder, and its `restrict` FK would block the folder delete. Returns the
+// blob pathnames so the caller can drop bytes after the tx commits (mirrors
+// documentService.hardDeleteDocument).
+export async function hardDeleteFolderAsAdmin(input: {
+  id: string
+  actorId: string
+  actorRole: string | null
+}): Promise<HardDeleteResult> {
+  if (input.actorRole !== 'admin') throw new FolderDomainError('NOT_ADMIN')
+
+  return db.transaction(async (tx) => {
+    const [target] = await tx
+      .select(folderColumns)
+      .from(folder)
+      .where(eq(folder.id, input.id))
+      .limit(1)
+    if (!target) throw new FolderDomainError('NOT_FOUND')
+    // Bin-only operation: refuse to purge a live folder in one step.
+    if (!target.deletedAt) throw new FolderDomainError('NOT_DELETED')
+
+    const subtree = await tx
+      .select({ id: folder.id, name: folder.name, path: folder.path })
+      .from(folder)
+      .where(
+        sql`(${folder.id} = ${target.id} OR ${folder.path} LIKE ${descendantLikePattern(target.path)})`,
+      )
+    const subtreeIds = subtree.map((row) => row.id)
+
+    // Every document physically inside the subtree, regardless of correlation id
+    // or deletedAt — joined to file for the blob pathnames.
+    const docs = await tx
+      .select({
+        id: document.id,
+        fileId: document.fileId,
+        name: document.name,
+        extension: document.extension,
+        pathname: file.pathname,
+        thumbnailPathname: document.thumbnailPathname,
+      })
+      .from(document)
+      .innerJoin(file, eq(document.fileId, file.id))
+      .where(inArray(document.folderId, subtreeIds))
+
+    const correlationId = randomUUID()
+
+    // Write audit rows BEFORE deleting: both event tables FK with ON DELETE SET
+    // NULL, so the *_id is nulled but the toValue payload preserves identity.
+    if (docs.length > 0) {
+      await tx.insert(documentEvent).values(
+        docs.map((d) => ({
+          documentId: d.id,
+          actorId: input.actorId,
+          kind: 'hard_delete' as const,
+          toValue: { name: joinFilename(d), pathname: d.pathname },
+          correlationId,
+        })),
+      )
+    }
+    await tx.insert(folderEvent).values(
+      subtree.map((row) => ({
+        folderId: row.id,
+        actorId: input.actorId,
+        kind: 'hard_delete' as const,
+        toValue: { name: row.name, path: row.path },
+        correlationId,
+      })),
+    )
+
+    // Delete documents first (their `restrict` FK to folder would otherwise
+    // block the folder delete): drop the file rows, cascade removes documents.
+    const fileIds = docs.map((d) => d.fileId)
+    if (fileIds.length > 0) {
+      await tx.delete(file).where(inArray(file.id, fileIds))
+    }
+
+    // Then delete folders leaf-first: `parentId` is ON DELETE RESTRICT, so a
+    // parent can't be deleted before its children even within one statement.
+    const ordered = [...subtree].sort((a, b) => b.path.split('/').length - a.path.split('/').length)
+    for (const f of ordered) {
+      await tx.delete(folder).where(eq(folder.id, f.id))
+    }
+
+    return {
+      privatePathnames: docs.map((d) => d.pathname),
+      publicPathnames: docs.map((d) => d.thumbnailPathname).filter((p): p is string => p !== null),
+      foldersPurged: subtree.length,
+      documentsPurged: docs.length,
+      correlationId,
+    }
+  })
+}
+
 export async function listBin(): Promise<Array<BinEntry>> {
   const folders = await db
     .select({

@@ -3,7 +3,7 @@
 Implementation plans for the "quiet nautical confidence" redesign. These are **execution plans**; the
 *decisions* live in ADRs. Read the ADR for the why, the plan for the how.
 
-> Status: **plan 01 (visual foundation) implemented 2026-06-17; plans 02–05 planned.** Each plan names the exact files to touch.
+> Status: **plans 01 (visual foundation) + 02 (login) implemented; plans 03–05 planned.** Each plan names the exact files to touch.
 
 ## Goal
 
@@ -27,7 +27,7 @@ decoration.
 | # | Plan | ADR |
 |---|---|---|
 | 01 ✅ | [Visual foundation](./01-visual-foundation.md) — inset shell, `PageContainer`, typography, brand accent, dialog motion | [ADR-0015](../../adr/0015-visual-identity-and-design-language.md) |
-| 02 | [Login redesign](./02-login-redesign.md) — split panel + `Logo` | ADR-0015 (applies) |
+| 02 ✅ | [Login redesign](./02-login-redesign.md) — centered branded page, card-less, `LogoMark` | ADR-0015 (applies) |
 | 03 | [Data tables](./03-data-tables.md) — shared `RowActions` hover-reveal on both tables | — |
 | 04 | [Command palette](./04-command-palette.md) — global Cmd+K | [ADR-0014](../../adr/0014-command-palette-architecture.md) |
 | 05 | [Empty states](./05-empty-states.md) — `<Empty>` convention + role-gated CTAs | [ADR-0016](../../adr/0016-empty-state-and-feedback-conventions.md) |

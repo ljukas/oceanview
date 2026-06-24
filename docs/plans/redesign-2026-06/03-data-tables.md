@@ -58,6 +58,10 @@ into the row; `has-aria-expanded` keeps it visible while the Radix dropdown is o
 - Width is delivered by `PageContainer` (plan 01): drop the per-route `p-4 md:p-8` on `owners.tsx` (and the
   document routes) in favor of the centered container. The tables are already `w-full`. **Sequence after plan
   01**; until then leave the route padding.
+- **Tables are full-bleed** (2026-06-23, ADR-0015 amendment): the data-table routes use
+  `<PageContainer width="full">` — `index.tsx` (Calendar disposition list) and `owners.tsx`; the document
+  routes are already `full`. On a full-bleed page, cap any descriptive header paragraph at `max-w-2xl`
+  (done on `owners.tsx`) so prose keeps a readable measure while the table spans the panel.
 
 ## a11y
 - Visible on touch (`<md`); revealed by hover, by keyboard focus entering the row, and held open while the menu

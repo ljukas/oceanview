@@ -2,7 +2,6 @@ import { KeyRoundIcon } from 'lucide-react'
 import { toast } from 'sonner'
 import { z } from 'zod'
 import { Button } from '~/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '~/components/ui/card'
 import { FieldGroup } from '~/components/ui/field'
 import { Separator } from '~/components/ui/separator'
 import { Spinner } from '~/components/ui/spinner'
@@ -41,18 +40,19 @@ export function LoginFormCard({ onSent, callbackURL, onPasskeySignIn, passkeyPen
   })
 
   return (
-    <Card className="w-full max-w-sm">
-      <CardHeader>
-        <CardTitle>Oceanview</CardTitle>
-        <CardDescription>{m.login_description()}</CardDescription>
-      </CardHeader>
+    <div className="flex w-full flex-col gap-6">
+      <header className="flex flex-col gap-1.5 text-center">
+        <h1 className="font-heading font-semibold text-2xl tracking-tight">{m.login_title()}</h1>
+        <p className="text-balance text-muted-foreground text-sm">{m.login_description()}</p>
+      </header>
 
-      <CardContent className="flex flex-col gap-4">
+      <div className="flex flex-col gap-5">
         {passkeySupported && (
           <>
             <Button
               type="button"
-              className="w-full"
+              size="xl"
+              className="w-full font-normal"
               disabled={passkeyPending}
               onClick={onPasskeySignIn}
             >
@@ -68,7 +68,7 @@ export function LoginFormCard({ onSent, callbackURL, onPasskeySignIn, passkeyPen
         )}
 
         <form
-          className="flex flex-col gap-4"
+          className="flex flex-col gap-5"
           onSubmit={(e) => {
             e.preventDefault()
             form.handleSubmit()
@@ -78,11 +78,10 @@ export function LoginFormCard({ onSent, callbackURL, onPasskeySignIn, passkeyPen
             <form.AppField
               name="email"
               children={(field) => (
-                <field.TextField
+                <field.FloatingTextField
                   label={m.login_email_label()}
                   type="email"
-                  autoComplete="username webauthn"
-                  placeholder={m.login_email_placeholder()}
+                  autoComplete="username"
                 />
               )}
             />
@@ -93,11 +92,12 @@ export function LoginFormCard({ onSent, callbackURL, onPasskeySignIn, passkeyPen
               label={m.login_submit()}
               pendingLabel={m.login_submit_pending()}
               variant={passkeySupported ? 'outline' : 'default'}
-              className="w-full"
+              size="xl"
+              className="w-full font-normal"
             />
           </form.AppForm>
         </form>
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   )
 }

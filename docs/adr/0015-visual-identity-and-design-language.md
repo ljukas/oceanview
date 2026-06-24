@@ -3,7 +3,7 @@
 - **Status**: Proposed
 - **Date**: 2026-06-17
 - **Deciders**: Lukas
-- **Decision in one line**: Adopt a "quiet nautical confidence" design language — a Linear-style **inset app-shell** with a shared centered **`PageContainer`**, a **self-hosted type pairing** of Cabinet Grotesk (headings) over Switzer (body/UI) tuned Linear-style, **one** signature nautical-blue accent (`--brand`, applied only to login/empty washes and the logo mark, never to `--primary`), and a slightly slower, `prefers-reduced-motion`-aware overlay choreography shared across dialog / alert-dialog / sheet.
+- **Decision in one line**: Adopt a "quiet nautical confidence" design language — a Linear-style **inset app-shell** with a shared centered **`PageContainer`**, a **self-hosted type pairing** of Cabinet Grotesk (headings) over Switzer (body/UI) tuned Linear-style, **one** signature nautical-blue accent (`--brand`, applied to login/empty washes, the logo mark, and form-field focus borders, never to `--primary`), and a slightly slower, `prefers-reduced-motion`-aware overlay choreography shared across dialog / alert-dialog / sheet.
 
 ---
 
@@ -38,8 +38,8 @@ palette) and ADR-0016 (empty states), and by the login redesign. The implementat
   Heading hierarchy uses Cabinet Grotesk's variable weight axis throughout — page titles bold, section/dialog
   titles at their own medium/semibold weight (no fall-back to the body face needed).
 - **Color & signature accent.** Promote `#156cdd` to a semantic `--brand` token (≈ the existing `--selected`
-  blue). Apply it in exactly two low-frequency places: a `.brand-wash` gradient on login and empty states,
-  and a `LogoMark`. `--primary` stays neutral.
+  blue). Apply it in a few low-frequency/transient places: a `.brand-wash` gradient on login and empty states,
+  a `LogoMark`, and the focus border on form fields (see the 2026-06-18 amendment). `--primary` stays neutral.
 - **Motion & overlays.** Overlay + content of dialog / alert-dialog / sheet move from 100 ms to 200 ms
   `ease-out` with the content rising 1px after the overlay dims; a global `prefers-reduced-motion` guard
   near-instants all overlay animation.
@@ -58,6 +58,21 @@ In light mode `--sidebar` (near-white) wraps a pure-white `--background` panel �
 `shadow-sm` + `rounded-xl` makes the panel lift. In dark mode the panel is a darker recessed well than its
 wrap; both read as a distinct surface (the standard inset look). Text contrast is unchanged (`foreground` on
 `background`), so accessibility is preserved.
+
+> **Amendment (2026-06-23) — data tables go full-bleed (the table/content split).** The "Pages
+> routinely need full width" revisit trigger **fired**: rather than only the document grid opting into
+> `width="full"`, **every primary data-table screen now uses `full`** — Calendar (disposition list,
+> `index.tsx`), Owners (`owners.tsx`), and Documents (already `full`). This matches Linear's pattern
+> (wide tables for column scannability; constrained reading width for prose/forms) and the readability
+> consensus (~65–75 chars ≈ 600–720px for body/forms — Baymard, NN/g, WCAG 1.4.8, GitHub Primer). The
+> `width` tiers settle as: **`full`** (`max-w-none`) = data tables + document grid; **`default`**
+> (`max-w-5xl`) = card grids / lists / mixed content (Admin Shares grid, Bin); **`prose`** (`max-w-2xl`)
+> = forms / settings / reading (unchanged — already the ideal measure, so *not* tightened). **Full-bleed
+> prose rule:** on a `width="full"` page, cap any multi-word descriptive paragraph at `max-w-2xl` while
+> titles, controls, and the table span the panel (applied to the Owners + Documents descriptions; Calendar
+> has none). Page-title `h1`s on the table screens are unified at `text-2xl md:text-3xl` (Documents was
+> `text-3xl md:text-4xl` — now matched to Calendar/Owners). Ultrawide column stretch on the now-full tables
+> is accepted; a `max-w-7xl` cap is the documented fallback if it ever bothers.
 
 ### Typography & type scale
 
@@ -89,9 +104,25 @@ Alternative E for why the originally-considered dafont route was dropped.)
 New tokens in `:root` and `.dark`: `--brand` (light `oklch(0.56 0.18 256)`, dark `oklch(0.62 0.17 256)`) and
 `--brand-foreground`, registered in `@theme inline` as `--color-brand` / `--color-brand-foreground`. A
 `.brand-wash` component utility paints a soft radial `--brand`→transparent gradient, applied to the login
-wrapper and `Empty` surfaces **only**. An optional `src/components/Logo.tsx` (`LogoMark` + `Wordmark`, lifted
-from `favicon.svg`) puts a sailboat mark in a `--brand` tile in the sidebar header and login. `--primary` is
-deliberately left neutral.
+wrapper and `Empty` surfaces **only**. An optional `src/components/Logo.tsx` (`LogoMark` + `Wordmark`, sharing
+its geometry with `favicon.svg`) renders the brand mark — a single off-center, wind-filled sail in `--brand`
+(an original, Linear-style glyph) — in the sidebar header and login. `--primary` is deliberately left neutral.
+
+> **Amendment (2026-06-19) — logo mark is a standalone sail.** The mark dropped the rounded `--brand` tile +
+> Lucide `SailboatIcon` for a single off-center sail filled in `--brand` (`text-brand` + an inline `<svg>`;
+> favicons share the path via `scripts/generateFavicons.mjs`). Browser favicons render the sail on transparent
+> (floats on the tab); apple-touch + maskable Android variants sit it on an opaque white field inside the safe
+> zone (transparency renders black there). An interim version used a disc with the sail knocked out via
+> `fill-rule="evenodd"`; the disc was dropped so the sail reads on its own.
+
+> **Amendment (2026-06-18) — form-field focus borders.** Form-field focus highlights move from the heavy
+> 3px translucent neutral ring (`focus-visible:ring-3 ring-ring/50`) to a thin `--brand` edge —
+> `focus-visible:border-brand focus-visible:ring-1 focus-visible:ring-brand` — across `input`, `textarea`,
+> `select` trigger, the `input-group` wrapper, and `phone-input` (the country-select button included so the
+> control reads as one). This is a **deliberate** third `--brand` placement, not drift: it's low-frequency
+> and transient (one field, only while focused), reinforces the accent at the interaction moment, and leaves
+> `--primary` neutral. The matching `aria-invalid` state is thinned to `ring-1 ring-destructive/50` for weight
+> parity. Buttons and other non-field controls keep the neutral ring.
 
 ### Motion & overlays
 
@@ -144,8 +175,9 @@ only new runtime assets are the two self-hosted font families under `public/font
 - Light and dark: panel separates from the wrap in both. Text contrast unchanged.
 - Headings render in Cabinet Grotesk; body in Switzer; numerals in tables are tabular/aligned; hierarchy
   reads bold → semibold/medium, all in Cabinet Grotesk's variable axis.
-- `.brand-wash` visible on login + empty states in both themes; `--primary` buttons remain neutral; brand-tile
-  contrast (`--brand-foreground` on `--brand`) ≥ 4.5:1 in both themes.
+- `.brand-wash` visible on login + empty states in both themes; `--primary` buttons remain neutral; the logo
+  mark's `--brand` sail reads against the sidebar + wash backgrounds in both themes and stays legible down to
+  16px (favicon).
 - Overlays open with a ~200 ms dim-then-rise; sheet slides from bottom on mobile. With OS "Reduce Motion" on,
   overlays appear effectively instantly.
 - Longest Swedish page titles do not crowd/clip under `tracking-tight`.
@@ -173,14 +205,17 @@ tokens/primitives, so the language is greppable and easy to retune.
 font families (woff2 to retain under `public/fonts/`, with license files) — more upkeep than `@fontsource`,
 though both download as ready woff2 from Fontshare (no conversion, and the variable axes mean no
 fixed-weight compromises); migrating ~6 routes to `PageContainer` is mechanical but touches several files;
-wide data views (document grid) must opt into `width="full"`; the brand blue overlaps `--selected`, so the
+data-table screens + the document grid opt into `width="full"` while grids/lists/forms stay `default`/`prose`
+(see the 2026-06-23 amendment); the brand blue overlaps `--selected`, so the
 two must be kept visually coherent.
 
 ## Revisit triggers
 
 - **Manual font upkeep becomes a burden / FOUT is noticeable** → swap to the documented `@fontsource`
   fallbacks (Inter or Hanken body; Schibsted heading) via a one-line token change.
-- **Pages routinely need full width** → reconsider whether `default` should be wider, or make `full` default.
+- **Pages routinely need full width** → actioned for data tables (2026-06-23 amendment). If the remaining
+  `default` card-grid/list screens also feel cramped, reconsider whether `default` should be wider, or make
+  `full` default.
 - **The brand wants more color presence** → re-open Alternative A (blue `--primary`) deliberately, not by drift.
 - **Overlay motion feels slow under heavy CRUD use** → step back toward 150 ms.
 - **A brand illustration system is wanted** → extend this ADR; ADR-0016 already defers empty-state
