@@ -3,23 +3,26 @@ import { FieldGroup } from '~/components/ui/field'
 import { withFieldGroup } from '~/hooks/form'
 import { m } from '~/paraglide/messages'
 
+// Email is intentionally absent from the editable field set: it is the
+// magic-link login identity and immutable after invite (see ADR-0017). The edit
+// dialog shows it read-only for context. This group is also reused by the future
+// onboarding flow, which likewise never edits email.
 export const userFieldsDefaults: {
   name: string
-  email: string
   phone: string
   role: 'user' | 'admin'
 } = {
   name: '',
-  email: '',
   phone: '',
   role: 'user',
 }
 
 export const userFieldsSchema = z.object({
-  name: z.string(),
-  email: z
-    .email({ error: () => m.validation_email_invalid() })
-    .min(1, { error: () => m.validation_email_required() }),
+  name: z
+    .string()
+    .trim()
+    .min(1, { error: () => m.validation_name_required() })
+    .max(255, { error: () => m.validation_name_too_long() }),
   phone: z
     .string()
     .max(30, { error: () => m.validation_phone_too_long() })
@@ -33,7 +36,6 @@ export type UserFieldsValues = z.infer<typeof userFieldsSchema>
 
 export const userFieldsMap = {
   name: 'name',
-  email: 'email',
   phone: 'phone',
   role: 'role',
 } as const
@@ -51,12 +53,6 @@ export const UserFormFields = withFieldGroup({
         <group.AppField
           name="name"
           children={(field) => <field.TextField label={m.user_field_name()} autoComplete="name" />}
-        />
-        <group.AppField
-          name="email"
-          children={(field) => (
-            <field.TextField label={m.user_field_email()} type="email" autoComplete="email" />
-          )}
         />
         <group.AppField
           name="phone"

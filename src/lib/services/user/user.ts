@@ -1,10 +1,22 @@
 import { and, asc, count, desc, eq, isNotNull, isNull } from 'drizzle-orm'
+import { normalizeEmail } from '~/lib/adminAllowlist'
 import { db } from '~/lib/db'
 import { user } from '~/lib/db/schema'
 import { UserDomainError } from './errors'
 
 type DbTransaction = Parameters<Parameters<typeof db.transaction>[0]>[0]
 type DbOrTx = typeof db | DbTransaction
+
+/**
+ * How long an invitation's sign-in link stays valid. Drives both Better Auth's
+ * email-verification token TTL (`emailVerification.expiresIn` in auth.ts) and
+ * the client-side "Inbjuden — går ut om …" countdown (`inviteExpiresAt` is
+ * derived as `lastInvitedAt + INVITE_EXPIRY_SECONDS`). One source of truth for
+ * the duration, so the displayed expiry tracks the token's real lifetime up to
+ * the sub-second gap between stamping `lastInvitedAt` and Better Auth minting
+ * the token.
+ */
+export const INVITE_EXPIRY_SECONDS = 60 * 60 * 24 * 7 // 7 days
 
 export type UserRow = {
   id: string
@@ -16,18 +28,18 @@ export type UserRow = {
   imageBlurhash: string | null
   createdAt: Date
   deletedAt: Date | null
+  // `false` until the user completes their first sign-in (invite link or
+  // magic-link) — this is what "Inbjuden" / pending is derived from.
+  emailVerified: boolean
+  // When the latest invite email was sent; null for self-signed-up users.
+  lastInvitedAt: Date | null
 }
 
-export type CreateUserInput = {
-  name: string
-  email: string
-  phone: string
-  role: 'user' | 'admin'
-}
-
+// Email is intentionally absent: it is the magic-link login identity, so it is
+// immutable after invite (an admin typo would silently lock the user out — see
+// ADR-0017). To change an address, delete + re-invite.
 export type UpdateUserInput = {
   name: string
-  email: string
   phone: string
   role: 'user' | 'admin'
 }
@@ -42,6 +54,8 @@ const userSelection = {
   imageBlurhash: user.imageBlurhash,
   createdAt: user.createdAt,
   deletedAt: user.deletedAt,
+  emailVerified: user.emailVerified,
+  lastInvitedAt: user.lastInvitedAt,
 }
 
 export async function findIdByEmail(email: string): Promise<string | null> {
@@ -99,18 +113,53 @@ export async function countAdmins(dbOrTx: DbOrTx = db): Promise<number> {
   return Number(row?.value ?? 0)
 }
 
-export async function createAsAdmin(input: CreateUserInput): Promise<UserRow> {
+/**
+ * Create an invited user from an email alone. Name/phone/avatar are collected
+ * later in onboarding, so `name` is seeded to the email (a sensible display
+ * fallback everywhere the UI renders `user.name` until then) and `phone` is
+ * blank. Every invitee starts as `user`; admins promote afterward. The row is
+ * unverified (pending) and stamped `lastInvitedAt` so the list can show the
+ * countdown immediately. The actual invite email is sent by the procedure via
+ * Better Auth's `sendVerificationEmail` (tier-3 queue).
+ */
+export async function inviteUser(email: string): Promise<UserRow> {
+  // Normalize here so the op is self-guarding regardless of caller: the
+  // EMAIL_TAKEN check and the stored row use the same lowercased form Better Auth
+  // stores, so a case-variant ("Foo@x") can't slip past the check and collide
+  // only at the case-sensitive unique index.
+  const normalized = normalizeEmail(email)
+  // Check-first (ADR-0002): the unique constraint is the backstop, but a clear
+  // domain error beats a raw 23505 — the admin should resend/restore instead.
+  if (await findIdByEmail(normalized)) throw new UserDomainError('EMAIL_TAKEN')
   const [row] = await db
     .insert(user)
     .values({
-      name: input.name,
-      email: input.email,
-      phone: input.phone,
-      role: input.role,
+      name: normalized,
+      email: normalized,
+      phone: '',
+      role: 'user',
       emailVerified: false,
+      lastInvitedAt: new Date(),
     })
     .returning(userSelection)
   return row
+}
+
+/** Bump the invite timestamp when an admin resends, so the countdown resets. */
+export async function markInvited(targetId: string): Promise<void> {
+  await db.update(user).set({ lastInvitedAt: new Date() }).where(eq(user.id, targetId))
+}
+
+/**
+ * Guard a resend: the target must exist, be active, and still be pending.
+ * `findActiveById` returns null for unknown *and* soft-deleted users (both
+ * map to NOT_FOUND); an already-accepted (verified) user can't be re-invited.
+ */
+export async function assertInviteResendable(targetId: string): Promise<UserRow> {
+  const target = await findActiveById(targetId)
+  if (!target) throw new UserDomainError('NOT_FOUND')
+  if (target.emailVerified) throw new UserDomainError('ALREADY_ACCEPTED')
+  return target
 }
 
 export async function updateAsAdmin(
@@ -135,7 +184,6 @@ export async function updateAsAdmin(
       .update(user)
       .set({
         name: input.name,
-        email: input.email,
         phone: input.phone,
         role: input.role,
       })

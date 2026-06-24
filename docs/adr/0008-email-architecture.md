@@ -11,6 +11,8 @@
 
 > **Amendment (2026-06-11, open tracking)** — Open tracking enabled on the Resend domain (`resend domains update <id> --open-tracking`). Resend injects a tracking pixel into the HTML part; opens are read in the Resend dashboard — no webhook, no app code. **Click tracking deliberately left off**: tracking is domain-wide (no per-email/per-link control in the Resend API), so enabling it would rewrite the one-time magic-link URL through Resend's redirect — an added failure mode on tier-1 sign-in, and a visible-URL/href mismatch on the template's plain fallback link (a spam-filter/phishing signal). Caveat: Apple Mail Privacy Protection pre-fetches pixels, so opens from Apple Mail users read as ~100% — the metric is directional, not exact.
 
+> **Amendment (2026-06-24, second template — tier-3 realized)** — The first **non-auth** email shipped: user invitations. `EmailEffects` grew a second method, `sendUserInvited({ to, inviteUrl, locale })`, and the template `src/emails/InviteUserEmail.tsx` (+ `.test.tsx`) lands alongside `MagicLinkEmail.tsx` (sharing `theme.ts`). This is the realization of the "future non-auth emails go through the queue (tier-3)" note in § Execution tier choice: the invitation is **not** sent inline — Better Auth's `sendVerificationEmail` hook (`src/lib/auth.ts`) **enqueues** the new `email_user_invited` queue topic, and the worker (`src/lib/queue/handlers/emailUserInvited.ts`) calls `email.sendUserInvited(...)` through this same adapter seam. The `inviteUrl` is Better Auth's verify-email link (clicking it accepts the invite — verifies + auto-signs-in). The hook runs post-response via `waitUntil`, so it renders in `baseLocale` (`'sv'`) rather than a request-ALS locale. See [ADR-0007](./0007-background-job-queue-architecture.md) (topic + handler) and [ADR-0017](./0017-user-invitation-flow.md) (the invitation flow). The boundary discipline holds: only the adapters import `~/emails/InviteUserEmail`.
+
 ---
 
 ## Context
@@ -200,7 +202,7 @@ Re-open this decision if any of the following land:
 
 - ~~**Sender-domain verification**~~ — **Done 2026-06-11** (see Amendment above): `mail.lukaslindqvist.se` verified, Vercel envs set, `resend` adapter active in prod.
 - ~~**Interim risk: prod magic-links in Runtime Logs.**~~ — **Closed 2026-06-11**: the `devLog` adapter redacts the magic-link URL when `NODE_ENV === 'production'`, so a future config regression can't leak sign-in links into Runtime Logs. `src/lib/logger/redact.ts` stays unchanged (a global `url` path would scrub far too much).
-- **Additional templates** — added with new features (user invitation, schedule reminder, season summary). Each new template is one `<Name>Email.tsx` + one new method on `EmailEffects` + per-adapter wiring.
+- **Additional templates** — added with new features. **User invitation landed 2026-06-24** (see Amendment above): `InviteUserEmail.tsx` + `sendUserInvited` on `EmailEffects`, delivered tier-3 via the `email_user_invited` queue topic. Still open: schedule reminder, season summary. Each new template is one `<Name>Email.tsx` + one new method on `EmailEffects` + per-adapter wiring.
 - **Webhook / bounce handling, suppression list** — Resend-side; not needed at 20 users. (Open tracking enabled 2026-06-11 — see Amendment; click tracking deliberately off.)
 - **Logo asset** — `MagicLinkEmail.tsx` currently uses a styled text wordmark. Swap to a hosted image (Vercel Blob's `oceanview-public` store, or a base64-inlined SVG) once a brand mark exists.
 

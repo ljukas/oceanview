@@ -14,6 +14,7 @@ import {
   PencilIcon,
   RotateCcwIcon,
   SailboatIcon,
+  SendIcon,
   StarIcon,
   Trash2Icon,
 } from 'lucide-react'
@@ -37,7 +38,7 @@ import {
   TableHeader,
   TableRow,
 } from '~/components/ui/table'
-import { formatDate } from '~/lib/i18n/format'
+import { formatDate, formatDistanceShort } from '~/lib/i18n/format'
 import type { SharePartRow } from '~/lib/services/share'
 import type { UserRow } from '~/lib/services/user'
 import { collapseShares, type ShareBadgeKind } from '~/lib/shares/collapse'
@@ -45,7 +46,12 @@ import { shareBackgroundClass } from '~/lib/shares/colors'
 import { cn, initials } from '~/lib/utils'
 import { m } from '~/paraglide/messages'
 
-export type OwnerRow = UserRow & { shares: Array<SharePartRow> }
+export type OwnerRow = UserRow & {
+  shares: Array<SharePartRow>
+  // When the current invite link expires (lastInvitedAt + 7d), or null when the
+  // user was never invited. Drives the "Inbjuden — går ut om …" countdown.
+  inviteExpiresAt: Date | null
+}
 
 type Props = {
   owners: Array<OwnerRow>
@@ -57,6 +63,8 @@ type Props = {
   onEdit: (id: string) => void
   onDelete: (id: string) => void
   onRestore: (id: string) => void
+  /** Resend the invite email to a pending owner (active view, admin only). */
+  onResendInvite?: (id: string) => void
 }
 
 // Secondary columns reveal as the viewport widens: Roll + Andelar at `md`,
@@ -114,14 +122,16 @@ export function OwnersTable({
   onEdit,
   onDelete,
   onRestore,
+  onResendInvite,
 }: Props) {
   const table = useReactTable({
     data: owners,
     columns,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
-    // No initial sorting — the server already returns surname order; columns
-    // become sortable on click.
+    // No initial sorting — the server returns accepted users first, then pending
+    // invitees, each by surname; columns become sortable on click (a toggled
+    // sort takes over, so the accepted/pending grouping only holds by default).
   })
   const rows = table.getRowModel().rows
 
@@ -185,6 +195,7 @@ export function OwnersTable({
             onEdit={onEdit}
             onDelete={onDelete}
             onRestore={onRestore}
+            onResendInvite={onResendInvite}
           />
         ))}
       </TableBody>
@@ -201,6 +212,7 @@ function OwnerTableRow({
   onEdit,
   onDelete,
   onRestore,
+  onResendInvite,
 }: {
   owner: OwnerRow
   isSelf: boolean
@@ -210,11 +222,14 @@ function OwnerTableRow({
   onEdit: (id: string) => void
   onDelete: (id: string) => void
   onRestore: (id: string) => void
+  onResendInvite?: (id: string) => void
 }) {
   const formattedPhone = owner.phone ? formatPhoneNumberIntl(owner.phone) || owner.phone : null
   const deletedAt = owner.deletedAt ? formatDate(owner.deletedAt) : '—'
   // Collapse held pairs (A1 + A2 → "A"); lone halves stay "A1"/"A2".
   const shares = collapseShares(owner.shares)
+  // Pending = invited but never signed in. Only meaningful in the active view.
+  const isPending = !showDeleted && !owner.emailVerified
 
   return (
     <TableRow className="group/row">
@@ -243,12 +258,21 @@ function OwnerTableRow({
           </Avatar>
 
           <div className="flex min-w-0 flex-col gap-0.5">
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <span className="truncate font-medium" title={owner.name}>
                 {owner.name || '—'}
               </span>
               {isSelf ? <Badge variant="secondary">{m.owners_badge_you()}</Badge> : null}
+              {isPending ? (
+                <Badge variant="outline" className="border-brand/30 bg-brand/10 text-brand">
+                  {m.user_status_invited()}
+                </Badge>
+              ) : null}
             </div>
+
+            {/* Countdown is decision-support for resending, which only admins do —
+                non-admins see just the "Inbjuden" badge above. */}
+            {isPending && isAdmin ? <InviteCountdown expiresAt={owner.inviteExpiresAt} /> : null}
 
             {/* Roll (+ Andelar) fold in here until they become columns at `md`. */}
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1 md:hidden">
@@ -353,6 +377,12 @@ function OwnerTableRow({
                       <PencilIcon />
                       {m.common_edit()}
                     </DropdownMenuItem>
+                    {isPending && onResendInvite ? (
+                      <DropdownMenuItem onSelect={() => onResendInvite(owner.id)}>
+                        <SendIcon />
+                        {m.user_resend_invite()}
+                      </DropdownMenuItem>
+                    ) : null}
                     {isSelf ? null : (
                       <DropdownMenuItem variant="destructive" onSelect={() => onDelete(owner.id)}>
                         <Trash2Icon />
@@ -397,6 +427,21 @@ function SortableHead({
         <Icon data-icon="inline-end" className="text-muted-foreground" />
       </Button>
     </TableHead>
+  )
+}
+
+// Pending-invite countdown shown under the name. Relative ("Går ut om 6 dagar")
+// rather than a live ticker — it refreshes on refetch (realtime user.changed +
+// resend invalidation), which is plenty for a 7-day window.
+function InviteCountdown({ expiresAt }: { expiresAt: Date | null }) {
+  if (!expiresAt) return null
+  if (expiresAt.getTime() <= Date.now()) {
+    return <span className="text-destructive text-xs">{m.user_invite_expired()}</span>
+  }
+  return (
+    <span className="text-muted-foreground text-xs">
+      {m.user_invite_expires({ time: formatDistanceShort(expiresAt) })}
+    </span>
   )
 }
 

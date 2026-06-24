@@ -36,8 +36,10 @@ function DropdownMenuContent({
           'data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2',
           // open/close fade + zoom animation
           'data-open:fade-in-0 data-open:zoom-in-95 data-closed:fade-out-0 data-closed:zoom-out-95 duration-100 data-closed:animate-out data-open:animate-in',
-          // stacking, sizing and positioning box; radix-provided sizing/origin vars
-          'z-50 max-h-(--radix-dropdown-menu-content-available-height) w-(--radix-dropdown-menu-trigger-width) min-w-32 origin-(--radix-dropdown-menu-content-transform-origin) overflow-y-auto overflow-x-hidden data-[state=closed]:overflow-hidden',
+          // stacking, sizing and positioning box; radix-provided sizing/origin vars.
+          // Size to content (min-w-32 floor) — these are action menus off an icon
+          // trigger, so pinning width to the trigger would wrap long labels.
+          'z-50 max-h-(--radix-dropdown-menu-content-available-height) min-w-32 origin-(--radix-dropdown-menu-content-transform-origin) overflow-y-auto overflow-x-hidden data-[state=closed]:overflow-hidden',
           // popover surface styling
           'rounded-lg bg-popover p-1 text-popover-foreground shadow-md ring-1 ring-foreground/10',
           className,
