@@ -362,7 +362,11 @@ test('hardDeleteFolderAsAdmin purges a nested subtree (folders + documents + fil
       ),
     )
   expect(docEvents).toHaveLength(2)
-})
+  // DB-heaviest test in the suite (~20 sequential round-trips: 3 folders + 2 docs
+  // of setup, soft+hard delete, then the verification reads). Comfortable locally
+  // (~3s) but the ephemeral Neon branch in CI is several × slower per round-trip,
+  // so it needs more than the 15s default to avoid a latency-only timeout.
+}, 30_000)
 
 test('hardDeleteFolderAsAdmin also purges a document soft-deleted individually inside the subtree', async () => {
   // The correlation-id edge case: a document binned on its own keeps a different
