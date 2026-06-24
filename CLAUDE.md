@@ -4,7 +4,7 @@ Internal web app for a sailboat co-ownership group (10–20 users: owners + a co
 
 **State**: scaffold + auth + DB + services + file storage + email all wired. Resend is live in prod (sender domain `mail.lukaslindqvist.se`, verified 2026-06-11; see ADR-0008).
 
-**Architecture lives in `docs/adr/`** (ADRs 0001–0011). This file is a router: rules + commands + gotchas. For *why* a pattern exists, follow the ADR link.
+**Architecture lives in `docs/adr/`** (ADRs 0001–0017). This file is a router: rules + commands + gotchas. For *why* a pattern exists, follow the ADR link.
 
 ---
 
@@ -37,6 +37,7 @@ Load on demand, not eagerly. The `pnpm dlx @tanstack/intent` block at the bottom
 | Logging | `docs/adr/0003-logging-architecture.md` |
 | File storage (avatars, documents) | `docs/adr/0006-file-storage.md` |
 | Organization rules (social invariants the schema can't express) | `docs/adr/0009-organization-rules.md` |
+| User invitations (invite/accept, resend, expiry countdown) | `docs/adr/0017-user-invitation-flow.md` |
 | Reviewing React components | `vercel:react-best-practices` |
 | End-to-end verification | `vercel:verification` |
 | oRPC: core / Better Auth / TanStack Query / SSR | https://orpc.dev/docs (+ `/integrations/*`, `/best-practices/optimize-ssr`) |
@@ -103,7 +104,7 @@ src/
   components/
     {DefaultCatchBoundary,NotFound,AppSidebar,ModeToggle,ThemeProvider}.tsx
     user/  passkey/  document/  contact/  share/  form/  ui/
-  emails/                       React Email templates; preview with `pnpm email:dev`
+  emails/                       React Email templates (MagicLink, InviteUser); preview with `pnpm email:dev`
   data/passkeyAaguids.json      static AAGUID registry
   utils/seo.ts                  meta-tag helper
   styles/                       Tailwind v4 entry
@@ -179,7 +180,7 @@ Five architectural rules (full rationale in each ADR — read it before adjustin
 | `pnpm mail:{up,down}` | Mailpit SMTP :14522 + UI :14502 |
 | `pnpm email:dev` | React Email preview server on :14501 |
 | `pnpm i18n:compile` | Compile `messages/{sv,en}.json` → `src/paraglide/` (auto via `prepare`/`pretest`/vite) |
-| `pnpm dev:worker` | Local BullMQ worker (consumes `blurhash` + `image_thumbnail` topics) |
+| `pnpm dev:worker` | Local BullMQ worker (consumes `blurhash` + `image_thumbnail` + `email_user_invited` topics) |
 | `pnpm test` / `test:watch` | Vitest; per-test schema (CREATE/migrate/DROP) on Neon Local session-pool URL |
 | `pnpm check` | Biome format + lint + organize imports (writes). Daily driver |
 | `pnpm check:unsafe` / `check:ci` | Unsafe fixes (Tailwind sort); dry-run for CI |
@@ -193,7 +194,7 @@ Five architectural rules (full rationale in each ADR — read it before adjustin
 
 - **Auto-provisioned by Vercel ↔ Neon Marketplace** (do not add manually): `DATABASE_URL`, `DATABASE_URL_UNPOOLED`, `NEON_PROJECT_ID`, plus `POSTGRES_*` / `PG*` aliases.
 - **Local-only for Neon Local** (`.env`, gitignored): `NEON_API_KEY`, `PARENT_BRANCH_ID`.
-- **Set in Vercel + `.env`**: `BETTER_AUTH_SECRET` (32+ chars; `openssl rand -base64 32`), `BETTER_AUTH_URL`, `ADMIN_EMAILS` (CSV allowlist). `ADMIN_EMAILS` is consulted only when a user row is *created* (signup hook in `auth.ts`) — editing it later does **not** change existing users. To promote/demote an existing user, update their `role` via the admin UI at `/admin` (or the Better Auth admin API); to revoke access immediately, also revoke their sessions (role is cookie-cached up to 5 min, sessions live 30 days).
+- **Set in Vercel + `.env`**: `BETTER_AUTH_SECRET` (32+ chars; `openssl rand -base64 32`), `BETTER_AUTH_URL`, `ADMIN_EMAILS` (CSV allowlist). `ADMIN_EMAILS` is consulted only at **self-signup** — Better Auth's `user.create.before` hook in `auth.ts` (when a row is created through the adapter). It does **not** apply to **invited** users: `inviteUser` inserts the row directly via the service, bypassing that hook, so every invitee is `role:'user'` regardless of the allowlist (admins promote afterward via the Edit dialog — see ADR-0017). Editing `ADMIN_EMAILS` later does **not** change existing users either way. To promote/demote an existing user, update their `role` via the admin UI at `/admin` (or the Better Auth admin API); to revoke access immediately, also revoke their sessions (role is cookie-cached up to 5 min, sessions live 30 days).
 - **Vercel Blob (auto-provisioned via Marketplace)**: `BLOB_PUBLIC_READ_WRITE_TOKEN` (avatars), `BLOB_PRIVATE_READ_WRITE_TOKEN` (documents). Leave blank locally; use `S3_*` instead. Override: `STORAGE_ADAPTER=devLog` (tests).
 - **Local S3** (backs `pnpm storage:up`): `S3_ENDPOINT` (default `http://localhost:14523`), `S3_REGION=eu-north-1`, `S3_ACCESS_KEY_ID`/`S3_SECRET_ACCESS_KEY` (default `oceanview-dev`/`oceanview-dev-secret-key`), `S3_BUCKET_PUBLIC=oceanview-public`, `S3_BUCKET_PRIVATE=oceanview-private`. When `S3_ENDPOINT` is set, the storage adapter picks `s3` over `BLOB_*`. See ADR-0006.
 - **Resend (live in prod)**: `RESEND_API_KEY`, `EMAIL_FROM` (`Oceanview <no-reply@mail.lukaslindqvist.se>`) set in Vercel production. Selected when both are set and `SMTP_HOST` is unset. See ADR-0008. **Also set both on the Vercel Preview env** if you want magic-link sign-in to work on PR previews — otherwise the adapter falls back to `devLog` and no email is sent. On previews sign-in is **magic-link only** (passkey `rpID`/`origin` derive from `BETTER_AUTH_URL`, so passkeys are prod-only); `auth.ts` uses `VERCEL_BRANCH_URL` as the preview base URL so links survive re-pushes.
@@ -228,7 +229,7 @@ WebFetch before guessing APIs.
 
 ## Deferred work
 
-Nothing currently deferred. (Resend sender-domain verification landed 2026-06-11 — see ADR-0008 amendments.)
+**Invitee onboarding flow** (deferred 2026-06-24, see ADR-0017): a first-sign-in step for accepted invitees to set their real name (replacing the `name=email` placeholder), optional phone, and a profile-pic upload. The `UserFormFields` name/phone inputs and `AvatarUpload` are preserved for it.
 
 ---
 
@@ -292,6 +293,7 @@ One line each. Reasoning in `git log CLAUDE.md` and in the linked ADR.
 - **Domain invariants are check-first** (2026-06-10). Explicit read → `<Entity>DomainError` inside the guarded op's tx; never SQLSTATE/message parsing; DB constraints stay as silent backstops; check-then-write races accepted at this scale. See ADR-0002 "Check first".
 - **Recommended places per ADR-0012** (2026-06-14, design only — not yet built). MapLibre GL (open engine) + MapTiler tiles (provider is a swappable adapter, like R2); photo via `fileId` FK on the row (avatar pattern, public store — no `document` wrapper, no thumbnail worker), three sizes from one original via the `unpic` transformer; EXIF GPS guessed client-side (`exifr`, editable, manual fallback); location as `double precision` lat/lng + client-side Haversine (no PostGIS); multi-tag via a shared normalized `tag` table (~10 localized system tags + deduped custom tags); likes & comments designed as future phases. See ADR-0012.
 - **Folder, document, user & season errors are code-only; client localizes** (2026-06-13; document + user + season routers added 2026-06-14). The `folder`, `document`/`bin`, `user`, and `season` routers throw oRPC typed errors (`.errors()`, status only) instead of mapping to Swedish `ORPCError`; the client maps code → message via `src/lib/orpc/{folder,document,user,season}ErrorMessage.ts` (type-only import, exhaustive switch), so `isDefinedError(err)` narrows `err.code` (lets `RenameFolderDialog` show `NAME_TAKEN_IN_PARENT` inline; discriminates folder vs document errors in mixed dialogs). Context-dependent messages stay client-side: `userErrorMessage(code, selfAction)` picks delete-vs-demote for `CANNOT_ACT_ON_SELF`. Alternative to `rethrowAsORPC`, not a replacement — `share` is the lone remaining message-based router; `user.create` stays message-based (Better Auth errors). See ADR-0002 amendment.
+- **User invitation = Better Auth email-verification** (2026-06-24). Admin invites by email only; the row is created `emailVerified:false`, `role:'user'`, `name=email` placeholder, `lastInvitedAt=now`. Better Auth's `sendVerificationEmail` (7-day `expiresIn` = `INVITE_EXPIRY_SECONDS`, `autoSignInAfterVerification`) sends a verify-email link whose click verifies + auto-signs-in — **no custom accept route**. "Invited/pending" is **derived** from `emailVerified===false`; accept = first sign-in (invite link or magic-link both flip it). Only new state is one nullable `lastInvitedAt timestamptz` driving the owners-list countdown. Email is tier-3 (queue topic `email_user_invited`). `invite`/`resendInvite` procedures; `inviteUser`/`markInvited`/`assertInviteResendable` service ops; code-only errors `ALREADY_ACCEPTED`/`EMAIL_TAKEN`. Call `sendVerificationEmail` **without** session headers (else `EMAIL_MISMATCH`); rate-limited `/send-verification-email` 5/min. Onboarding (collect real name/phone/avatar) deferred. **Email is immutable after invite** (it's the magic-link identity; a typo would silently lock the user out) — removed from the admin update path (schema/`UpdateUserInput`/`updateAsAdmin`), shown read-only in `EditUserDialog`; only name/phone/role are editable; change of address = delete + re-invite (2026-06-24 amendment). See ADR-0017.
 - **i18n: Paraglide JS, sv default + en, cookie-only** (2026-06-10). Compile-time typed `m.*()` messages from `messages/{sv,en}.json`; `oceanview-locale` cookie, no URL prefix; per-request server locale via ALS in `src/server.ts`; switching reloads the page. Rejected: i18next (40 kB runtime, weak typing), Lingui (TanStack Start SSR issues), typesafe-i18n (unmaintained).
 - **UI**: shadcn/ui (style `radix-nova`, base `slate`) + Tailwind v4. CSS vars in `src/styles/app.css`; `components.json` source of truth.
 - **Dark mode**: cookie-based (`oceanview-theme`), read in the root loader and applied to `<html>` during SSR; light/dark scriptless, `system` resolved by a small owned inline script + a `matchMedia` listener. Own `ThemeProvider`/`useTheme` (no next-themes). Manual toggle + system; no FOUC.

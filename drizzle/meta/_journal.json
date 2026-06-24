@@ -92,6 +92,13 @@
       "when": 1780571552871,
       "tag": "0012_add_document_extension",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1782290828681,
+      "tag": "0013_add_user_last_invited_at",
+      "breakpoints": true
     }
   ]
 }

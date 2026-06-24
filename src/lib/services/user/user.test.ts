@@ -6,14 +6,16 @@ import { user } from '~/lib/db/schema'
 import { setupDatabase } from '~test/setup'
 import { UserDomainError } from './errors'
 import {
+  assertInviteResendable,
   countAdmins,
-  createAsAdmin,
   findActiveById,
   findAvatarByEmail,
   findIdByEmail,
   findRowById,
+  inviteUser,
   listAll,
   listDeleted,
+  markInvited,
   restoreAsAdmin,
   softDeleteAsAdmin,
   updateAsAdmin,
@@ -23,7 +25,6 @@ setupDatabase()
 
 const standardInput = {
   name: 'Anna Svensson',
-  email: 'anna@test.oceanview.local',
   phone: '070-111 22 33',
   role: 'user' as const,
 }
@@ -187,12 +188,79 @@ test('countAdmins counts only active admins', async () => {
   expect(await countAdmins()).toBe(2)
 })
 
-// ---------- createAsAdmin ----------
+// ---------- inviteUser ----------
 
-test('createAsAdmin inserts a row with the provided fields', async () => {
-  const created = await createAsAdmin(standardInput)
-  expect(created).toMatchObject({ ...standardInput, deletedAt: null })
+test('inviteUser creates a pending user from an email alone', async () => {
+  const created = await inviteUser('newbie@test.oceanview.local')
+  expect(created).toMatchObject({
+    name: 'newbie@test.oceanview.local',
+    email: 'newbie@test.oceanview.local',
+    phone: '',
+    role: 'user',
+    emailVerified: false,
+    deletedAt: null,
+  })
   expect(created.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/)
+  expect(created.lastInvitedAt).toBeInstanceOf(Date)
+})
+
+test('inviteUser throws EMAIL_TAKEN when a user with that email exists', async () => {
+  await insertMember('taken@test.oceanview.local', 'Taken')
+  await expect(inviteUser('taken@test.oceanview.local')).rejects.toMatchObject({
+    code: 'EMAIL_TAKEN',
+  })
+})
+
+test('inviteUser throws EMAIL_TAKEN even for a soft-deleted email', async () => {
+  await db
+    .insert(user)
+    .values({ name: 'Gone', email: 'gone@test.oceanview.local', deletedAt: new Date() })
+  await expect(inviteUser('gone@test.oceanview.local')).rejects.toMatchObject({
+    code: 'EMAIL_TAKEN',
+  })
+})
+
+// ---------- markInvited ----------
+
+test('markInvited refreshes lastInvitedAt', async () => {
+  const created = await inviteUser('resend@test.oceanview.local')
+  await db
+    .update(user)
+    .set({ lastInvitedAt: new Date('2020-01-01') })
+    .where(eq(user.id, created.id))
+
+  await markInvited(created.id)
+
+  const row = await findActiveById(created.id)
+  expect(row?.lastInvitedAt?.getTime()).toBeGreaterThan(new Date('2020-01-01').getTime())
+})
+
+// ---------- assertInviteResendable ----------
+
+test('assertInviteResendable returns the row for a pending user', async () => {
+  const created = await inviteUser('pending@test.oceanview.local')
+  const row = await assertInviteResendable(created.id)
+  expect(row.id).toBe(created.id)
+})
+
+test('assertInviteResendable throws NOT_FOUND for an unknown id', async () => {
+  await expect(assertInviteResendable(randomUUID())).rejects.toMatchObject({ code: 'NOT_FOUND' })
+})
+
+test('assertInviteResendable throws NOT_FOUND for a soft-deleted user', async () => {
+  const [{ id }] = await db
+    .insert(user)
+    .values({ name: 'Gone', email: 'gone@test.oceanview.local', deletedAt: new Date() })
+    .returning({ id: user.id })
+  await expect(assertInviteResendable(id)).rejects.toMatchObject({ code: 'NOT_FOUND' })
+})
+
+test('assertInviteResendable throws ALREADY_ACCEPTED for a verified user', async () => {
+  const [{ id }] = await db
+    .insert(user)
+    .values({ name: 'Active', email: 'active@test.oceanview.local', emailVerified: true })
+    .returning({ id: user.id })
+  await expect(assertInviteResendable(id)).rejects.toMatchObject({ code: 'ALREADY_ACCEPTED' })
 })
 
 // ---------- updateAsAdmin ----------
@@ -203,7 +271,6 @@ test('updateAsAdmin patches the target and returns the updated row', async () =>
 
   const updated = await updateAsAdmin(adminId, aliceId, {
     name: 'Alice Updated',
-    email: 'alice@test.oceanview.local',
     phone: '111',
     role: 'admin',
   })
@@ -211,6 +278,21 @@ test('updateAsAdmin patches the target and returns the updated row', async () =>
   expect(updated.name).toBe('Alice Updated')
   expect(updated.role).toBe('admin')
   expect(updated.phone).toBe('111')
+})
+
+test('updateAsAdmin leaves the target email unchanged (email is immutable)', async () => {
+  const adminId = await insertAdmin('admin@test.oceanview.local', 'Admin')
+  const aliceId = await insertMember('alice@test.oceanview.local', 'Alice')
+
+  const updated = await updateAsAdmin(adminId, aliceId, {
+    name: 'Alice Updated',
+    phone: '111',
+    role: 'user',
+  })
+
+  // Email is the magic-link login identity (ADR-0017) — not part of the input,
+  // so the row keeps its original address regardless of what an admin edits.
+  expect(updated.email).toBe('alice@test.oceanview.local')
 })
 
 test('updateAsAdmin throws NOT_FOUND when target does not exist', async () => {
@@ -244,7 +326,6 @@ test('updateAsAdmin throws CANNOT_ACT_ON_SELF when admin demotes themselves', as
   await expect(
     updateAsAdmin(adminId, adminId, {
       name: 'Admin',
-      email: 'admin@test.oceanview.local',
       phone: '111',
       role: 'user',
     }),
@@ -256,7 +337,6 @@ test('updateAsAdmin lets an admin update their own non-role fields', async () =>
 
   const updated = await updateAsAdmin(adminId, adminId, {
     name: 'Admin Renamed',
-    email: 'admin@test.oceanview.local',
     phone: '999',
     role: 'admin',
   })
@@ -275,7 +355,6 @@ test('updateAsAdmin throws LAST_ADMIN when demoting the only admin', async () =>
   await expect(
     updateAsAdmin(otherAdminId, adminId, {
       name: 'Admin',
-      email: 'admin@test.oceanview.local',
       phone: '111',
       role: 'user',
     }),

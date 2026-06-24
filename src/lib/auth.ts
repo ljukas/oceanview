@@ -6,12 +6,12 @@ import { APIError } from 'better-auth/api'
 import { admin, magicLink } from 'better-auth/plugins'
 import { tanstackStartCookies } from 'better-auth/tanstack-start'
 import { m } from '~/paraglide/messages'
-import { getLocale } from '~/paraglide/runtime'
+import { baseLocale, getLocale } from '~/paraglide/runtime'
 import { isAllowlistedAdmin, normalizeEmail } from './adminAllowlist'
 import { rememberUser } from './browserSession'
 import { db } from './db'
 import * as schema from './db/schema'
-import { email as emailEffect } from './effects'
+import { email as emailEffect, queue as queueEffect } from './effects'
 import { logger } from './logger/server'
 import * as userService from './services/user'
 
@@ -78,6 +78,41 @@ export const auth = betterAuth({
         required: false,
         input: false,
       },
+      // When the most recent invitation email was sent. Written by the invite
+      // service (inviteUser/markInvited); read-only to clients. Drives the
+      // owners-list "Inbjuden — går ut om …" countdown (expiry =
+      // lastInvitedAt + INVITE_EXPIRY_SECONDS). Null for self-signed-up users.
+      lastInvitedAt: {
+        type: 'date',
+        required: false,
+        input: false,
+      },
+    },
+  },
+  emailVerification: {
+    // Invitations ARE Better Auth email-verification: an admin invite sends a
+    // verify-email link; clicking it (or any first magic-link login) flips
+    // `emailVerified` true = "accepted". 7-day link, decoupled from the 5-min
+    // login magic-link. Single source of truth: INVITE_EXPIRY_SECONDS.
+    expiresIn: userService.INVITE_EXPIRY_SECONDS,
+    // One click verifies AND signs the invitee in (internalAdapter.createSession
+    // + cookie) then redirects to callbackURL — no custom accept route needed.
+    autoSignInAfterVerification: true,
+    sendVerificationEmail: async ({ user, url }) => {
+      // Render in the app default (baseLocale = 'sv') by design: the invitee is
+      // new, so their own locale is unknown, and Swedish is the club's
+      // source-of-truth language — they switch after signing in. (The hook's
+      // synchronous prefix could read the inviting admin's getLocale(), but the
+      // admin's UI language isn't the invitee's, so the club default is safer.)
+      // Tier-3: this enqueues; the worker renders + sends with retry/backoff.
+      // The enqueue runs fire-and-forget via the configured backgroundTasks
+      // handler (waitUntil), so a failure is logged, not surfaced to the caller.
+      // See ADR-0008 / ADR-0017.
+      await queueEffect.publish('email_user_invited', {
+        to: user.email,
+        inviteUrl: url,
+        locale: baseLocale,
+      })
     },
   },
   rateLimit: {
@@ -86,6 +121,12 @@ export const auth = betterAuth({
     max: 100,
     customRules: {
       '/sign-in/magic-link': { window: 60, max: 5 },
+      // Caps the PUBLIC POST /api/auth/send-verification-email endpoint — the
+      // real spam vector, since its no-session branch will send an invite to any
+      // registered unverified email (anti-enumeration: unknown/verified silently
+      // no-op). The admin invite/resend procedures call auth.api.* server-side,
+      // which bypasses this HTTP rate limiter (they're already adminProcedure).
+      '/send-verification-email': { window: 60, max: 5 },
     },
   },
   plugins: [

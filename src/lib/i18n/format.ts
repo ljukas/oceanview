@@ -1,4 +1,4 @@
-import type { Locale as DateFnsLocale } from 'date-fns'
+import { type Locale as DateFnsLocale, formatDistanceStrict } from 'date-fns'
 import { enGB, sv } from 'date-fns/locale'
 import { getLocale, type Locale } from '~/paraglide/runtime'
 
@@ -29,4 +29,11 @@ export function formatDate(date: Date): string {
 
 export function getDateFnsLocale(): DateFnsLocale {
   return getLocale() === 'sv' ? sv : enGB
+}
+
+// Short, suffix-less distance from now in the active locale — e.g. "6 dagar" /
+// "6 days". Used for the invite-expiry countdown ("Går ut om {time}"); the
+// caller decides the surrounding phrasing and the expired state.
+export function formatDistanceShort(date: Date): string {
+  return formatDistanceStrict(date, new Date(), { locale: getDateFnsLocale() })
 }

@@ -105,7 +105,11 @@ export default defineConfig({
             // dispatches by topic name. `pdf_thumbnail` is reserved but not
             // yet produced/consumed — no trigger until the renderer ships.
             queues: {
-              triggers: [{ topic: 'blurhash' }, { topic: 'image_thumbnail' }],
+              triggers: [
+                { topic: 'blurhash' },
+                { topic: 'image_thumbnail' },
+                { topic: 'email_user_invited' },
+              ],
             },
           },
           rollupConfig: {
