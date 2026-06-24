@@ -99,6 +99,13 @@
       "when": 1782290828681,
       "tag": "0013_add_user_last_invited_at",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1782326726368,
+      "tag": "0014_add_user_onboarded_at",
+      "breakpoints": true
     }
   ]
 }

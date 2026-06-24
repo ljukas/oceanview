@@ -7,6 +7,7 @@ import { setupDatabase } from '~test/setup'
 import { UserDomainError } from './errors'
 import {
   assertInviteResendable,
+  completeOnboarding,
   countAdmins,
   findActiveById,
   findAvatarByEmail,
@@ -19,6 +20,7 @@ import {
   restoreAsAdmin,
   softDeleteAsAdmin,
   updateAsAdmin,
+  updateOwnProfile,
 } from './user'
 
 setupDatabase()
@@ -359,6 +361,78 @@ test('updateAsAdmin throws LAST_ADMIN when demoting the only admin', async () =>
       role: 'user',
     }),
   ).rejects.toMatchObject({ code: 'LAST_ADMIN' })
+})
+
+// ---------- updateOwnProfile ----------
+
+test('updateOwnProfile patches name and phone on the caller own row', async () => {
+  const aliceId = await insertMember('alice@test.oceanview.local', 'alice@test.oceanview.local')
+
+  const updated = await updateOwnProfile(aliceId, { name: 'Alice Svensson', phone: '070-1' })
+
+  expect(updated.name).toBe('Alice Svensson')
+  expect(updated.phone).toBe('070-1')
+})
+
+test('updateOwnProfile patches only the provided field', async () => {
+  const aliceId = await insertMember('alice@test.oceanview.local', 'Alice')
+  await updateOwnProfile(aliceId, { phone: '070-2' })
+
+  const updated = await updateOwnProfile(aliceId, { name: 'Renamed' })
+
+  // name changed in the second call; phone from the first call is untouched.
+  expect(updated.name).toBe('Renamed')
+  expect(updated.phone).toBe('070-2')
+})
+
+test('updateOwnProfile throws NOT_FOUND for an unknown id', async () => {
+  await expect(updateOwnProfile(randomUUID(), { name: 'X' })).rejects.toMatchObject({
+    code: 'NOT_FOUND',
+  })
+})
+
+test('updateOwnProfile throws TARGET_DELETED for a soft-deleted user', async () => {
+  const [{ id: deletedId }] = await db
+    .insert(user)
+    .values({ name: 'Gone', email: 'gone@test.oceanview.local', deletedAt: new Date() })
+    .returning({ id: user.id })
+
+  await expect(updateOwnProfile(deletedId, { name: 'X' })).rejects.toMatchObject({
+    code: 'TARGET_DELETED',
+  })
+})
+
+// ---------- completeOnboarding ----------
+
+test('completeOnboarding stamps onboardedAt on a fresh invitee', async () => {
+  const created = await inviteUser('newbie@test.oceanview.local')
+  expect(created.onboardedAt).toBeNull()
+
+  const updated = await completeOnboarding(created.id)
+
+  expect(updated.onboardedAt).toBeInstanceOf(Date)
+})
+
+test('completeOnboarding is idempotent (rewrites the timestamp)', async () => {
+  const created = await inviteUser('newbie@test.oceanview.local')
+  const first = await completeOnboarding(created.id)
+  const second = await completeOnboarding(created.id)
+
+  expect(first.onboardedAt).toBeInstanceOf(Date)
+  expect(second.onboardedAt).toBeInstanceOf(Date)
+})
+
+test('completeOnboarding throws NOT_FOUND for an unknown id', async () => {
+  await expect(completeOnboarding(randomUUID())).rejects.toMatchObject({ code: 'NOT_FOUND' })
+})
+
+test('completeOnboarding throws TARGET_DELETED for a soft-deleted user', async () => {
+  const [{ id: deletedId }] = await db
+    .insert(user)
+    .values({ name: 'Gone', email: 'gone@test.oceanview.local', deletedAt: new Date() })
+    .returning({ id: user.id })
+
+  await expect(completeOnboarding(deletedId)).rejects.toMatchObject({ code: 'TARGET_DELETED' })
 })
 
 // ---------- softDeleteAsAdmin ----------

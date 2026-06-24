@@ -27,8 +27,16 @@ export const Route = createFileRoute('/_authenticated')({
     }
     return { user: session.user }
   },
-  loader: ({ context: { queryClient } }) =>
-    queryClient.ensureQueryData(orpc.user.me.queryOptions()),
+  loader: async ({ context: { queryClient } }) => {
+    // Gate on the *fresh* me (orpc.user.me bypasses the session cookie cache),
+    // so a just-completed onboarding isn't masked by the ≤5-min cached session —
+    // otherwise the user would bounce back here in a loop. An invitee who hasn't
+    // finished the wizard (onboardedAt === null) is sent to the full-screen
+    // /onboarding route (outside this layout). See ADR-0017.
+    const me = await queryClient.ensureQueryData(orpc.user.me.queryOptions())
+    if (me.onboardedAt == null) throw redirect({ to: '/onboarding', search: { step: 'name' } })
+    return me
+  },
   component: AuthenticatedLayout,
 })
 

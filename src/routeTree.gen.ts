@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as SignedInRouteImport } from './routes/signed-in'
+import { Route as OnboardingRouteImport } from './routes/onboarding'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated/index'
@@ -30,6 +31,11 @@ import { Route as AuthenticatedAdminSharesAssignShareCodeRouteImport } from './r
 const SignedInRoute = SignedInRouteImport.update({
   id: '/signed-in',
   path: '/signed-in',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const OnboardingRoute = OnboardingRouteImport.update({
+  id: '/onboarding',
+  path: '/onboarding',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LoginRoute = LoginRouteImport.update({
@@ -120,6 +126,7 @@ const AuthenticatedAdminSharesAssignShareCodeRoute =
 export interface FileRoutesByFullPath {
   '/': typeof AuthenticatedIndexRoute
   '/login': typeof LoginRoute
+  '/onboarding': typeof OnboardingRoute
   '/signed-in': typeof SignedInRoute
   '/account': typeof AuthenticatedAccountRoute
   '/admin': typeof AuthenticatedAdminRouteWithChildren
@@ -137,6 +144,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/login': typeof LoginRoute
+  '/onboarding': typeof OnboardingRoute
   '/signed-in': typeof SignedInRoute
   '/account': typeof AuthenticatedAccountRoute
   '/admin': typeof AuthenticatedAdminRouteWithChildren
@@ -157,6 +165,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_authenticated': typeof AuthenticatedRouteWithChildren
   '/login': typeof LoginRoute
+  '/onboarding': typeof OnboardingRoute
   '/signed-in': typeof SignedInRoute
   '/_authenticated/account': typeof AuthenticatedAccountRoute
   '/_authenticated/admin': typeof AuthenticatedAdminRouteWithChildren
@@ -178,6 +187,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/login'
+    | '/onboarding'
     | '/signed-in'
     | '/account'
     | '/admin'
@@ -195,6 +205,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/login'
+    | '/onboarding'
     | '/signed-in'
     | '/account'
     | '/admin'
@@ -214,6 +225,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/_authenticated'
     | '/login'
+    | '/onboarding'
     | '/signed-in'
     | '/_authenticated/account'
     | '/_authenticated/admin'
@@ -234,6 +246,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   AuthenticatedRoute: typeof AuthenticatedRouteWithChildren
   LoginRoute: typeof LoginRoute
+  OnboardingRoute: typeof OnboardingRoute
   SignedInRoute: typeof SignedInRoute
   ApiLogRoute: typeof ApiLogRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
@@ -249,6 +262,13 @@ declare module '@tanstack/react-router' {
       path: '/signed-in'
       fullPath: '/signed-in'
       preLoaderRoute: typeof SignedInRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/onboarding': {
+      id: '/onboarding'
+      path: '/onboarding'
+      fullPath: '/onboarding'
+      preLoaderRoute: typeof OnboardingRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/login': {
@@ -407,6 +427,7 @@ const AuthenticatedRouteWithChildren = AuthenticatedRoute._addFileChildren(
 const rootRouteChildren: RootRouteChildren = {
   AuthenticatedRoute: AuthenticatedRouteWithChildren,
   LoginRoute: LoginRoute,
+  OnboardingRoute: OnboardingRoute,
   SignedInRoute: SignedInRoute,
   ApiLogRoute: ApiLogRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,

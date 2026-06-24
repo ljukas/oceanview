@@ -87,6 +87,15 @@ export const auth = betterAuth({
         required: false,
         input: false,
       },
+      // When the invitee finished (or skipped through) the onboarding wizard.
+      // Null = never onboarded → the _authenticated loader routes them to
+      // /onboarding. Written only by the user service (completeOnboarding);
+      // read-only to clients (input: false). See ADR-0017.
+      onboardedAt: {
+        type: 'date',
+        required: false,
+        input: false,
+      },
     },
   },
   emailVerification: {

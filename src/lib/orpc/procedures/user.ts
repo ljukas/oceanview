@@ -36,6 +36,25 @@ const userInputSchema = z.object({
   role: roleSchema,
 })
 
+// Self-service profile patch used by the onboarding wizard. Both fields optional
+// so each wizard step can submit just its own input. No `role` (a user can't
+// change their own role) and no `email` (immutable login identity — see
+// ADR-0017). Same name/phone validators as the admin schema; error callbacks
+// (not literals) resolve the active locale per parse.
+const selfProfileSchema = z.object({
+  name: z
+    .string()
+    .trim()
+    .min(1, { error: () => m.validation_name_required() })
+    .max(255, { error: () => m.validation_name_too_long() })
+    .optional(),
+  phone: z
+    .string()
+    .max(30, { error: () => m.validation_phone_too_long() })
+    .refine((v) => v === '' || v.length >= 5, { error: () => m.validation_phone_too_short() })
+    .optional(),
+})
+
 // Code-only typed errors for the user mutating procedures. Status only; the
 // backend stays i18n-free and the client localizes by code (see
 // ~/lib/orpc/userErrorMessage). `satisfies` locks the keys to the domain code
@@ -68,6 +87,44 @@ export const userRouter = {
       query: { disableCookieCache: true },
     })
     return fresh?.user ?? context.user
+  }),
+
+  // Self-service profile update (onboarding wizard, per-step). Always scoped to
+  // the caller's own id — never an input id — so it needs no admin gate.
+  updateProfile: protectedProcedure
+    .errors(userErrors)
+    .input(selfProfileSchema)
+    .handler(async ({ input, context, errors }) => {
+      try {
+        const updated = await userService.updateOwnProfile(context.user.id, input)
+        context.log.info('user updated own profile', { userId: context.user.id })
+        // Name/phone show up in the contact list, so refresh other tabs.
+        await realtime.publish(
+          { kind: 'user.changed', ids: [updated.id] },
+          { source: context.user.id },
+        )
+        return updated
+      } catch (err) {
+        if (err instanceof UserDomainError) throw errors[err.code]()
+        throw err
+      }
+    }),
+
+  // Stamp onboarding complete (wizard final step). Lets the _authenticated
+  // loader stop redirecting the caller into /onboarding.
+  completeOnboarding: protectedProcedure.errors(userErrors).handler(async ({ context, errors }) => {
+    try {
+      const updated = await userService.completeOnboarding(context.user.id)
+      context.log.info('user completed onboarding', { userId: context.user.id })
+      await realtime.publish(
+        { kind: 'user.changed', ids: [updated.id] },
+        { source: context.user.id },
+      )
+      return updated
+    } catch (err) {
+      if (err instanceof UserDomainError) throw errors[err.code]()
+      throw err
+    }
   }),
 
   findIdByEmail: adminProcedure
