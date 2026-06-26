@@ -4,7 +4,7 @@ import { readTheme, themeSchema, writeTheme } from '~/lib/theme'
 export const getTheme = createServerFn({ method: 'GET' }).handler(() => readTheme())
 
 export const setThemeServerFn = createServerFn({ method: 'POST' })
-  .inputValidator(themeSchema)
+  .validator(themeSchema)
   .handler(({ data }) => {
     writeTheme(data)
   })
