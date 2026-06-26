@@ -29,7 +29,7 @@ const rememberBrowserUserSchema = z.object({
 })
 
 export const rememberBrowserUser = createServerFn({ method: 'POST' })
-  .inputValidator(rememberBrowserUserSchema)
+  .validator(rememberBrowserUserSchema)
   .handler(async ({ data }) => {
     await rememberUser(data.userId, data.email)
   })
