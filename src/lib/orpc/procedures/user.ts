@@ -3,11 +3,11 @@ import { auth } from '~/lib/auth'
 import { realtime } from '~/lib/effects'
 import { adminProcedure, protectedProcedure } from '~/lib/orpc/context'
 import { inviteInputSchema } from '~/lib/orpc/userInviteSchema'
+import { nameField, phoneField, selfProfileSchema } from '~/lib/orpc/userProfileSchema'
 import type { SharePartRow } from '~/lib/services/share'
 import * as shareService from '~/lib/services/share'
 import * as userService from '~/lib/services/user'
 import { UserDomainError, type UserDomainErrorCode } from '~/lib/services/user'
-import { m } from '~/paraglide/messages'
 
 function surnameKey(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean)
@@ -22,37 +22,9 @@ const roleSchema = z.enum(['user', 'admin'])
 // parse resolves the active locale — the schema itself is module-level and
 // outlives any single request.
 const userInputSchema = z.object({
-  name: z
-    .string()
-    .trim()
-    .min(1, { error: () => m.validation_name_required() })
-    .max(255, { error: () => m.validation_name_too_long() }),
-  phone: z
-    .string()
-    .max(30, { error: () => m.validation_phone_too_long() })
-    .refine((v) => v === '' || v.length >= 5, {
-      error: () => m.validation_phone_too_short(),
-    }),
+  name: nameField,
+  phone: phoneField,
   role: roleSchema,
-})
-
-// Self-service profile patch used by the onboarding wizard. Both fields optional
-// so each wizard step can submit just its own input. No `role` (a user can't
-// change their own role) and no `email` (immutable login identity — see
-// ADR-0017). Same name/phone validators as the admin schema; error callbacks
-// (not literals) resolve the active locale per parse.
-const selfProfileSchema = z.object({
-  name: z
-    .string()
-    .trim()
-    .min(1, { error: () => m.validation_name_required() })
-    .max(255, { error: () => m.validation_name_too_long() })
-    .optional(),
-  phone: z
-    .string()
-    .max(30, { error: () => m.validation_phone_too_long() })
-    .refine((v) => v === '' || v.length >= 5, { error: () => m.validation_phone_too_short() })
-    .optional(),
 })
 
 // Code-only typed errors for the user mutating procedures. Status only; the
@@ -116,10 +88,10 @@ export const userRouter = {
     try {
       const updated = await userService.completeOnboarding(context.user.id)
       context.log.info('user completed onboarding', { userId: context.user.id })
-      await realtime.publish(
-        { kind: 'user.changed', ids: [updated.id] },
-        { source: context.user.id },
-      )
+      // No realtime publish: this op only stamps `onboardedAt`, which isn't
+      // rendered anywhere, so a `user.changed` would invalidate the whole
+      // orpc.user namespace in every other tab for nothing. (updateProfile
+      // still publishes — name/phone DO show in the contact list.)
       return updated
     } catch (err) {
       if (err instanceof UserDomainError) throw errors[err.code]()

@@ -1,5 +1,6 @@
 import { useSuspenseQuery } from '@tanstack/react-query'
 import { ArrowLeftIcon } from 'lucide-react'
+import { useState } from 'react'
 import { Button } from '~/components/ui/button'
 import { Spinner } from '~/components/ui/spinner'
 import { AvatarUpload } from '~/components/user/AvatarUpload'
@@ -7,16 +8,21 @@ import { orpc } from '~/lib/orpc/client'
 import { m } from '~/paraglide/messages'
 
 type Props = {
-  onFinish: () => void
+  onNext: () => void
+  onSkip: () => void
   onBack: () => void
-  finishing: boolean
 }
 
-export function OnboardingAvatarStep({ onFinish, onBack, finishing }: Props) {
+export function OnboardingAvatarStep({ onNext, onSkip, onBack }: Props) {
   // AvatarUpload persists the image itself (mint → upload → confirm); this step
-  // only adds the finish/skip + back chrome. `me.image` decides the primary
-  // button label — a picture present reads as "Done", none as "Skip".
+  // only adds the next/skip + back chrome. `me.image` gates the primary "Next"
+  // button — disabled until a picture is present; the quiet footer "Skip" is the
+  // escape hatch for advancing without one.
   const { data: me } = useSuspenseQuery(orpc.user.me.queryOptions())
+
+  // While AvatarUpload is mid-flow, freeze the nav buttons so advancing/leaving
+  // can't drop an in-flight image before its `confirm` lands.
+  const [uploading, setUploading] = useState(false)
 
   return (
     <div className="flex w-full flex-col gap-6">
@@ -31,26 +37,29 @@ export function OnboardingAvatarStep({ onFinish, onBack, finishing }: Props) {
 
       <div className="flex flex-col gap-5">
         <div className="flex justify-center">
-          <AvatarUpload />
+          <AvatarUpload onUploadingChange={setUploading} />
         </div>
 
         <Button
           type="button"
           size="xl"
           className="w-full font-normal"
-          onClick={onFinish}
-          disabled={finishing}
+          onClick={onNext}
+          disabled={!me.image || uploading}
         >
-          {finishing ? <Spinner data-icon="inline-start" /> : null}
-          {me.image ? m.onboarding_finish() : m.onboarding_skip()}
+          {uploading ? <Spinner data-icon="inline-start" /> : null}
+          {m.onboarding_next()}
         </Button>
+      </div>
 
-        <div className="flex justify-start">
-          <Button type="button" variant="ghost" onClick={onBack} disabled={finishing}>
-            <ArrowLeftIcon />
-            {m.common_back()}
-          </Button>
-        </div>
+      <div className="flex items-center justify-between">
+        <Button type="button" variant="ghost" onClick={onBack} disabled={uploading}>
+          <ArrowLeftIcon />
+          {m.common_back()}
+        </Button>
+        <Button type="button" variant="ghost" onClick={onSkip} disabled={uploading}>
+          {m.onboarding_skip()}
+        </Button>
       </div>
     </div>
   )

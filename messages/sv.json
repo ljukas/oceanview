@@ -267,6 +267,8 @@
   "passkey_delete_error": "Kunde inte ta bort passkey.",
   "passkey_delete_title": "Ta bort passkey?",
   "passkey_name_label": "Namn på passkey",
+  "passkey_not_fresh_description": "Av säkerhetsskäl måste du ha loggat in nyligen. Du kan lägga till en passkey senare från ditt konto.",
+  "passkey_not_fresh_title": "Det går inte att lägga till passkey just nu",
   "passkey_reauth_confirmed": "Identitet bekräftad.",
   "passkey_reauth_not_fresh_hint": "Inte bekräftad än — öppna länken vi skickade först.",
   "passkey_reauth_prompt_prefix": "Av säkerhetsskäl behöver du logga in igen innan du lägger till en passkey. Vi skickar en inloggningslänk till",

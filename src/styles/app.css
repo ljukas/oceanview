@@ -286,3 +286,73 @@
     --row-rb: 0px;
   }
 }
+
+/* Colorful toasts — soft tint + bright icon (ADR-0015 transient accent).
+   Per type: a faint colored card + a soft colored border + a saturated icon,
+   with the title/description left at --normal-text (neutral) for readability.
+   Colors derive from the semantic tokens via color-mix, so light/dark adapt
+   automatically — no new tokens. info maps to --brand (no --info token exists).
+
+   Mix in OKLAB (rectangular), NOT oklch: --popover is oklch(1 0 0) with an
+   explicit hue 0 (red), so mixing a tint in the polar oklch space rotates the
+   result's hue toward red and every type's card comes out pink. oklab
+   interpolates L/a/b component-wise — no hue swing — matching --selected-wash.
+
+   Sonner (richColors off) paints each toast with `background: var(--normal-bg)`
+   and `border-color: var(--normal-border)`; re-declaring those custom properties
+   directly on the per-type toast element wins over the value inherited from the
+   toaster root, while leaving --normal-text untouched. Borders mix into
+   --popover (not --border) so they stay opaque/visible in dark mode, where
+   --border is translucent white. Kept UNLAYERED on purpose: sonner injects its
+   own unlayered <style>, and an unlayered rule beats any @layer rule regardless
+   of specificity, so the icon-color and var overrides reliably take. */
+[data-sonner-toast][data-type='success'] {
+  --normal-bg: color-mix(in oklab, var(--success) 12%, var(--popover));
+  --normal-border: color-mix(in oklab, var(--success) 40%, var(--popover));
+}
+[data-sonner-toast][data-type='success'] [data-icon] {
+  color: var(--success);
+}
+
+[data-sonner-toast][data-type='error'] {
+  --normal-bg: color-mix(in oklab, var(--destructive) 12%, var(--popover));
+  --normal-border: color-mix(in oklab, var(--destructive) 40%, var(--popover));
+}
+[data-sonner-toast][data-type='error'] [data-icon] {
+  color: var(--destructive);
+}
+
+[data-sonner-toast][data-type='warning'] {
+  --normal-bg: color-mix(in oklab, var(--warning) 14%, var(--popover));
+  --normal-border: color-mix(in oklab, var(--warning) 44%, var(--popover));
+}
+/* --warning is a light amber (L≈0.75); raw it's too low-contrast as an icon,
+   but darkening it toward the low-chroma --warning-foreground turned it muddy
+   (mustard). Instead derive a brighter, MORE saturated, slightly-yellower amber
+   from the token (relative color): bump chroma + nudge the hue toward yellow and
+   only slightly deepen the lightness, so it reads as yellow (not mustard) while
+   still standing off the pale card. Theme-adaptive via `from var(--warning)`. */
+[data-sonner-toast][data-type='warning'] [data-icon] {
+  color: oklch(from var(--warning) calc(l - 0.04) calc(c + 0.04) calc(h + 10));
+}
+
+[data-sonner-toast][data-type='info'] {
+  --normal-bg: color-mix(in oklab, var(--brand) 12%, var(--popover));
+  --normal-border: color-mix(in oklab, var(--brand) 40%, var(--popover));
+}
+[data-sonner-toast][data-type='info'] [data-icon] {
+  color: var(--brand);
+}
+
+/* loading: keep the card neutral, just tint the spinner brand. */
+[data-sonner-toast][data-type='loading'] [data-icon] {
+  color: var(--brand);
+}
+
+/* More breathing room between the icon and the text — sonner's default icon
+   margin is tight. The toaster-ancestor selector + !important guarantee this
+   beats sonner's own injected `[data-sonner-toast] [data-icon]` margin rule
+   regardless of source order. */
+[data-sonner-toaster] [data-sonner-toast] [data-icon] {
+  margin-inline-end: 1rem !important;
+}

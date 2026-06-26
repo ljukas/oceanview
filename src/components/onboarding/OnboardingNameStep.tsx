@@ -3,16 +3,14 @@ import { toast } from 'sonner'
 import { z } from 'zod'
 import { FieldGroup } from '~/components/ui/field'
 import { useAppForm } from '~/hooks/form'
+import { logger } from '~/lib/logger/browser'
 import { orpc } from '~/lib/orpc/client'
+import { nameField } from '~/lib/orpc/userProfileSchema'
 import { m } from '~/paraglide/messages'
 
-const nameSchema = z.object({
-  name: z
-    .string()
-    .trim()
-    .min(1, { error: () => m.validation_name_required() })
-    .max(255, { error: () => m.validation_name_too_long() }),
-})
+// Single-field form schema; the name rules live in the shared validator so the
+// client and the `user.updateProfile` procedure can't diverge.
+const nameSchema = z.object({ name: nameField })
 
 type Props = {
   onNext: () => void
@@ -31,7 +29,8 @@ export function OnboardingNameStep({ onNext }: Props) {
     onSubmit: async ({ value }) => {
       try {
         await updateMutation.mutateAsync({ name: value.name })
-      } catch {
+      } catch (error) {
+        logger.warn('onboarding name save failed', { error })
         toast.error(m.onboarding_save_error())
         return
       }
@@ -75,12 +74,7 @@ export function OnboardingNameStep({ onNext }: Props) {
         </FieldGroup>
 
         <form.AppForm>
-          <form.SubmitButton
-            label={m.onboarding_next()}
-            pendingLabel={m.onboarding_next()}
-            size="xl"
-            className="w-full font-normal"
-          />
+          <form.SubmitButton label={m.onboarding_next()} size="xl" className="w-full font-normal" />
         </form.AppForm>
       </form>
     </div>

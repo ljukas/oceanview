@@ -1,19 +1,18 @@
-import { useMutation, useSuspenseQuery } from '@tanstack/react-query'
+import { useMutation, useQueryClient, useSuspenseQuery } from '@tanstack/react-query'
 import { ArrowLeftIcon } from 'lucide-react'
 import { toast } from 'sonner'
 import { z } from 'zod'
 import { Button } from '~/components/ui/button'
 import { FieldGroup } from '~/components/ui/field'
 import { useAppForm } from '~/hooks/form'
+import { logger } from '~/lib/logger/browser'
 import { orpc } from '~/lib/orpc/client'
+import { phoneField } from '~/lib/orpc/userProfileSchema'
 import { m } from '~/paraglide/messages'
 
-const phoneSchema = z.object({
-  phone: z
-    .string()
-    .max(30, { error: () => m.validation_phone_too_long() })
-    .refine((v) => v === '' || v.length >= 5, { error: () => m.validation_phone_too_short() }),
-})
+// Single-field form schema; the phone rules live in the shared validator so the
+// client and the `user.updateProfile` procedure can't diverge.
+const phoneSchema = z.object({ phone: phoneField })
 
 type Props = {
   onNext: () => void
@@ -23,6 +22,7 @@ type Props = {
 
 export function OnboardingPhoneStep({ onNext, onSkip, onBack }: Props) {
   const { data: me } = useSuspenseQuery(orpc.user.me.queryOptions())
+  const queryClient = useQueryClient()
   const updateMutation = useMutation(orpc.user.updateProfile.mutationOptions())
 
   const form = useAppForm({
@@ -31,10 +31,15 @@ export function OnboardingPhoneStep({ onNext, onSkip, onBack }: Props) {
     onSubmit: async ({ value }) => {
       try {
         await updateMutation.mutateAsync({ phone: value.phone })
-      } catch {
+      } catch (error) {
+        logger.warn('onboarding phone save failed', { error })
         toast.error(m.onboarding_save_error())
         return
       }
+      // Refetch (not just invalidate) so a Back from the avatar step remounts
+      // this step with the just-saved number — the form re-reads `me.phone`
+      // from cache as its default; a stale cache would show it blank.
+      await queryClient.refetchQueries({ queryKey: orpc.user.me.key() })
       onNext()
     },
   })
@@ -61,23 +66,13 @@ export function OnboardingPhoneStep({ onNext, onSkip, onBack }: Props) {
           <form.AppField
             name="phone"
             children={(field) => (
-              <field.FloatingTextField
-                label={m.onboarding_phone_label()}
-                type="tel"
-                autoComplete="tel"
-                autoFocus
-              />
+              <field.FloatingPhoneField label={m.onboarding_phone_label()} autoFocus />
             )}
           />
         </FieldGroup>
 
         <form.AppForm>
-          <form.SubmitButton
-            label={m.onboarding_next()}
-            pendingLabel={m.onboarding_next()}
-            size="xl"
-            className="w-full font-normal"
-          />
+          <form.SubmitButton label={m.onboarding_next()} size="xl" className="w-full font-normal" />
         </form.AppForm>
       </form>
 

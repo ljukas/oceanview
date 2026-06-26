@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { FieldGroup } from '~/components/ui/field'
 import { withFieldGroup } from '~/hooks/form'
+import { nameField, phoneField } from '~/lib/orpc/userProfileSchema'
 import { m } from '~/paraglide/messages'
 
 // Email is intentionally absent from the editable field set: it is the
@@ -18,17 +19,10 @@ export const userFieldsDefaults: {
 }
 
 export const userFieldsSchema = z.object({
-  name: z
-    .string()
-    .trim()
-    .min(1, { error: () => m.validation_name_required() })
-    .max(255, { error: () => m.validation_name_too_long() }),
-  phone: z
-    .string()
-    .max(30, { error: () => m.validation_phone_too_long() })
-    .refine((v) => v === '' || v.length >= 5, {
-      error: () => m.validation_phone_too_short(),
-    }),
+  // name/phone are the shared validators (see ~/lib/orpc/userProfileSchema) so
+  // this form can't validate differently from the server procedures.
+  name: nameField,
+  phone: phoneField,
   role: z.enum(['user', 'admin'], { error: () => m.validation_role_required() }),
 })
 

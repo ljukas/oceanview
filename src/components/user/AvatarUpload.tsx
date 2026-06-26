@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient, useSuspenseQuery } from '@tanstack/react-query'
 import { ImageUpIcon } from 'lucide-react'
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { Avatar, AvatarFallback, AvatarImage } from '~/components/ui/avatar'
 import { Button } from '~/components/ui/button'
@@ -40,7 +40,15 @@ async function transcodeHeicToJpeg(file: File): Promise<File> {
   return new File([blob], renamed, { type: 'image/jpeg' })
 }
 
-export function AvatarUpload() {
+type Props = {
+  // Optional: notified whenever the upload flow (HEIC transcode → mint → PUT →
+  // confirm) starts or stops, so a parent (e.g. the onboarding avatar step) can
+  // block navigation that would drop an in-flight image. Existing callers omit
+  // it and are unaffected.
+  onUploadingChange?: (uploading: boolean) => void
+}
+
+export function AvatarUpload({ onUploadingChange }: Props = {}) {
   const queryClient = useQueryClient()
   const inputRef = useRef<HTMLInputElement>(null)
   const [progress, setProgress] = useState<UploadProgress | null>(null)
@@ -114,6 +122,12 @@ export function AvatarUpload() {
   }
 
   const busy = transcoding || progress !== null
+
+  // Report upload-in-progress to an opt-in parent. The effect (not an inline
+  // call) keeps the notification out of render and fires only when `busy` flips.
+  useEffect(() => {
+    onUploadingChange?.(busy)
+  }, [busy, onUploadingChange])
 
   return (
     <div className="flex items-center gap-4">

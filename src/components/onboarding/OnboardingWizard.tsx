@@ -4,16 +4,18 @@ import { toast } from 'sonner'
 import { LocaleSwitcherInline } from '~/components/LocaleSwitcher'
 import { Wordmark } from '~/components/Logo'
 import { ModeToggle } from '~/components/ModeToggle'
+import { logger } from '~/lib/logger/browser'
 import { orpc } from '~/lib/orpc/client'
 import { cn } from '~/lib/utils'
 import { m } from '~/paraglide/messages'
 import { OnboardingAvatarStep } from './OnboardingAvatarStep'
 import { OnboardingNameStep } from './OnboardingNameStep'
+import { OnboardingPasskeyStep } from './OnboardingPasskeyStep'
 import { OnboardingPhoneStep } from './OnboardingPhoneStep'
 
 const route = getRouteApi('/onboarding')
 
-const STEPS = ['name', 'phone', 'avatar'] as const
+const STEPS = ['name', 'phone', 'avatar', 'passkey'] as const
 export type OnboardingStep = (typeof STEPS)[number]
 
 export function OnboardingWizard() {
@@ -30,7 +32,8 @@ export function OnboardingWizard() {
   const finish = async () => {
     try {
       await completeMutation.mutateAsync({})
-    } catch {
+    } catch (error) {
+      logger.warn('onboarding complete failed', { error })
       toast.error(m.onboarding_save_error())
       return
     }
@@ -55,10 +58,16 @@ export function OnboardingWizard() {
             onSkip={() => goTo('avatar')}
             onBack={() => goTo('name')}
           />
-        ) : (
+        ) : step === 'avatar' ? (
           <OnboardingAvatarStep
-            onFinish={finish}
+            onNext={() => goTo('passkey')}
+            onSkip={() => goTo('passkey')}
             onBack={() => goTo('phone')}
+          />
+        ) : (
+          <OnboardingPasskeyStep
+            onFinish={finish}
+            onBack={() => goTo('avatar')}
             finishing={completeMutation.isPending}
           />
         )}

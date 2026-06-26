@@ -221,14 +221,13 @@ export async function updateOwnProfile(
     if (!target) throw new UserDomainError('NOT_FOUND')
     if (target.deletedAt) throw new UserDomainError('TARGET_DELETED')
 
-    const patch: Partial<{ name: string; phone: string }> = {}
-    if (input.name !== undefined) patch.name = input.name
-    if (input.phone !== undefined) patch.phone = input.phone
-    if (Object.keys(patch).length === 0) return target
+    // Nothing to write — skip the no-op UPDATE (an all-undefined `.set` is
+    // invalid SQL). Drizzle drops the `undefined` keys for a partial patch.
+    if (input.name === undefined && input.phone === undefined) return target
 
     const [row] = await tx
       .update(user)
-      .set(patch)
+      .set(input)
       .where(eq(user.id, userId))
       .returning(userSelection)
     return row
