@@ -164,6 +164,8 @@ Five architectural rules (full rationale in each ADR — read it before adjustin
 
 ## Scripts
 
+> **Local DB: Neon Local is PAUSED.** Local dev + tests run a plain `postgres:17-alpine` container on `:14520` (same `neon`/`npg`/`neondb` creds, no SSL) instead of Neon Local — Neon Local created one ~32 MB cloud branch per git branch and was filling the free tier. The dev DB no longer branches prod, so it starts **empty** (sign in with an `ADMIN_EMAILS` address to bootstrap an admin). CI and prod are unchanged. Re-enable per the comment on the `db` service in `compose.yaml`.
+
 | Command | What it does |
 |---|---|
 | `pnpm dev` | Vite dev server on :14500 |
@@ -174,7 +176,7 @@ Five architectural rules (full rationale in each ADR — read it before adjustin
 | `pnpm dev:up` / `dev:down` | Whole dev stack: db + queue + mail + storage; `up` also runs migrations |
 | `pnpm db:{up,down,generate,migrate,studio}` | Neon Local on :14520; generate / apply migrations; Drizzle Studio |
 | `pnpm auth:schema` | Regenerate `betterAuth.ts` + patch `timestamptz`. Idempotent |
-| `pnpm neon:prune` | Delete Neon Local's cloud branches for merged/deleted git branches (free-tier storage hygiene). Dev stack must be down |
+| `pnpm neon:prune` | **PAUSED** while Neon Local is paused (see the callout above): the `.neon_local/.branches` mappings it prunes are no longer produced, so it no-ops with a message. Was: delete Neon Local's cloud branches for merged/deleted git branches (free-tier storage hygiene), dev stack down |
 | `pnpm queue:{up,down,studio}` | Redis broker :14521; Bull Studio :14504 (needs `queue:up`) |
 | `pnpm storage:{up,down}` | RustFS S3 on :14523 + console :14503 + bucket bootstrap |
 | `pnpm storage:sync` | Mirror prod Vercel Blob bytes into local RustFS for prod rows surfaced via the Neon branch (idempotent; auto-run by `dev:up`). Skips without `S3_ENDPOINT` + `BLOB_*` read tokens. See ADR-0006 |

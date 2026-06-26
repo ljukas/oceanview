@@ -9,12 +9,13 @@ import { IMAGE_SIZES } from './src/lib/image/sizes'
 
 const isTest = process.env.VITEST === 'true'
 
-// Local `pnpm test` is force-pointed at the Neon Local `db` service via the
-// session-pool URL (`neondb_session`) — see the `SET search_path` comment in
-// `src/lib/db/index.ts` for why session pooling is required. Tests create
-// per-test schemas (`test_w*`); the dev app's `public` schema is untouched.
-// In CI (`CI=true`) we inherit DATABASE_URL from the job env instead.
-const TEST_DATABASE_URL = 'postgres://neon:npg@localhost:14520/neondb_session?sslmode=require'
+// Local `pnpm test` is force-pointed at the local `db` service. With the plain
+// Postgres container (Neon Local paused — see compose.yaml) there is no pooler,
+// so connections are direct sessions; the `max: 1` pinned connection in test
+// mode (`src/lib/db/index.ts`) keeps the `SET search_path` alive across queries.
+// Tests create per-test schemas (`test_w*`); the dev app's `public` schema is
+// untouched. In CI (`CI=true`) we inherit DATABASE_URL from the job env instead.
+const TEST_DATABASE_URL = 'postgres://neon:npg@localhost:14520/neondb'
 
 export default defineConfig({
   server: {
