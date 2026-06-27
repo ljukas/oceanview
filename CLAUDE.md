@@ -261,6 +261,10 @@ WebFetch before guessing APIs.
   - `src/components/ui/` is **kebab-case**, CLI-managed by shadcn — don't normalize.
   - Directory roles: `lib/` = wired/stateful; `hooks/` = React hooks; `utils/` = pure helpers; `data/` = static.
 - **Conventional Commits**: `<type>(<scope>): <subject>` ≤ 72 chars, imperative, *why* in body. Types: `feat`, `fix`, `chore`, `docs`, `refactor`, `test`, `build`, `ci`, `perf`, `style`, `revert`.
+- **PRs are squash-merged** — each PR collapses to a single commit on `main`, so write the PR *as* that commit:
+  - **PR title = the squash commit subject** → must be a Conventional Commit (same `<type>(<scope>): <subject>` rule above, ≤ 72 chars, imperative). GitHub appends `(#NN)` on merge — don't type it yourself; never ship a branch name or a bare "Update …" as the title.
+  - **PR description = the commit body** → the *why*, plus ADR/issue links. This is what lands in `git log`; the branch's own commit messages are discarded on squash, so they can stay scrappy while the PR title + description must be clean.
+  - **One concern per PR** — the whole PR becomes one commit, so keep it atomic; split unrelated changes into separate PRs.
 - **Lock TanStack Start to a specific RC version** in `package.json` until 1.0.
 - **Free tier first.** Confirm any third-party service covers ~20 users on a free tier.
 - **Every screen must be responsive.** Desktop + mobile + tablet; use Tailwind responsive utilities + shadcn primitives; no fixed pixel widths.
@@ -308,6 +312,7 @@ One line each. Reasoning in `git log CLAUDE.md` and in the linked ADR.
 - **Dark mode**: cookie-based (`oceanview-theme`), read in the root loader and applied to `<html>` during SSR; light/dark scriptless, `system` resolved by a small owned inline script + a `matchMedia` listener. Own `ThemeProvider`/`useTheme` (no next-themes). Manual toggle + system; no FOUC.
 - **Package manager**: pnpm.
 - **Linter/formatter**: Biome (editor-only, no CI gate); Tailwind class sorting on; CSS skipped (Tailwind v4 directives unsupported).
+- **Squash-merge only** (2026-06-27). Every PR lands on `main` as one squashed commit; PR title = the conventional-commit subject (GitHub appends `(#NN)`), PR description = the commit body. See Non-negotiables → Conventional Commits / squash-merge.
 - **Component tests run in Vitest Browser Mode** (2026-06-27). Real Chromium via Playwright (`@vitest/browser-playwright` + `vitest-browser-react`), not jsdom — the Radix surface (dialogs, dropdowns, cmdk, tooltips) needs real pointer/portal behaviour and jsdom would mean a permanent polyfill pile. Two-project Vitest config (`test.projects` in `vite.config.ts`): the `node` project (`extends: true`, distinct `sequence.groupOrder`) keeps the DB suite unchanged; a standalone `vitest.browser.config.ts` carries its own plugins — Paraglide + the **TanStack Start** plugin (rewrites `createServerFn` so server-fn-coupled components and the isomorphic oRPC client bundle) + React; Nitro/Tailwind/devtools omitted. Tests are `*.browser.test.tsx`, `render` is async, assert via retry-able `expect.element`, and get data by cache-seeding a fresh `QueryClient` (`renderWithProviders` in `test/browser/render.tsx`). Components using `useRouter`/route hooks need the hook mocked (no `RouterProvider` yet); MSW + route/loader-level tests deferred. See `test/browser/README.md`.
 - **Sidebar breakpoints**: drawer <768px (`md`); persistent icon rail (expandable inline) from `md` (768px) up. `MOBILE_BREAKPOINT` (768) in `src/hooks/useMobile.ts` aligns with the sidebar primitive's own `md:` show/hide. Pages step at `md:`. Icon-rail tooltips are the canonical exception to the "skip tooltips on self-evident icons" rule.
 
