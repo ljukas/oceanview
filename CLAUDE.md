@@ -41,6 +41,7 @@ Load on demand, not eagerly. The `pnpm dlx @tanstack/intent` block at the bottom
 | Organization rules (social invariants the schema can't express) | `docs/adr/0009-organization-rules.md` |
 | User invitations + invitee onboarding wizard (invite/accept, resend, expiry countdown, 3-step `/onboarding`) | `docs/adr/0017-user-invitation-flow.md` |
 | Reviewing React components | `vercel:react-best-practices` |
+| React component tests (browser-mode, render helpers, cache-seeding) | `test/browser/README.md` |
 | End-to-end verification | `vercel:verification` |
 | oRPC: core / Better Auth / TanStack Query / SSR | https://orpc.dev/docs (+ `/integrations/*`, `/best-practices/optimize-ssr`) |
 | Biome | `biome.json` + https://biomejs.dev/reference/configuration/ |
@@ -114,6 +115,10 @@ src/
 test/
   setup.ts                      schema-per-test (CREATE/DROP); localhost guard
   scope.ts                      newScope() — per-test prefixed IDs/emails
+  browser/                      component-test harness (Vitest Browser Mode)
+    setup.ts                    registers vitest-browser-react
+    render.tsx                  makeTestQueryClient() + renderWithProviders() (cache-seeding)
+    README.md                   how to write a component test (*.browser.test.tsx)
 drizzle/                        generated SQL migrations
 drizzle.config.ts               Neon Local SSL workaround
 compose.yaml                    db, queue, mail, storage services
@@ -188,7 +193,9 @@ Five architectural rules (full rationale in each ADR — read it before adjustin
 | `pnpm email:dev` | React Email preview server on :14501 |
 | `pnpm i18n:compile` | Compile `messages/{sv,en}.json` → `src/paraglide/` (auto via `prepare`/`pretest`/vite) |
 | `pnpm dev:worker` | Local BullMQ worker (consumes `blurhash` + `image_thumbnail` + `email_user_invited` topics) |
-| `pnpm test` / `test:watch` | Vitest; per-test schema (CREATE/migrate/DROP) on Neon Local session-pool URL |
+| `pnpm test` / `test:watch` | Vitest, **both projects**: `node` (per-test schema CREATE/migrate/DROP) + `browser` (Chromium component tests) |
+| `pnpm test:components` | Watch only the `browser` project (Vitest Browser Mode + Chromium); the component-TDD loop. See `test/browser/README.md` |
+| `pnpm test:node` | Run only the `node`/DB project (services, effects, logic, email-string tests) |
 | `pnpm check` | Biome format + lint + organize imports (writes). Daily driver |
 | `pnpm check:unsafe` / `check:ci` | Unsafe fixes (Tailwind sort); dry-run for CI |
 | `pnpm {format,lint,lint:fix}` | Biome subsets |
@@ -301,6 +308,7 @@ One line each. Reasoning in `git log CLAUDE.md` and in the linked ADR.
 - **Dark mode**: cookie-based (`oceanview-theme`), read in the root loader and applied to `<html>` during SSR; light/dark scriptless, `system` resolved by a small owned inline script + a `matchMedia` listener. Own `ThemeProvider`/`useTheme` (no next-themes). Manual toggle + system; no FOUC.
 - **Package manager**: pnpm.
 - **Linter/formatter**: Biome (editor-only, no CI gate); Tailwind class sorting on; CSS skipped (Tailwind v4 directives unsupported).
+- **Component tests run in Vitest Browser Mode** (2026-06-27). Real Chromium via Playwright (`@vitest/browser-playwright` + `vitest-browser-react`), not jsdom — the Radix surface (dialogs, dropdowns, cmdk, tooltips) needs real pointer/portal behaviour and jsdom would mean a permanent polyfill pile. Two-project Vitest config (`test.projects` in `vite.config.ts`): the `node` project (`extends: true`, distinct `sequence.groupOrder`) keeps the DB suite unchanged; a standalone `vitest.browser.config.ts` carries its own plugins — Paraglide + the **TanStack Start** plugin (rewrites `createServerFn` so server-fn-coupled components and the isomorphic oRPC client bundle) + React; Nitro/Tailwind/devtools omitted. Tests are `*.browser.test.tsx`, `render` is async, assert via retry-able `expect.element`, and get data by cache-seeding a fresh `QueryClient` (`renderWithProviders` in `test/browser/render.tsx`). Components using `useRouter`/route hooks need the hook mocked (no `RouterProvider` yet); MSW + route/loader-level tests deferred. See `test/browser/README.md`.
 - **Sidebar breakpoints**: drawer <768px (`md`); persistent icon rail (expandable inline) from `md` (768px) up. `MOBILE_BREAKPOINT` (768) in `src/hooks/useMobile.ts` aligns with the sidebar primitive's own `md:` show/hide. Pages step at `md:`. Icon-rail tooltips are the canonical exception to the "skip tooltips on self-evident icons" rule.
 
 ---
