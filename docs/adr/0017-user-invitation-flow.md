@@ -125,7 +125,7 @@ Both publish `user.changed` (ADR-0004). The `list` / `listContacts` procedures m
 
 **Interaction with the last-admin guard (ADR-0009 Rule 3)**: the guard counts non-deleted admins **regardless of verification status** — a *pending* (unverified) admin still counts toward "at least one active admin." This is the correct conservative reading (a pending admin is a real admin who simply hasn't signed in yet), but note the nuance: an org whose only admin is still pending can't be left admin-less by a demotion, which is intended.
 
-**Deferred follow-up (out of scope)**: a dedicated **onboarding flow** for accepted invitees to collect their real name, optional phone, and a profile-picture upload — replacing the `name = email` placeholder. The preserved `UserFormFields` / `AvatarUpload` components exist for exactly this.
+**Follow-up (now implemented)**: a dedicated **onboarding flow** for accepted invitees to collect their real name, optional phone, and a profile-picture upload — replacing the `name = email` placeholder. See the **2026-06-24 amendment — onboarding flow** below.
 
 ---
 
@@ -158,7 +158,7 @@ Both publish `user.changed` (ADR-0004). The `list` / `listContacts` procedures m
 ## Revisit triggers
 
 - **Better Auth changes `verify-email` semantics** (drops `autoSignInAfterVerification`, or stops setting `emailVerified` on magic-link login) — the derived-status convergence would break; revisit then.
-- **Onboarding lands** — the `name = email` placeholder gets a real collection step; this ADR's "name is a placeholder" line is then superseded for that path.
+- **Onboarding lands** — *done* (2026-06-24 amendment below): the `name = email` placeholder now gets a real collection step at first sign-in.
 - **Invites need a non-Swedish locale** (an invitee whose preference is somehow known ahead of accept) — the `baseLocale` choice would need an explicit locale on the payload.
 
 ---
@@ -175,3 +175,41 @@ Email is the **sole magic-link login identity** (`sendMagicLink` resolves the us
 - Side effect: this also closes a latent gap — `updateAsAdmin` never had the check-first uniqueness guard `inviteUser` has, so a duplicate email previously surfaced as a raw Postgres 23505 → 500 instead of a typed `EMAIL_TAKEN`. With email out of the update path the gap is gone (`EMAIL_TAKEN` stays used by `inviteUser` only).
 
 **Revisit trigger:** if a genuine in-place email-change need appears, wire Better Auth's `changeEmail` with re-verification to the new address (and a check-first `EMAIL_TAKEN`) rather than reopening the free-text field.
+
+---
+
+## 2026-06-24 amendment — onboarding flow (implemented)
+
+The deferred onboarding flow is now built. After accepting (the verify-email click auto-signs them in, or any first magic-link login), an invitee is taken through a **3-screen, one-input-per-screen wizard** before reaching the app: **name** (required), **phone** (skippable), **avatar** (skippable). It replaces the `name = email` placeholder with a real display name and lets owners add a phone (so others can reach them) and a picture.
+
+**Visual shell.** A **top-level** route `src/routes/onboarding.tsx` — *not* under `_authenticated`, so it renders full-screen with no app shell, exactly like `/login`: the `brand-wash` background, the `Wordmark`, `size="xl"` floating-label inputs, the locale/theme toggles, and a 3-dot step indicator (active dot `bg-brand`). See ADR-0015.
+
+**Forcing the wizard — and why the gate reads `me`, not the session.** The redirect lives in the **`_authenticated.tsx` loader**, which already fetches `orpc.user.me`. `me` deliberately bypasses the session cookie cache (`disableCookieCache: true`), so gating on `me.onboardedAt == null` reads *fresh* state. Gating on the cookie-cached `session.user` instead would loop for up to the 5-minute cache TTL: completion writes `onboardedAt` directly via the service, which the cached session wouldn't reflect, so the guard would bounce the just-finished user straight back. On completion the wizard `refetchQueries(orpc.user.me)` before navigating to `/`, so the loader sees the stamp immediately. The onboarding route's own loader does the inverse (`onboardedAt != null → redirect '/'`) so a finished user can't re-enter it.
+
+**New stored state: `onboardedAt timestamptz` (nullable)** on `user` — a Better Auth `additionalField` (`input: false`, written only by the service; regenerated via `pnpm auth:schema`), migration `drizzle/0014_add_user_onboarded_at.sql`. The migration **backfills** existing verified users (`UPDATE … WHERE email_verified = true`) so current owners aren't routed into the wizard; pending invitees stay `NULL` and onboard on first sign-in.
+
+We chose an explicit column over deriving "needs onboarding" from the `name === email` placeholder: the placeholder heuristic is coupled to a mutable display value (an admin editing a name would silently "onboard" that user), whereas a dedicated timestamp is unambiguous and decoupled.
+
+**Completion model.** `onboardedAt` means "finished/skipped the *whole* wizard" — stamped **only at the final step**, so a mid-flow refresh keeps the user in the wizard (the route loader sees `onboardedAt == null`). Name/phone are **saved per step** (so `?step=phone` survives a refresh, re-prefilling from `me`); the avatar persists on upload via the existing `AvatarUpload` (mint→upload→confirm). Because `useRealtimeSync` isn't mounted outside the authenticated shell, the name step invalidates `me` itself so later steps (avatar initials) reflect the new name.
+
+**Service ops — `src/lib/services/user/user.ts`**:
+- **`updateOwnProfile(userId, { name?, phone? })`** — self-update (the procedure scopes `userId` to the caller). Check-first `NOT_FOUND` / `TARGET_DELETED`; writes only the provided fields; **never** `role` or `email`.
+- **`completeOnboarding(userId)`** — stamps `onboardedAt = now()` (idempotent).
+
+No new error codes — both reuse `NOT_FOUND` / `TARGET_DELETED`.
+
+**Procedures — `src/lib/orpc/procedures/user.ts`** (both `protectedProcedure`, self-scoped on `context.user.id`, never an input id, so no admin gate):
+- **`updateProfile`** — input `{ name?, phone? }` (same name/phone validators as the admin schema, both optional); publishes `user.changed` (name/phone show in the contact list).
+- **`completeOnboarding`** — no input.
+
+**Files**:
+- `src/lib/auth.ts` — `onboardedAt` `additionalField`.
+- `src/routes/onboarding.tsx` — full-screen guarded route, `?step=name|phone|avatar`.
+- `src/components/onboarding/{OnboardingWizard,OnboardingNameStep,OnboardingPhoneStep,OnboardingAvatarStep}.tsx`.
+- `src/routes/_authenticated.tsx` — loader gate on `me.onboardedAt`.
+- `src/lib/services/user/user.ts` (+ `user.test.ts`) — `updateOwnProfile`, `completeOnboarding`, `onboardedAt` in `UserRow`/selection.
+- `src/lib/orpc/procedures/user.ts` — `updateProfile`, `completeOnboarding`.
+- `messages/{sv,en}.json` — `onboarding_*` keys.
+- `drizzle/0014_add_user_onboarded_at.sql` — column + backfill.
+
+**Deferred (still out of scope):** none for the basic flow. A future account-page self-edit of name/phone can reuse `updateProfile`.

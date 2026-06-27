@@ -7,10 +7,10 @@ if (!process.env.DATABASE_URL) {
 }
 
 // In tests: pin to one connection so the `SET search_path` issued in
-// `test/setup.ts` persists across every drizzle query and transaction. Tests
-// must connect to Neon Local's session-pool URL (`neondb_session`); under the
-// default transaction-pool URL the backend session is recycled after every
-// txn and the SET is lost.
+// `test/setup.ts` persists across every drizzle query and transaction. Local
+// tests run against a plain Postgres container (Neon Local paused — see
+// compose.yaml + vite.config.ts), so there's no pooler: connections are direct
+// sessions and the single pinned connection (`max: 1`) keeps the SET alive.
 const client = postgres(process.env.DATABASE_URL, {
   prepare: false,
   // In tests: silence Postgres NOTICEs (e.g. the "drop cascades to N other

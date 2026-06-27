@@ -33,6 +33,10 @@ export type UserRow = {
   emailVerified: boolean
   // When the latest invite email was sent; null for self-signed-up users.
   lastInvitedAt: Date | null
+  // When the user finished (or skipped through) the onboarding wizard; null
+  // until then. The _authenticated loader routes null-onboardedAt users to
+  // /onboarding. See ADR-0017.
+  onboardedAt: Date | null
 }
 
 // Email is intentionally absent: it is the magic-link login identity, so it is
@@ -42,6 +46,14 @@ export type UpdateUserInput = {
   name: string
   phone: string
   role: 'user' | 'admin'
+}
+
+// Self-service profile edit (onboarding wizard). Both optional so a single step
+// can patch just its one field. Role and email are deliberately absent — a user
+// can never change their own role, and email is the immutable login identity.
+export type UpdateOwnProfileInput = {
+  name?: string
+  phone?: string
 }
 
 const userSelection = {
@@ -56,6 +68,7 @@ const userSelection = {
   deletedAt: user.deletedAt,
   emailVerified: user.emailVerified,
   lastInvitedAt: user.lastInvitedAt,
+  onboardedAt: user.onboardedAt,
 }
 
 export async function findIdByEmail(email: string): Promise<string | null> {
@@ -188,6 +201,55 @@ export async function updateAsAdmin(
         role: input.role,
       })
       .where(eq(user.id, targetId))
+      .returning(userSelection)
+    return row
+  })
+}
+
+/**
+ * Self-service profile update used by the onboarding wizard. The procedure
+ * scopes `userId` to the caller's own id, so this only ever touches the actor's
+ * row. Check-first (ADR-0002): a missing or soft-deleted row is a domain error,
+ * not a silent no-op. Only the provided fields are written.
+ */
+export async function updateOwnProfile(
+  userId: string,
+  input: UpdateOwnProfileInput,
+): Promise<UserRow> {
+  return db.transaction(async (tx) => {
+    const target = await findRowById(userId, tx)
+    if (!target) throw new UserDomainError('NOT_FOUND')
+    if (target.deletedAt) throw new UserDomainError('TARGET_DELETED')
+
+    // Nothing to write — skip the no-op UPDATE (an all-undefined `.set` is
+    // invalid SQL). Drizzle drops the `undefined` keys for a partial patch.
+    if (input.name === undefined && input.phone === undefined) return target
+
+    const [row] = await tx
+      .update(user)
+      .set(input)
+      .where(eq(user.id, userId))
+      .returning(userSelection)
+    return row
+  })
+}
+
+/**
+ * Stamp the user as onboarded — fired when they finish (or skip through) the
+ * wizard's final step. Idempotent: a repeat call just rewrites the timestamp.
+ * Null `onboardedAt` is what the _authenticated loader uses to force the wizard,
+ * so this is what lets the user reach the rest of the app. See ADR-0017.
+ */
+export async function completeOnboarding(userId: string): Promise<UserRow> {
+  return db.transaction(async (tx) => {
+    const target = await findRowById(userId, tx)
+    if (!target) throw new UserDomainError('NOT_FOUND')
+    if (target.deletedAt) throw new UserDomainError('TARGET_DELETED')
+
+    const [row] = await tx
+      .update(user)
+      .set({ onboardedAt: new Date() })
+      .where(eq(user.id, userId))
       .returning(userSelection)
     return row
   })

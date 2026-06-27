@@ -18,7 +18,7 @@ export function setupDatabase() {
   if (!isLocal && process.env.CI !== 'true') {
     throw new Error(
       `Refusing to run tests against non-local DATABASE_URL outside CI. Got: ${url || '<unset>'}. ` +
-        `Tests CREATE/DROP schemas — locally they must only run against Neon Local. ` +
+        `Tests CREATE/DROP schemas — locally they must only run against the local Postgres container. ` +
         `Run \`pnpm db:up\` for local testing.`,
     )
   }

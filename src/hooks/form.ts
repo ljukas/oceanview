@@ -1,6 +1,7 @@
 import { createFormHook, createFormHookContexts } from '@tanstack/react-form'
 import { CancelButton } from '~/components/form/CancelButton'
 import { DateField } from '~/components/form/DateField'
+import { FloatingPhoneField } from '~/components/form/FloatingPhoneField'
 import { FloatingTextField } from '~/components/form/FloatingTextField'
 import { PhoneField } from '~/components/form/PhoneField'
 import { SelectField } from '~/components/form/SelectField'
@@ -18,6 +19,7 @@ export const { useAppForm, withForm, withFieldGroup } = createFormHook({
   fieldComponents: {
     TextField,
     FloatingTextField,
+    FloatingPhoneField,
     SelectField,
     PhoneField,
     ToggleField,

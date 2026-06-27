@@ -31,6 +31,7 @@ export const user = pgTable("user", {
   deletedAt: timestamp("deleted_at", { withTimezone: true }),
   imageBlurhash: text("image_blurhash"),
   lastInvitedAt: timestamp("last_invited_at", { withTimezone: true }),
+  onboardedAt: timestamp("onboarded_at", { withTimezone: true }),
 });
 
 export const session = pgTable(

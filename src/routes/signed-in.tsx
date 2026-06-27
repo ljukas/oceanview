@@ -25,10 +25,7 @@ function SignedIn() {
   const destination = redirectPath ?? '/'
 
   function onContinue() {
-    void navigate({
-      to: destination,
-      search: destination === '/' ? { passkey: 'setup' } : undefined,
-    })
+    void navigate({ to: destination })
   }
 
   return (
