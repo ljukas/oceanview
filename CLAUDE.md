@@ -6,6 +6,8 @@ Internal web app for a sailboat co-ownership group (10–20 users: owners + a co
 
 **Architecture lives in `docs/adr/`** (ADRs 0001–0017). This file is a router: rules + commands + gotchas. For *why* a pattern exists, follow the ADR link.
 
+**How we work lives in `docs/*-workflow.md`** — [feature-workflow.md](docs/feature-workflow.md) (new features) and [refactor-workflow.md](docs/refactor-workflow.md) (behavior-preserving change): the phase-by-phase process from spark to merge, and which skills/agents to reach for at each phase.
+
 ---
 
 ## Skill loading — when to load which
@@ -133,6 +135,8 @@ Five architectural rules (full rationale in each ADR — read it before adjustin
 - **Forms via `useAppForm`.** Never `useState` for field values. Field errors via bound `<FieldError>`; async errors via `toast.error()`. Canonical example: `src/components/login/LoginFormCard.tsx`. See **ADR-0005**.
 
 ### Workflow recipes
+
+> For the *process* around these recipes — how to approach a whole feature or refactor, and which skills/agents to use at each phase — see [feature-workflow.md](docs/feature-workflow.md) and [refactor-workflow.md](docs/refactor-workflow.md). The recipes below are the mechanical steps; the workflow docs are the arc they sit in.
 
 **Adding a feature schema**: create `src/lib/db/schema/<feature>.ts` → add re-export to `schema/index.ts` → `pnpm db:generate --name=<descriptive_name> && pnpm db:migrate`. Test setup runs all migrations per-test, so nothing in `test/setup.ts` needs touching.
 
