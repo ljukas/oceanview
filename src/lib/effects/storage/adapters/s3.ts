@@ -14,6 +14,14 @@ import type { StorageEffects } from '../storage'
 // Browser has this long after mint to start the PUT before the URL expires.
 const PUT_TTL_SECONDS = 5 * 60
 
+// Public-store objects (avatars, derived thumbnails) are content-addressed by
+// UUID/file-id and never mutate in place — a replacement writes a new pathname
+// and deletes the old blob. So they're safe to cache forever. We set this
+// explicitly because RustFS/S3 stores no Cache-Control unless we PUT one, and
+// without it browsers fall back to heuristic caching (revalidate-or-refetch
+// behaviour that diverges across browsers, e.g. Arc re-fetching every visit).
+const PUBLIC_CACHE_CONTROL = 'public, max-age=31536000, immutable'
+
 function envOrThrow(name: string): string {
   const v = process.env[name]
   if (!v) throw new Error(`${name} is not set; cannot use the s3 adapter.`)
@@ -64,12 +72,18 @@ export const s3: StorageEffects = {
   // the object size (unlike Vercel Blob's `maximumSizeInBytes`). Dev-only
   // gap — size limits are still validated at the mint/confirm boundaries.
   async mintUploadToken({ access, pathname, contentType }) {
+    // Bake an immutable Cache-Control into public uploads. A presigned PUT signs
+    // whatever headers the command carries, so the browser MUST echo the exact
+    // same `Cache-Control` value back on the PUT (clientUpload.ts forwards
+    // `upload.headers`) or S3/RustFS rejects the request with 403.
+    const cacheControl = access === 'public' ? PUBLIC_CACHE_CONTROL : undefined
     const url = await getSignedUrl(
       client,
       new PutObjectCommand({
         Bucket: bucketFor(access),
         Key: pathname,
         ContentType: contentType,
+        ...(cacheControl ? { CacheControl: cacheControl } : {}),
       }),
       { expiresIn: PUT_TTL_SECONDS },
     )
@@ -78,7 +92,10 @@ export const s3: StorageEffects = {
       upload: {
         kind: 'presigned-put',
         url,
-        headers: { 'Content-Type': contentType },
+        headers: {
+          'Content-Type': contentType,
+          ...(cacheControl ? { 'Cache-Control': cacheControl } : {}),
+        },
       },
     }
   },
@@ -118,6 +135,7 @@ export const s3: StorageEffects = {
         Key: pathname,
         Body: bytes,
         ContentType: contentType,
+        ...(access === 'public' ? { CacheControl: PUBLIC_CACHE_CONTROL } : {}),
       }),
     )
   },

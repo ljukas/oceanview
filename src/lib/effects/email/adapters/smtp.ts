@@ -1,4 +1,5 @@
 import nodemailer, { type Transporter } from 'nodemailer'
+import { renderInviteUser } from '~/emails/InviteUserEmail'
 import { renderMagicLink } from '~/emails/MagicLinkEmail'
 import { logger } from '~/lib/logger/server'
 import type { EmailEffects } from '../email'
@@ -25,5 +26,16 @@ export const smtp: EmailEffects = {
       text,
     })
     logger.info('magic-link sent (smtp)', { to })
+  },
+  async sendUserInvited({ to, inviteUrl, locale }) {
+    const { subject, html, text } = await renderInviteUser({ inviteUrl, locale })
+    await getTransport().sendMail({
+      from: process.env.EMAIL_FROM,
+      to,
+      subject,
+      html,
+      text,
+    })
+    logger.info('invite sent (smtp)', { to })
   },
 }

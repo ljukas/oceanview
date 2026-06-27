@@ -49,3 +49,13 @@ test('VITEST short-circuit selects devLog even when SMTP_HOST is set', async () 
     }),
   ).resolves.toBeUndefined()
 })
+
+test('sendUserInvited resolves without throwing', async () => {
+  await expect(
+    email.sendUserInvited({
+      to: 'fia@test.oceanview.local',
+      inviteUrl: 'https://example.test/api/auth/verify-email?token=abc&callbackURL=%2F',
+      locale: 'sv',
+    }),
+  ).resolves.toBeUndefined()
+})

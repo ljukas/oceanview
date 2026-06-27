@@ -68,8 +68,17 @@ export function useAddPasskey(options?: { onAdded?: () => void; onNotFresh?: () 
     },
     onError: (err) => {
       if (isUserDismissed(err)) return
-      if (isSessionNotFresh(err) && options?.onNotFresh) {
-        options.onNotFresh()
+      if (isSessionNotFresh(err)) {
+        // The Account button passes `onNotFresh` → re-auth dialog. Onboarding and
+        // the setup prompt don't, so explain the security reason + the next step
+        // rather than leaking Better Auth's raw English "Session is not fresh".
+        if (options?.onNotFresh) {
+          options.onNotFresh()
+          return
+        }
+        toast.error(m.passkey_not_fresh_title(), {
+          description: m.passkey_not_fresh_description(),
+        })
         return
       }
       toast.error(errorMessage(err, m.passkey_add_error()))
@@ -131,43 +140,13 @@ export function useSignInPasskey(options: { onSignedIn: () => void }) {
   return { signIn, pending }
 }
 
-export function useSignInPasskeyAutofill(options: { onSignedIn: () => void }) {
-  const { onSignedIn } = options
-
-  useEffect(() => {
-    // isConditionalMediationAvailable() returns a Promise — await it before invoking
-    // autofill, and skip if the effect was torn down while we waited.
-    let active = true
-    async function start() {
-      const canConditional = await window.PublicKeyCredential?.isConditionalMediationAvailable?.()
-      if (!canConditional || !active) return
-
-      void authClient.signIn.passkey({
-        autoFill: true,
-        fetchOptions: {
-          onSuccess: () => {
-            onSignedIn()
-          },
-          onError: ({ error }) => {
-            if (error?.code === 'NotAllowedError') return
-            toast.error(error?.message ?? m.passkey_signin_error())
-          },
-        },
-      })
-    }
-    void start()
-    return () => {
-      active = false
-    }
-  }, [onSignedIn])
-}
-
-// Drives the explanatory "create a passkey" prompt shown right after sign-in. We never
-// auto-open the OS dialog — only the prompt's button does. `open` is true only when the
-// caller enables it, the user has no passkeys yet, the device isn't in the dismissal
-// window, and the browser supports passkeys at all.
-export function usePasskeySetupPrompt(options: { enabled: boolean }) {
-  const { enabled } = options
+// Drives the explanatory "create a passkey" prompt. We never auto-open the OS dialog —
+// only the prompt's button does. It's periodic, not login-bound: mount it on the app's
+// home page and `open` becomes true for any passkey-less user once the per-device snooze
+// window has lapsed (the snooze is set on dismiss and when a user skips the onboarding
+// passkey step). That re-nudges invitees who skipped onboarding and users on long-lived
+// sessions, while still respecting "not now". Gated on WebAuthn support and zero passkeys.
+export function usePasskeySetupPrompt() {
   const isSupported = usePasskeySupport()
   const passkeysQuery = useListPasskeys()
   const [dismissed, setDismissed] = useState(false)
@@ -181,7 +160,6 @@ export function usePasskeySetupPrompt(options: { enabled: boolean }) {
   })
 
   const open =
-    enabled &&
     isSupported &&
     !dismissed &&
     !suppressed.current &&

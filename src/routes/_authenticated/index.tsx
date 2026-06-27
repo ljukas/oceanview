@@ -1,8 +1,8 @@
 import { useSuspenseQuery } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
 import { PlusIcon } from 'lucide-react'
-import { useEffect, useState } from 'react'
 import { z } from 'zod'
+import { PageContainer } from '~/components/layout/PageContainer'
 import { PasskeySetupPrompt } from '~/components/passkey/PasskeySetupPrompt'
 import { CreateSeasonDialog } from '~/components/season/CreateSeasonDialog'
 import { DeleteSeasonDialog } from '~/components/season/DeleteSeasonDialog'
@@ -15,7 +15,6 @@ import { orpc } from '~/lib/orpc/client'
 import { m } from '~/paraglide/messages'
 
 const indexSearchSchema = z.object({
-  passkey: z.enum(['setup']).optional(),
   dialog: z.enum(['createSeason', 'editSeason', 'deleteSeason']).optional(),
   seasonYear: z.coerce.number().int().optional(),
 })
@@ -44,7 +43,6 @@ export const Route = createFileRoute('/_authenticated/')({
 
 function Calendar() {
   const { user: currentUser } = Route.useRouteContext()
-  const passkeyParam = Route.useSearch({ select: (s) => s.passkey })
   const seasonYear = Route.useSearch({ select: (s) => s.seasonYear })
   const dialog = Route.useSearch({ select: (s) => s.dialog })
   const navigate = Route.useNavigate()
@@ -69,19 +67,16 @@ function Calendar() {
   const handleEdit = (year: number) => void open('editSeason', { seasonYear: year })
   const handleDelete = (year: number) => void open('deleteSeason', { seasonYear: year })
 
-  // Capture the post-sign-in setup intent once, then strip the ?passkey=setup param so a
-  // refresh doesn't reopen the prompt. The captured value keeps the prompt enabled even
-  // after the URL is cleaned.
-  const [wantsPasskeySetup] = useState(() => passkeyParam === 'setup')
-  const passkeyPrompt = usePasskeySetupPrompt({ enabled: wantsPasskeySetup })
-
-  useEffect(() => {
-    if (passkeyParam === 'setup') void navigate({ to: '/', search: {}, replace: true })
-  }, [passkeyParam, navigate])
+  // Periodic passkey nudge: self-gates on zero passkeys + the per-device snooze window
+  // (see usePasskeySetupPrompt), so it re-appears "sometimes" for anyone without a passkey
+  // — including invitees who skipped the onboarding step — rather than only after sign-in.
+  const passkeyPrompt = usePasskeySetupPrompt()
 
   return (
-    <div className="flex flex-col gap-6 p-4 md:p-8">
-      <h1 className="font-semibold text-2xl tracking-tight md:text-3xl">{m.nav_calendar()}</h1>
+    <PageContainer width="full" fill>
+      <h1 className="font-bold text-2xl tracking-tight text-balance md:text-3xl">
+        {m.nav_calendar()}
+      </h1>
       {isAdmin && (
         <div className="flex justify-end">
           <Button onClick={() => open('createSeason')}>
@@ -122,6 +117,6 @@ function Calendar() {
         onCreate={passkeyPrompt.create}
         onDismiss={passkeyPrompt.dismiss}
       />
-    </div>
+    </PageContainer>
   )
 }

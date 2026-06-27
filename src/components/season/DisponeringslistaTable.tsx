@@ -74,7 +74,7 @@ export function DisponeringslistaTable({
   const currentYear = new Date().getFullYear()
 
   return (
-    <section className="flex flex-col gap-3">
+    <section className="flex min-h-0 flex-1 flex-col gap-3">
       <h2 className="text-center font-heading font-semibold text-lg tracking-tight">
         {m.season_disponeringslista_title()}
       </h2>
@@ -106,7 +106,7 @@ function WideLayout({
   onDeleteSeason,
 }: LayoutProps) {
   return (
-    <div className="hidden overflow-x-auto rounded-lg border bg-card lg:block">
+    <div className="hidden min-h-0 overflow-auto rounded-lg border bg-card lg:-mx-4 lg:block">
       <table className="w-full text-sm">
         <tbody>
           {schedules.map((s, yearIdx) => {
@@ -254,7 +254,7 @@ function MobileLayout({
   onDeleteSeason,
 }: LayoutProps) {
   return (
-    <div className="flex flex-col gap-4 lg:hidden">
+    <div className="flex min-h-0 flex-col gap-4 overflow-auto lg:hidden">
       {schedules.map((s) => (
         <YearCard
           key={s.year}

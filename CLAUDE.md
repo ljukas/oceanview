@@ -4,7 +4,9 @@ Internal web app for a sailboat co-ownership group (10–20 users: owners + a co
 
 **State**: scaffold + auth + DB + services + file storage + email all wired. Resend is live in prod (sender domain `mail.lukaslindqvist.se`, verified 2026-06-11; see ADR-0008).
 
-**Architecture lives in `docs/adr/`** (ADRs 0001–0011). This file is a router: rules + commands + gotchas. For *why* a pattern exists, follow the ADR link.
+**Architecture lives in `docs/adr/`** (ADRs 0001–0017). This file is a router: rules + commands + gotchas. For *why* a pattern exists, follow the ADR link.
+
+**How we work lives in `docs/*-workflow.md`** — [feature-workflow.md](docs/feature-workflow.md) (new features) and [refactor-workflow.md](docs/refactor-workflow.md) (behavior-preserving change): the phase-by-phase process from spark to merge, and which skills/agents to reach for at each phase.
 
 ---
 
@@ -23,6 +25,9 @@ Load on demand, not eagerly. The `pnpm dlx @tanstack/intent` block at the bottom
 | shadcn/ui components + theming | `vercel:shadcn` + project-local `shadcn` (`.claude/skills/shadcn/`) |
 | Forms (composition, bound fields, validation) | `docs/adr/0005-form-architecture.md` |
 | Form presentation: dialog vs page, responsive overlays, URL dialog state | `docs/adr/0013-form-presentation-and-dialog-architecture.md` |
+| Visual identity: app-shell layout, typography, brand accent, overlay motion | `docs/adr/0015-visual-identity-and-design-language.md` |
+| Command palette (global Cmd+K: navigate + actions + search) | `docs/adr/0014-command-palette-architecture.md` |
+| Empty states & list zero-state CTAs | `docs/adr/0016-empty-state-and-feedback-conventions.md` |
 | Services, domain rules, error mapping | `docs/adr/0002-service-domain-architecture.md` |
 | Side effects (email, storage, audit) | `docs/adr/0001-side-effects-architecture.md` |
 | Email templates | `docs/adr/0008-email-architecture.md` + https://react.email/docs |
@@ -34,7 +39,9 @@ Load on demand, not eagerly. The `pnpm dlx @tanstack/intent` block at the bottom
 | Logging | `docs/adr/0003-logging-architecture.md` |
 | File storage (avatars, documents) | `docs/adr/0006-file-storage.md` |
 | Organization rules (social invariants the schema can't express) | `docs/adr/0009-organization-rules.md` |
+| User invitations + invitee onboarding wizard (invite/accept, resend, expiry countdown, 3-step `/onboarding`) | `docs/adr/0017-user-invitation-flow.md` |
 | Reviewing React components | `vercel:react-best-practices` |
+| React component tests (browser-mode, render helpers, cache-seeding) | `test/browser/README.md` |
 | End-to-end verification | `vercel:verification` |
 | oRPC: core / Better Auth / TanStack Query / SSR | https://orpc.dev/docs (+ `/integrations/*`, `/best-practices/optimize-ssr`) |
 | Biome | `biome.json` + https://biomejs.dev/reference/configuration/ |
@@ -59,6 +66,7 @@ src/
   routes/
     __root.tsx                  root layout; session guard (public: /, /api/auth/*)
     login.tsx                   magic-link + passkey sign-in
+    onboarding.tsx              full-screen 3-step invitee wizard (ADR-0017); guard → /onboarding while onboardedAt null
     api/auth/$.ts               Better Auth catch-all
     api/rpc/$.ts                oRPC catch-all
     api/files/download.$id.ts   auth-gated 302 → signed storage URL
@@ -99,14 +107,18 @@ src/
   hooks/                        useMobile, usePasskeys, useSavedLogin, form
   components/
     {DefaultCatchBoundary,NotFound,AppSidebar,ModeToggle,ThemeProvider}.tsx
-    user/  passkey/  document/  contact/  share/  form/  ui/
-  emails/                       React Email templates; preview with `pnpm email:dev`
+    user/  passkey/  document/  contact/  share/  form/  onboarding/  ui/
+  emails/                       React Email templates (MagicLink, InviteUser); preview with `pnpm email:dev`
   data/passkeyAaguids.json      static AAGUID registry
   utils/seo.ts                  meta-tag helper
   styles/                       Tailwind v4 entry
 test/
   setup.ts                      schema-per-test (CREATE/DROP); localhost guard
   scope.ts                      newScope() — per-test prefixed IDs/emails
+  browser/                      component-test harness (Vitest Browser Mode)
+    setup.ts                    registers vitest-browser-react
+    render.tsx                  makeTestQueryClient() + renderWithProviders() (cache-seeding)
+    README.md                   how to write a component test (*.browser.test.tsx)
 drizzle/                        generated SQL migrations
 drizzle.config.ts               Neon Local SSL workaround
 compose.yaml                    db, queue, mail, storage services
@@ -128,6 +140,8 @@ Five architectural rules (full rationale in each ADR — read it before adjustin
 - **Forms via `useAppForm`.** Never `useState` for field values. Field errors via bound `<FieldError>`; async errors via `toast.error()`. Canonical example: `src/components/login/LoginFormCard.tsx`. See **ADR-0005**.
 
 ### Workflow recipes
+
+> For the *process* around these recipes — how to approach a whole feature or refactor, and which skills/agents to use at each phase — see [feature-workflow.md](docs/feature-workflow.md) and [refactor-workflow.md](docs/refactor-workflow.md). The recipes below are the mechanical steps; the workflow docs are the arc they sit in.
 
 **Adding a feature schema**: create `src/lib/db/schema/<feature>.ts` → add re-export to `schema/index.ts` → `pnpm db:generate --name=<descriptive_name> && pnpm db:migrate`. Test setup runs all migrations per-test, so nothing in `test/setup.ts` needs touching.
 
@@ -159,6 +173,8 @@ Five architectural rules (full rationale in each ADR — read it before adjustin
 
 ## Scripts
 
+> **Local DB: Neon Local is PAUSED.** Local dev + tests run a plain `postgres:17-alpine` container on `:14520` (same `neon`/`npg`/`neondb` creds, no SSL) instead of Neon Local — Neon Local created one ~32 MB cloud branch per git branch and was filling the free tier. The dev DB no longer branches prod, so it starts **empty** (sign in with an `ADMIN_EMAILS` address to bootstrap an admin). CI and prod are unchanged. Re-enable per the comment on the `db` service in `compose.yaml`.
+
 | Command | What it does |
 |---|---|
 | `pnpm dev` | Vite dev server on :14500 |
@@ -169,15 +185,17 @@ Five architectural rules (full rationale in each ADR — read it before adjustin
 | `pnpm dev:up` / `dev:down` | Whole dev stack: db + queue + mail + storage; `up` also runs migrations |
 | `pnpm db:{up,down,generate,migrate,studio}` | Neon Local on :14520; generate / apply migrations; Drizzle Studio |
 | `pnpm auth:schema` | Regenerate `betterAuth.ts` + patch `timestamptz`. Idempotent |
-| `pnpm neon:prune` | Delete Neon Local's cloud branches for merged/deleted git branches (free-tier storage hygiene). Dev stack must be down |
+| `pnpm neon:prune` | **PAUSED** while Neon Local is paused (see the callout above): the `.neon_local/.branches` mappings it prunes are no longer produced, so it no-ops with a message. Was: delete Neon Local's cloud branches for merged/deleted git branches (free-tier storage hygiene), dev stack down |
 | `pnpm queue:{up,down,studio}` | Redis broker :14521; Bull Studio :14504 (needs `queue:up`) |
 | `pnpm storage:{up,down}` | RustFS S3 on :14523 + console :14503 + bucket bootstrap |
 | `pnpm storage:sync` | Mirror prod Vercel Blob bytes into local RustFS for prod rows surfaced via the Neon branch (idempotent; auto-run by `dev:up`). Skips without `S3_ENDPOINT` + `BLOB_*` read tokens. See ADR-0006 |
 | `pnpm mail:{up,down}` | Mailpit SMTP :14522 + UI :14502 |
 | `pnpm email:dev` | React Email preview server on :14501 |
 | `pnpm i18n:compile` | Compile `messages/{sv,en}.json` → `src/paraglide/` (auto via `prepare`/`pretest`/vite) |
-| `pnpm dev:worker` | Local BullMQ worker (consumes `blurhash` + `image_thumbnail` topics) |
-| `pnpm test` / `test:watch` | Vitest; per-test schema (CREATE/migrate/DROP) on Neon Local session-pool URL |
+| `pnpm dev:worker` | Local BullMQ worker (consumes `blurhash` + `image_thumbnail` + `email_user_invited` topics) |
+| `pnpm test` / `test:watch` | Vitest, **both projects**: `node` (per-test schema CREATE/migrate/DROP) + `browser` (Chromium component tests) |
+| `pnpm test:components` | Watch only the `browser` project (Vitest Browser Mode + Chromium); the component-TDD loop. See `test/browser/README.md` |
+| `pnpm test:node` | Run only the `node`/DB project (services, effects, logic, email-string tests) |
 | `pnpm check` | Biome format + lint + organize imports (writes). Daily driver |
 | `pnpm check:unsafe` / `check:ci` | Unsafe fixes (Tailwind sort); dry-run for CI |
 | `pnpm {format,lint,lint:fix}` | Biome subsets |
@@ -190,7 +208,7 @@ Five architectural rules (full rationale in each ADR — read it before adjustin
 
 - **Auto-provisioned by Vercel ↔ Neon Marketplace** (do not add manually): `DATABASE_URL`, `DATABASE_URL_UNPOOLED`, `NEON_PROJECT_ID`, plus `POSTGRES_*` / `PG*` aliases.
 - **Local-only for Neon Local** (`.env`, gitignored): `NEON_API_KEY`, `PARENT_BRANCH_ID`.
-- **Set in Vercel + `.env`**: `BETTER_AUTH_SECRET` (32+ chars; `openssl rand -base64 32`), `BETTER_AUTH_URL`, `ADMIN_EMAILS` (CSV allowlist). `ADMIN_EMAILS` is consulted only when a user row is *created* (signup hook in `auth.ts`) — editing it later does **not** change existing users. To promote/demote an existing user, update their `role` via the admin UI at `/admin` (or the Better Auth admin API); to revoke access immediately, also revoke their sessions (role is cookie-cached up to 5 min, sessions live 30 days).
+- **Set in Vercel + `.env`**: `BETTER_AUTH_SECRET` (32+ chars; `openssl rand -base64 32`), `BETTER_AUTH_URL`, `ADMIN_EMAILS` (CSV allowlist). `ADMIN_EMAILS` is consulted only at **self-signup** — Better Auth's `user.create.before` hook in `auth.ts` (when a row is created through the adapter). It does **not** apply to **invited** users: `inviteUser` inserts the row directly via the service, bypassing that hook, so every invitee is `role:'user'` regardless of the allowlist (admins promote afterward via the Edit dialog — see ADR-0017). Editing `ADMIN_EMAILS` later does **not** change existing users either way. To promote/demote an existing user, update their `role` via the admin UI at `/admin` (or the Better Auth admin API); to revoke access immediately, also revoke their sessions (role is cookie-cached up to 5 min, sessions live 30 days).
 - **Vercel Blob (auto-provisioned via Marketplace)**: `BLOB_PUBLIC_READ_WRITE_TOKEN` (avatars), `BLOB_PRIVATE_READ_WRITE_TOKEN` (documents). Leave blank locally; use `S3_*` instead. Override: `STORAGE_ADAPTER=devLog` (tests).
 - **Local S3** (backs `pnpm storage:up`): `S3_ENDPOINT` (default `http://localhost:14523`), `S3_REGION=eu-north-1`, `S3_ACCESS_KEY_ID`/`S3_SECRET_ACCESS_KEY` (default `oceanview-dev`/`oceanview-dev-secret-key`), `S3_BUCKET_PUBLIC=oceanview-public`, `S3_BUCKET_PRIVATE=oceanview-private`. When `S3_ENDPOINT` is set, the storage adapter picks `s3` over `BLOB_*`. See ADR-0006.
 - **Resend (live in prod)**: `RESEND_API_KEY`, `EMAIL_FROM` (`Oceanview <no-reply@mail.lukaslindqvist.se>`) set in Vercel production. Selected when both are set and `SMTP_HOST` is unset. See ADR-0008. **Also set both on the Vercel Preview env** if you want magic-link sign-in to work on PR previews — otherwise the adapter falls back to `devLog` and no email is sent. On previews sign-in is **magic-link only** (passkey `rpID`/`origin` derive from `BETTER_AUTH_URL`, so passkeys are prod-only); `auth.ts` uses `VERCEL_BRANCH_URL` as the preview base URL so links survive re-pushes.
@@ -223,12 +241,6 @@ WebFetch before guessing APIs.
 
 ---
 
-## Deferred work
-
-Nothing currently deferred. (Resend sender-domain verification landed 2026-06-11 — see ADR-0008 amendments.)
-
----
-
 ## Non-negotiables
 
 - **Magic-link only.** No passwords without revisiting auth design.
@@ -249,6 +261,10 @@ Nothing currently deferred. (Resend sender-domain verification landed 2026-06-11
   - `src/components/ui/` is **kebab-case**, CLI-managed by shadcn — don't normalize.
   - Directory roles: `lib/` = wired/stateful; `hooks/` = React hooks; `utils/` = pure helpers; `data/` = static.
 - **Conventional Commits**: `<type>(<scope>): <subject>` ≤ 72 chars, imperative, *why* in body. Types: `feat`, `fix`, `chore`, `docs`, `refactor`, `test`, `build`, `ci`, `perf`, `style`, `revert`.
+- **PRs are squash-merged** — each PR collapses to a single commit on `main`, so write the PR *as* that commit:
+  - **PR title = the squash commit subject** → must be a Conventional Commit (same `<type>(<scope>): <subject>` rule above, ≤ 72 chars, imperative). GitHub appends `(#NN)` on merge — don't type it yourself; never ship a branch name or a bare "Update …" as the title. Validated in CI by `.github/workflows/lint-pr-title.yml`.
+  - **PR description = the commit body** → the *why*, plus ADR/issue links. This is what lands in `git log`; the branch's own commit messages are discarded on squash, so they can stay scrappy while the PR title + description must be clean.
+  - **One concern per PR** — the whole PR becomes one commit, so keep it atomic; split unrelated changes into separate PRs.
 - **Lock TanStack Start to a specific RC version** in `package.json` until 1.0.
 - **Free tier first.** Confirm any third-party service covers ~20 users on a free tier.
 - **Every screen must be responsive.** Desktop + mobile + tablet; use Tailwind responsive utilities + shadcn primitives; no fixed pixel widths.
@@ -273,6 +289,9 @@ One line each. Reasoning in `git log CLAUDE.md` and in the linked ADR.
 - **Presence**: online status via an in-process refcounted `presence` effect on the SSE connection lifecycle; `presence.changed` (no ids) → `listOnline()` refetch; away/idle deliberately out of scope. Single-instance assumption shared with ADR-0004. See ADR-0011.
 - **Forms**: `@tanstack/react-form` v1 `createFormHook` + bound shadcn `<Field>`. See ADR-0005.
 - **Form presentation** (2026-06-15): small CRUD forms (≈1–5 fields) use a responsive overlay (`ResponsiveDialog`: centered `Dialog` desktop / bottom `Sheet` mobile) with **open/close state in the URL** (`?dialog=…`) for single-entity flows; transient multi-selection (bulk) stays ephemeral; complex/large/growing forms get a **dedicated route** (e.g. `/admin/shares/assign/$shareCode`, the future ADR-0012 places editor); confirmations stay centered `AlertDialog`; mutating overlays use optimistic instant-close + invalidate-on-settle. See ADR-0013.
+- **Visual identity / design language** (2026-06-17; foundation/plan 01 built 2026-06-17, login + empty washes pending plans 02/05). "Quiet nautical confidence": deploy the sidebar `variant="inset"` (rounded content panel, sidebar bg wraps) + a shared centered `PageContainer`; self-hosted **Cabinet Grotesk** headings over **Switzer** body (both Fontshare ITF-FFL variable woff2; Geist dropped) with Linear-style tuning (tight tracking, optical sizing, tabular numerals); one `--brand` nautical-blue token applied to login/empty washes, a logo mark, + form-field focus borders (`--primary` stays neutral; 2026-06-18 amendment added the focus-border placement); slower, `prefers-reduced-motion`-aware overlay motion. Table/content width split (2026-06-23 amendment): data-table screens (Calendar, Owners, Documents) use `PageContainer width="full"` (full-bleed); card grids/lists stay `default` (max-w-5xl); forms/settings stay `prose` (max-w-2xl). Plans in `docs/plans/redesign-2026-06/`. See ADR-0015.
+- **Command palette** (2026-06-17, design only — not yet built). One global Cmd+K mounted in the authenticated shell, built on the existing cmdk `Command` + a static typed registry; generalizes today's documents-only `DocumentSearch` into navigate + actions + async doc search; actions reuse ADR-0013 URL-dialogs/routes (never re-implement forms); admin commands hidden by role; single `Mod+K` owner. See ADR-0014.
+- **Empty states** (2026-06-17, design only — not yet built). Every list zero-state uses the shared `Empty` (icon + title + description) with at most one role-gated primary CTA where an obvious next action exists; filtered/sub-scope/terminal empties (deleted filter, empty subfolder, bin) stay CTA-less. See ADR-0016.
 - **File storage**: Vercel Blob (prod) / RustFS (dev) / devLog (test); two stores, two oRPC routers, discriminated `upload.kind`. R2 documented as swap-in. See ADR-0006.
 - **Prod-origin files in the Neon-branched dev DB** (2026-06-13). Dev's DB is a branch of prod, so prod `file`/`document` rows appear in dev but their bytes are only in prod Vercel Blob. `isRemoteOriginPathname` (storage.ts) flags them via the `prod/`/`preview/` prefix; `pnpm storage:sync` (in `dev:up`) mirrors the bytes into RustFS; a dev-only "PROD" badge + a friendly `/api/files/*` fallback explain unsynced ones. Deleting them in dev is prod-safe (branch-isolated DB; `storage.delete` hits local RustFS only). See ADR-0006 (2026-06-13 amendment).
 - **Background jobs**: Vercel Queues (prod) / BullMQ + Redis (dev) / devLog (test); shared handler. See ADR-0007.
@@ -286,11 +305,15 @@ One line each. Reasoning in `git log CLAUDE.md` and in the linked ADR.
 - **Domain invariants are check-first** (2026-06-10). Explicit read → `<Entity>DomainError` inside the guarded op's tx; never SQLSTATE/message parsing; DB constraints stay as silent backstops; check-then-write races accepted at this scale. See ADR-0002 "Check first".
 - **Recommended places per ADR-0012** (2026-06-14, design only — not yet built). MapLibre GL (open engine) + MapTiler tiles (provider is a swappable adapter, like R2); photo via `fileId` FK on the row (avatar pattern, public store — no `document` wrapper, no thumbnail worker), three sizes from one original via the `unpic` transformer; EXIF GPS guessed client-side (`exifr`, editable, manual fallback); location as `double precision` lat/lng + client-side Haversine (no PostGIS); multi-tag via a shared normalized `tag` table (~10 localized system tags + deduped custom tags); likes & comments designed as future phases. See ADR-0012.
 - **Folder, document, user & season errors are code-only; client localizes** (2026-06-13; document + user + season routers added 2026-06-14). The `folder`, `document`/`bin`, `user`, and `season` routers throw oRPC typed errors (`.errors()`, status only) instead of mapping to Swedish `ORPCError`; the client maps code → message via `src/lib/orpc/{folder,document,user,season}ErrorMessage.ts` (type-only import, exhaustive switch), so `isDefinedError(err)` narrows `err.code` (lets `RenameFolderDialog` show `NAME_TAKEN_IN_PARENT` inline; discriminates folder vs document errors in mixed dialogs). Context-dependent messages stay client-side: `userErrorMessage(code, selfAction)` picks delete-vs-demote for `CANNOT_ACT_ON_SELF`. Alternative to `rethrowAsORPC`, not a replacement — `share` is the lone remaining message-based router; `user.create` stays message-based (Better Auth errors). See ADR-0002 amendment.
+- **User invitation = Better Auth email-verification** (2026-06-24). Admin invites by email only; the row is created `emailVerified:false`, `role:'user'`, `name=email` placeholder, `lastInvitedAt=now`. Better Auth's `sendVerificationEmail` (7-day `expiresIn` = `INVITE_EXPIRY_SECONDS`, `autoSignInAfterVerification`) sends a verify-email link whose click verifies + auto-signs-in — **no custom accept route**. "Invited/pending" is **derived** from `emailVerified===false`; accept = first sign-in (invite link or magic-link both flip it). Only new state is one nullable `lastInvitedAt timestamptz` driving the owners-list countdown. Email is tier-3 (queue topic `email_user_invited`). `invite`/`resendInvite` procedures; `inviteUser`/`markInvited`/`assertInviteResendable` service ops; code-only errors `ALREADY_ACCEPTED`/`EMAIL_TAKEN`. Call `sendVerificationEmail` **without** session headers (else `EMAIL_MISMATCH`); rate-limited `/send-verification-email` 5/min. Onboarding (collect real name/phone/avatar) is **implemented** — see the next bullet. **Email is immutable after invite** (it's the magic-link identity; a typo would silently lock the user out) — removed from the admin update path (schema/`UpdateUserInput`/`updateAsAdmin`), shown read-only in `EditUserDialog`; only name/phone/role are editable; change of address = delete + re-invite (2026-06-24 amendment). See ADR-0017.
+- **Invitee onboarding wizard** (2026-06-24). 3-screen full-screen flow at top-level `/onboarding` (login-style `brand-wash` shell, not under `_authenticated`): name (required) → phone (skippable) → avatar (skippable, reuses `AvatarUpload`); step in URL `?step=name|phone|avatar`. New nullable `onboardedAt timestamptz` (Better Auth additionalField, `input:false`; migration `0014` backfills existing verified users so only invitees onboard). The `_authenticated` **loader** redirects to `/onboarding` while `me.onboardedAt` is null — gate reads **fresh `me`** (`disableCookieCache`), never the cookie-cached `session.user`, or completion would loop for the 5-min cache TTL; the wizard `refetchQueries(user.me)` before navigating to `/`. Saved per-step via self-scoped `updateProfile` ({name?,phone?}); final `completeOnboarding` stamps `onboardedAt`. Chose an explicit column over a `name===email` heuristic (decoupled from a mutable display value). `updateOwnProfile`/`completeOnboarding` service ops; no new error codes. See ADR-0017 (onboarding amendment).
 - **i18n: Paraglide JS, sv default + en, cookie-only** (2026-06-10). Compile-time typed `m.*()` messages from `messages/{sv,en}.json`; `oceanview-locale` cookie, no URL prefix; per-request server locale via ALS in `src/server.ts`; switching reloads the page. Rejected: i18next (40 kB runtime, weak typing), Lingui (TanStack Start SSR issues), typesafe-i18n (unmaintained).
 - **UI**: shadcn/ui (style `radix-nova`, base `slate`) + Tailwind v4. CSS vars in `src/styles/app.css`; `components.json` source of truth.
 - **Dark mode**: cookie-based (`oceanview-theme`), read in the root loader and applied to `<html>` during SSR; light/dark scriptless, `system` resolved by a small owned inline script + a `matchMedia` listener. Own `ThemeProvider`/`useTheme` (no next-themes). Manual toggle + system; no FOUC.
 - **Package manager**: pnpm.
 - **Linter/formatter**: Biome (editor-only, no CI gate); Tailwind class sorting on; CSS skipped (Tailwind v4 directives unsupported).
+- **Squash-merge only** (2026-06-27). Every PR lands on `main` as one squashed commit; PR title = the conventional-commit subject (GitHub appends `(#NN)`), PR description = the commit body. PR-title format is enforced by `.github/workflows/lint-pr-title.yml` (`amannn/action-semantic-pull-request@v6`, pinned + Dependabot-updated). `main` is guarded by a repository **ruleset** ("Protect main", not classic branch protection): requires a PR (0 approvals, squash-only) + the `Check (Biome)`, `Build`, `Test`, and `Validate Conventional Commit title` checks to pass (strict; admin-bypassable); force-push and deletion blocked. `Audit` (in `ci.yml`) runs but is **not** required (currently red — pre-existing advisories). See Non-negotiables → Conventional Commits / squash-merge.
+- **Component tests run in Vitest Browser Mode** (2026-06-27). Real Chromium via Playwright (`@vitest/browser-playwright` + `vitest-browser-react`), not jsdom — the Radix surface (dialogs, dropdowns, cmdk, tooltips) needs real pointer/portal behaviour and jsdom would mean a permanent polyfill pile. Two-project Vitest config (`test.projects` in `vite.config.ts`): the `node` project (`extends: true`, distinct `sequence.groupOrder`) keeps the DB suite unchanged; a standalone `vitest.browser.config.ts` carries its own plugins — Paraglide + the **TanStack Start** plugin (rewrites `createServerFn` so server-fn-coupled components and the isomorphic oRPC client bundle) + React; Nitro/Tailwind/devtools omitted. Tests are `*.browser.test.tsx`, `render` is async, assert via retry-able `expect.element`, and get data by cache-seeding a fresh `QueryClient` (`renderWithProviders` in `test/browser/render.tsx`). Components using `useRouter`/route hooks need the hook mocked (no `RouterProvider` yet); MSW + route/loader-level tests deferred. See `test/browser/README.md`.
 - **Sidebar breakpoints**: drawer <768px (`md`); persistent icon rail (expandable inline) from `md` (768px) up. `MOBILE_BREAKPOINT` (768) in `src/hooks/useMobile.ts` aligns with the sidebar primitive's own `md:` show/hide. Pages step at `md:`. Icon-rail tooltips are the canonical exception to the "skip tooltips on self-evident icons" rule.
 
 ---

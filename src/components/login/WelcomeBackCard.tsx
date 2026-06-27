@@ -3,14 +3,6 @@ import { useState } from 'react'
 import { toast } from 'sonner'
 import { Avatar, AvatarFallback, AvatarImage } from '~/components/ui/avatar'
 import { Button } from '~/components/ui/button'
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from '~/components/ui/card'
 import { Spinner } from '~/components/ui/spinner'
 import { usePasskeySupport } from '~/hooks/usePasskeys'
 import { authClient } from '~/lib/authClient'
@@ -71,7 +63,8 @@ export function WelcomeBackCard({
     <Button
       type="button"
       variant={passkeyFirst ? 'default' : 'outline'}
-      className="w-full"
+      size="xl"
+      className="w-full font-normal"
       disabled={passkeyPending}
       onClick={onPasskeySignIn}
     >
@@ -84,7 +77,8 @@ export function WelcomeBackCard({
     <Button
       type="button"
       variant={passkeySupported && passkeyFirst ? 'outline' : 'default'}
-      className="w-full"
+      size="xl"
+      className="w-full font-normal"
       disabled={isSending}
       onClick={() => {
         void sendMagicLink()
@@ -96,23 +90,24 @@ export function WelcomeBackCard({
   )
 
   return (
-    <Card className="w-full max-w-sm">
-      <CardHeader>
-        <CardTitle>{m.login_welcome_back_title()}</CardTitle>
-        <CardDescription>{m.login_welcome_back_description()}</CardDescription>
-      </CardHeader>
-      <CardContent className="flex flex-col items-center gap-3">
-        <Avatar className="size-16">
+    <div className="flex w-full flex-col items-center gap-6">
+      <h1 className="font-heading font-semibold text-2xl tracking-tight">
+        {m.login_welcome_back_title()}
+      </h1>
+
+      <div className="flex max-w-full items-center gap-2.5 rounded-full border bg-background/60 py-1 pr-4 pl-1">
+        <Avatar className="size-8 shrink-0">
           {image ? (
-            <AvatarImage src={image} alt={email} width={64} height={64} blurhash={imageBlurhash} />
+            <AvatarImage src={image} alt={email} width={32} height={32} blurhash={imageBlurhash} />
           ) : null}
-          <AvatarFallback className="font-semibold text-2xl">
+          <AvatarFallback className="font-semibold text-xs">
             {name?.trim() ? initials(name) : (email[0]?.toUpperCase() ?? '?')}
           </AvatarFallback>
         </Avatar>
-        <div className="break-all text-center font-medium text-sm">{email}</div>
-      </CardContent>
-      <CardFooter className="flex-col gap-3">
+        <span className="min-w-0 truncate font-medium text-sm">{email}</span>
+      </div>
+
+      <div className="flex w-full flex-col gap-4">
         {passkeyFirst ? (
           <>
             {passkeyButton}
@@ -133,7 +128,7 @@ export function WelcomeBackCard({
         >
           {m.login_switch_user()}
         </Button>
-      </CardFooter>
-    </Card>
+      </div>
+    </div>
   )
 }

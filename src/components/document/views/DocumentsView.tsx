@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import type { CurrentUser } from '~/components/document/shared/documentHelpers'
 import { DocumentsDesktop } from '~/components/document/views/DocumentsDesktop'
 import { DocumentsMobile } from '~/components/document/views/DocumentsMobile'
+import { PageContainer } from '~/components/layout/PageContainer'
 import { Skeleton } from '~/components/ui/skeleton'
 import { useIsCoarsePointer } from '~/hooks/useMobile'
 
@@ -9,6 +10,8 @@ type Props = {
   /** Resolved folder id from the URL, or null for the virtual root. */
   activeFolderId: string | null
   currentUser: CurrentUser
+  /** Document id to scroll to + flash (command-palette `?focus`), or null. */
+  focusedDocId: string | null
 }
 
 /**
@@ -22,7 +25,7 @@ type Props = {
  * wrong-tree flash and a hydration mismatch. The data is primed by the route
  * loaders, so the swap to the real tree is immediate.
  */
-export function DocumentsView({ activeFolderId, currentUser }: Props) {
+export function DocumentsView({ activeFolderId, currentUser, focusedDocId }: Props) {
   const coarse = useIsCoarsePointer()
   const [mounted, setMounted] = useState(false)
   useEffect(() => setMounted(true), [])
@@ -30,15 +33,23 @@ export function DocumentsView({ activeFolderId, currentUser }: Props) {
   if (!mounted) return <DocumentsSkeleton />
 
   return coarse ? (
-    <DocumentsMobile activeFolderId={activeFolderId} currentUser={currentUser} />
+    <DocumentsMobile
+      activeFolderId={activeFolderId}
+      currentUser={currentUser}
+      focusedDocId={focusedDocId}
+    />
   ) : (
-    <DocumentsDesktop activeFolderId={activeFolderId} currentUser={currentUser} />
+    <DocumentsDesktop
+      activeFolderId={activeFolderId}
+      currentUser={currentUser}
+      focusedDocId={focusedDocId}
+    />
   )
 }
 
 function DocumentsSkeleton() {
   return (
-    <div className="flex flex-col gap-4 p-4 md:p-8">
+    <PageContainer width="full" className="gap-4">
       <Skeleton className="h-10 w-48" />
       <Skeleton className="h-5 w-72" />
       <div className="flex flex-col gap-2 pt-4">
@@ -46,6 +57,6 @@ function DocumentsSkeleton() {
           <Skeleton key={i} className="h-14 w-full rounded-lg" />
         ))}
       </div>
-    </div>
+    </PageContainer>
   )
 }

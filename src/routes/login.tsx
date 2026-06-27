@@ -1,11 +1,13 @@
 import { createFileRoute, redirect, useNavigate } from '@tanstack/react-router'
 import { useState } from 'react'
 import { LocaleSwitcherInline } from '~/components/LocaleSwitcher'
+import { Wordmark } from '~/components/Logo'
 import { LoginFormCard } from '~/components/login/LoginFormCard'
 import { MagicLinkSentCard } from '~/components/login/MagicLinkSentCard'
 import { WelcomeBackCard } from '~/components/login/WelcomeBackCard'
+import { ModeToggle } from '~/components/ModeToggle'
 import { useAwaitSignIn } from '~/hooks/useAwaitSignIn'
-import { useSignInPasskey, useSignInPasskeyAutofill } from '~/hooks/usePasskeys'
+import { useSignInPasskey } from '~/hooks/usePasskeys'
 import { clearBrowserSession, getBrowserSession } from '~/lib/browserSessionFns'
 import { getSession } from '~/lib/getSession'
 import { sanitizeRedirect } from '~/lib/utils'
@@ -59,12 +61,6 @@ function Login() {
   useAwaitSignIn({
     enabled: sentTo !== null,
     onSignedIn: () => {
-      navigate({ to: destination, search: destination === '/' ? { passkey: 'setup' } : undefined })
-    },
-  })
-
-  useSignInPasskeyAutofill({
-    onSignedIn: () => {
       navigate({ to: destination })
     },
   })
@@ -81,45 +77,39 @@ function Login() {
   }
 
   return (
-    <div className="relative grid min-h-svh place-items-center p-4">
-      <div className="absolute top-4 right-4">
+    <div className="brand-wash relative grid min-h-svh place-items-center p-4">
+      <div className="absolute top-4 right-4 flex items-center gap-1">
         <LocaleSwitcherInline />
+        <ModeToggle />
       </div>
-      {sentTo ? (
-        <MagicLinkSentCard email={sentTo} />
-      ) : savedLogin ? (
-        <WelcomeBackCard
-          email={savedLogin.email}
-          hasPasskey={savedLogin.hasPasskey}
-          name={savedLogin.name}
-          image={savedLogin.image}
-          imageBlurhash={savedLogin.imageBlurhash}
-          callbackURL={callbackURL}
-          onSent={setSentTo}
-          onSwitchUser={() => {
-            void switchToOtherEmail()
-          }}
-          onPasskeySignIn={() => void signInPasskey()}
-          passkeyPending={passkeyPending}
-        />
-      ) : (
-        <LoginFormCard
-          onSent={setSentTo}
-          callbackURL={callbackURL}
-          onPasskeySignIn={() => void signInPasskey()}
-          passkeyPending={passkeyPending}
-        />
-      )}
-      <input
-        type="text"
-        name="webauthn-anchor"
-        autoComplete="username webauthn"
-        aria-hidden="true"
-        tabIndex={-1}
-        readOnly
-        defaultValue={savedLogin?.email ?? ''}
-        className="sr-only"
-      />
+      <div className="flex w-full max-w-sm flex-col items-center gap-8 tracking-normal">
+        <Wordmark />
+        {sentTo ? (
+          <MagicLinkSentCard email={sentTo} />
+        ) : savedLogin ? (
+          <WelcomeBackCard
+            email={savedLogin.email}
+            hasPasskey={savedLogin.hasPasskey}
+            name={savedLogin.name}
+            image={savedLogin.image}
+            imageBlurhash={savedLogin.imageBlurhash}
+            callbackURL={callbackURL}
+            onSent={setSentTo}
+            onSwitchUser={() => {
+              void switchToOtherEmail()
+            }}
+            onPasskeySignIn={() => void signInPasskey()}
+            passkeyPending={passkeyPending}
+          />
+        ) : (
+          <LoginFormCard
+            onSent={setSentTo}
+            callbackURL={callbackURL}
+            onPasskeySignIn={() => void signInPasskey()}
+            passkeyPending={passkeyPending}
+          />
+        )}
+      </div>
     </div>
   )
 }

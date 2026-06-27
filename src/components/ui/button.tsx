@@ -59,6 +59,9 @@ const buttonVariants = cva(
         ],
         // large: tighter padding on the side that holds an inline icon
         lg: 'h-9 gap-1.5 px-2.5 has-data-[icon=inline-end]:pr-2 has-data-[icon=inline-start]:pl-2',
+        // xl: comfortable marquee size (login, empty-state CTAs); larger text,
+        // softer corner + roomier padding, tighter on the inline-icon side
+        xl: 'h-11 gap-2 rounded-xl px-5 text-base has-data-[icon=inline-end]:pr-4 has-data-[icon=inline-start]:pl-4',
         icon: 'size-8',
         // icon-xs: square; clamped radius, but square corners inside a button-group; smaller icon
         'icon-xs':

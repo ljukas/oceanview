@@ -13,6 +13,8 @@ Some things about Oceanview are physical truths the schema can encode: 10 shares
 
 Other things are **social rules** the co-ownership group has agreed to, that the schema *can* represent but shouldn't permit as a final state of any mutation. For example: "every owner must hold at least one whole share." The schema can store fragmentary ownership; the social rule says that's never the desired end state of a user-facing operation.
 
+> **User lifecycle (2026-06-24)** — not a rule with an enforcement helper, but a derived status worth recording here for the same reason: it's a social fact the schema doesn't name directly. A user is **invited / pending iff `emailVerified === false`**, and **accepted on first successful sign-in** (the invite verify-link and an ordinary magic-link login both flip `emailVerified` — the two accept paths converge with no extra flag). There is no `status` column; "pending" is read off `emailVerified`, and the `lastInvitedAt` column exists only to drive the owners-list countdown. See [ADR-0017](./0017-user-invitation-flow.md). One consequence touches Rule 3 below: the last-admin floor counts admins *regardless of verification status*.
+
 Three options for where to enforce social rules:
 
 1. **In the form** — UI-level only. Bypassed by any non-form caller. Drifts the moment a second caller appears.
@@ -96,7 +98,7 @@ Each entry uses this shape:
 
 ### Rule 3: At least one active admin remains (2026-06-10)
 
-- **Last updated**: 2026-06-10
+- **Last updated**: 2026-06-24
 - **Statement**: Every user-management mutation must leave the group with at least one active (non-deleted) admin.
 - **Allowed**:
   - Demoting or soft-deleting an admin while at least one other active admin remains.
@@ -107,6 +109,7 @@ Each entry uses this shape:
 - **Why**: Admin-only flows (user management, share assignment, seasons) are unreachable without an admin. The `ADMIN_EMAILS` allowlist grants the admin role only at account *creation*, so a zero-admin state would not self-heal — repairing it would take one manual `UPDATE "user" SET role = 'admin' …` against production.
 - **Encoding**: `hard — UserDomainError('LAST_ADMIN')`. Mapped by `rethrowAsORPC` in `src/lib/orpc/procedures/user.ts` to `ORPCError('CONFLICT', { message: 'Det måste finnas minst en administratör' })`.
 - **Enforced in**: `src/lib/services/user/user.ts` → the `countAdmins` check in `updateAsAdmin` (demotion path) and `softDeleteAsAdmin`. As of 2026-06-10 both ops run inside `db.transaction` with `countAdmins` reading via the tx; concurrent-admin check-then-write races are deliberately not serialized — accepted at this scale per ADR-0002's "Check first — never translate Postgres errors" section. Covered in `src/lib/services/user/user.test.ts`.
+- **Consequence — pending admins count (2026-06-24)**: `countAdmins` filters on `role = 'admin'` and `deletedAt IS NULL` only — **not** on `emailVerified`. So an *invited but not-yet-accepted* admin (created via the [ADR-0017](./0017-user-invitation-flow.md) invitation flow, where "pending" = `emailVerified === false`) still counts toward the floor. This is the correct conservative reading: a pending admin is a real admin who simply hasn't signed in yet, and the group must not be left demotable-to-zero on the strength of an invitee accepting. Promotion to `admin` happens via the Edit dialog after acceptance, but role itself is independent of verification.
 
 ### Rule 4: Admins cannot act on themselves (2026-06-10)
 

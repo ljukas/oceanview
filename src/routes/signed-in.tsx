@@ -1,5 +1,8 @@
 import { createFileRoute, redirect, useNavigate } from '@tanstack/react-router'
+import { LocaleSwitcherInline } from '~/components/LocaleSwitcher'
+import { Wordmark } from '~/components/Logo'
 import { SignedInCard } from '~/components/login/SignedInCard'
+import { ModeToggle } from '~/components/ModeToggle'
 import { getSession } from '~/lib/getSession'
 import { sanitizeRedirect } from '~/lib/utils'
 
@@ -22,15 +25,19 @@ function SignedIn() {
   const destination = redirectPath ?? '/'
 
   function onContinue() {
-    void navigate({
-      to: destination,
-      search: destination === '/' ? { passkey: 'setup' } : undefined,
-    })
+    void navigate({ to: destination })
   }
 
   return (
-    <div className="grid min-h-svh place-items-center p-4">
-      <SignedInCard onContinue={onContinue} />
+    <div className="brand-wash relative grid min-h-svh place-items-center p-4">
+      <div className="absolute top-4 right-4 flex items-center gap-1">
+        <LocaleSwitcherInline />
+        <ModeToggle />
+      </div>
+      <div className="flex w-full max-w-sm flex-col items-center gap-8 tracking-normal">
+        <Wordmark />
+        <SignedInCard onContinue={onContinue} />
+      </div>
     </div>
   )
 }

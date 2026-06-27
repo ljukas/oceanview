@@ -1,31 +1,28 @@
 import { z } from 'zod'
 import { FieldGroup } from '~/components/ui/field'
 import { withFieldGroup } from '~/hooks/form'
+import { nameField, phoneField } from '~/lib/orpc/userProfileSchema'
 import { m } from '~/paraglide/messages'
 
+// Email is intentionally absent from the editable field set: it is the
+// magic-link login identity and immutable after invite (see ADR-0017). The edit
+// dialog shows it read-only for context. This group is also reused by the future
+// onboarding flow, which likewise never edits email.
 export const userFieldsDefaults: {
   name: string
-  email: string
   phone: string
   role: 'user' | 'admin'
 } = {
   name: '',
-  email: '',
   phone: '',
   role: 'user',
 }
 
 export const userFieldsSchema = z.object({
-  name: z.string(),
-  email: z
-    .email({ error: () => m.validation_email_invalid() })
-    .min(1, { error: () => m.validation_email_required() }),
-  phone: z
-    .string()
-    .max(30, { error: () => m.validation_phone_too_long() })
-    .refine((v) => v === '' || v.length >= 5, {
-      error: () => m.validation_phone_too_short(),
-    }),
+  // name/phone are the shared validators (see ~/lib/orpc/userProfileSchema) so
+  // this form can't validate differently from the server procedures.
+  name: nameField,
+  phone: phoneField,
   role: z.enum(['user', 'admin'], { error: () => m.validation_role_required() }),
 })
 
@@ -33,7 +30,6 @@ export type UserFieldsValues = z.infer<typeof userFieldsSchema>
 
 export const userFieldsMap = {
   name: 'name',
-  email: 'email',
   phone: 'phone',
   role: 'role',
 } as const
@@ -51,12 +47,6 @@ export const UserFormFields = withFieldGroup({
         <group.AppField
           name="name"
           children={(field) => <field.TextField label={m.user_field_name()} autoComplete="name" />}
-        />
-        <group.AppField
-          name="email"
-          children={(field) => (
-            <field.TextField label={m.user_field_email()} type="email" autoComplete="email" />
-          )}
         />
         <group.AppField
           name="phone"

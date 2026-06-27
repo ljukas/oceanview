@@ -9,10 +9,12 @@ import {
   ArrowDownIcon,
   ArrowUpDownIcon,
   ArrowUpIcon,
+  LifeBuoyIcon,
   MoreVerticalIcon,
   PencilIcon,
   RotateCcwIcon,
   SailboatIcon,
+  SendIcon,
   StarIcon,
   Trash2Icon,
 } from 'lucide-react'
@@ -26,6 +28,8 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '~/components/ui/dropdown-menu'
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '~/components/ui/empty'
+import { RowActions } from '~/components/ui/row-actions'
 import {
   Table,
   TableBody,
@@ -34,7 +38,7 @@ import {
   TableHeader,
   TableRow,
 } from '~/components/ui/table'
-import { formatDate } from '~/lib/i18n/format'
+import { formatDate, formatDistanceShort } from '~/lib/i18n/format'
 import type { SharePartRow } from '~/lib/services/share'
 import type { UserRow } from '~/lib/services/user'
 import { collapseShares, type ShareBadgeKind } from '~/lib/shares/collapse'
@@ -42,7 +46,12 @@ import { shareBackgroundClass } from '~/lib/shares/colors'
 import { cn, initials } from '~/lib/utils'
 import { m } from '~/paraglide/messages'
 
-export type OwnerRow = UserRow & { shares: Array<SharePartRow> }
+export type OwnerRow = UserRow & {
+  shares: Array<SharePartRow>
+  // When the current invite link expires (lastInvitedAt + 7d), or null when the
+  // user was never invited. Drives the "Inbjuden — går ut om …" countdown.
+  inviteExpiresAt: Date | null
+}
 
 type Props = {
   owners: Array<OwnerRow>
@@ -54,6 +63,8 @@ type Props = {
   onEdit: (id: string) => void
   onDelete: (id: string) => void
   onRestore: (id: string) => void
+  /** Resend the invite email to a pending owner (active view, admin only). */
+  onResendInvite?: (id: string) => void
 }
 
 // Secondary columns reveal as the viewport widens: Roll + Andelar at `md`,
@@ -111,77 +122,84 @@ export function OwnersTable({
   onEdit,
   onDelete,
   onRestore,
+  onResendInvite,
 }: Props) {
   const table = useReactTable({
     data: owners,
     columns,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
-    // No initial sorting — the server already returns surname order; columns
-    // become sortable on click.
+    // No initial sorting — the server returns accepted users first, then pending
+    // invitees, each by surname; columns become sortable on click (a toggled
+    // sort takes over, so the accepted/pending grouping only holds by default).
   })
   const rows = table.getRowModel().rows
 
-  // name + (role) + (email) + (phone/date) + (shares unless deleted) + (actions if admin)
-  const columnCount = 4 + (showDeleted ? 0 : 1) + (isAdmin ? 1 : 0)
+  // The active list always holds at least one owner, so only the deleted filter
+  // can be empty. It's a happy zero-state (nobody removed), so we lean into the
+  // nautical brand: a lifebuoy medallion + warm copy (ADR-0015/0016).
+  if (showDeleted && rows.length === 0) {
+    return (
+      <Empty className="brand-wash rounded-lg border">
+        <EmptyHeader>
+          <EmptyMedia
+            variant="icon"
+            className="size-14 rounded-full bg-brand/10 text-brand ring-1 ring-brand/20"
+          >
+            <LifeBuoyIcon className="size-7" />
+          </EmptyMedia>
+          <EmptyTitle>{m.owners_empty_deleted_title()}</EmptyTitle>
+          <EmptyDescription>{m.owners_empty_deleted_description()}</EmptyDescription>
+        </EmptyHeader>
+      </Empty>
+    )
+  }
 
   return (
-    <div className="rounded-lg border">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <SortableHead column={table.getColumn('name')} label={m.user_field_name()} />
+    <Table containerClassName="min-h-0 md:-mx-4">
+      <TableHeader className="sticky top-0 z-10 bg-background">
+        <TableRow>
+          <SortableHead column={table.getColumn('name')} label={m.user_field_name()} />
+          <SortableHead
+            column={table.getColumn('role')}
+            label={m.user_field_role()}
+            className={ROLE_CELL}
+          />
+          <TableHead className={EMAIL_CELL}>{m.user_field_email()}</TableHead>
+          <TableHead className={PHONE_CELL}>
+            {showDeleted ? m.owners_header_deleted() : m.user_field_phone()}
+          </TableHead>
+          {showDeleted ? null : (
             <SortableHead
-              column={table.getColumn('role')}
-              label={m.user_field_role()}
-              className={ROLE_CELL}
+              column={table.getColumn('shares')}
+              label={m.owners_header_shares()}
+              className={SHARES_CELL}
             />
-            <TableHead className={EMAIL_CELL}>{m.user_field_email()}</TableHead>
-            <TableHead className={PHONE_CELL}>
-              {showDeleted ? m.owners_header_deleted() : m.user_field_phone()}
-            </TableHead>
-            {showDeleted ? null : (
-              <SortableHead
-                column={table.getColumn('shares')}
-                label={m.owners_header_shares()}
-                className={SHARES_CELL}
-              />
-            )}
-            {isAdmin ? (
-              <TableHead className="w-10">
-                <span className="sr-only">{m.common_actions()}</span>
-              </TableHead>
-            ) : null}
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {rows.length === 0 ? (
-            <TableRow className="hover:bg-transparent">
-              <TableCell
-                colSpan={columnCount}
-                className="py-8 text-center text-muted-foreground text-sm"
-              >
-                {showDeleted ? m.owners_empty_deleted() : m.owners_empty()}
-              </TableCell>
-            </TableRow>
-          ) : (
-            rows.map((row) => (
-              <OwnerTableRow
-                key={row.original.id}
-                owner={row.original}
-                isSelf={row.original.id === currentUserId}
-                isOnline={onlineSet.has(row.original.id)}
-                isAdmin={isAdmin}
-                showDeleted={showDeleted}
-                onEdit={onEdit}
-                onDelete={onDelete}
-                onRestore={onRestore}
-              />
-            ))
           )}
-        </TableBody>
-      </Table>
-    </div>
+          {isAdmin ? (
+            <TableHead className="w-10">
+              <span className="sr-only">{m.common_actions()}</span>
+            </TableHead>
+          ) : null}
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {rows.map((row) => (
+          <OwnerTableRow
+            key={row.original.id}
+            owner={row.original}
+            isSelf={row.original.id === currentUserId}
+            isOnline={onlineSet.has(row.original.id)}
+            isAdmin={isAdmin}
+            showDeleted={showDeleted}
+            onEdit={onEdit}
+            onDelete={onDelete}
+            onRestore={onRestore}
+            onResendInvite={onResendInvite}
+          />
+        ))}
+      </TableBody>
+    </Table>
   )
 }
 
@@ -194,6 +212,7 @@ function OwnerTableRow({
   onEdit,
   onDelete,
   onRestore,
+  onResendInvite,
 }: {
   owner: OwnerRow
   isSelf: boolean
@@ -203,14 +222,17 @@ function OwnerTableRow({
   onEdit: (id: string) => void
   onDelete: (id: string) => void
   onRestore: (id: string) => void
+  onResendInvite?: (id: string) => void
 }) {
   const formattedPhone = owner.phone ? formatPhoneNumberIntl(owner.phone) || owner.phone : null
   const deletedAt = owner.deletedAt ? formatDate(owner.deletedAt) : '—'
   // Collapse held pairs (A1 + A2 → "A"); lone halves stay "A1"/"A2".
   const shares = collapseShares(owner.shares)
+  // Pending = invited but never signed in. Only meaningful in the active view.
+  const isPending = !showDeleted && !owner.emailVerified
 
   return (
-    <TableRow>
+    <TableRow className="group/row">
       <TableCell>
         <div className="flex min-w-0 items-center gap-3">
           <Avatar className="size-9 shrink-0">
@@ -236,12 +258,21 @@ function OwnerTableRow({
           </Avatar>
 
           <div className="flex min-w-0 flex-col gap-0.5">
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <span className="truncate font-medium" title={owner.name}>
                 {owner.name || '—'}
               </span>
               {isSelf ? <Badge variant="secondary">{m.owners_badge_you()}</Badge> : null}
+              {isPending ? (
+                <Badge variant="outline" className="border-brand/30 bg-brand/10 text-brand">
+                  {m.user_status_invited()}
+                </Badge>
+              ) : null}
             </div>
+
+            {/* Countdown is decision-support for resending, which only admins do —
+                non-admins see just the "Inbjuden" badge above. */}
+            {isPending && isAdmin ? <InviteCountdown expiresAt={owner.inviteExpiresAt} /> : null}
 
             {/* Roll (+ Andelar) fold in here until they become columns at `md`. */}
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1 md:hidden">
@@ -323,38 +354,46 @@ function OwnerTableRow({
 
       {isAdmin ? (
         <TableCell className="text-right">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                aria-label={m.owners_actions_for({ name: owner.name })}
-              >
-                <MoreVerticalIcon />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              {showDeleted ? (
-                <DropdownMenuItem onSelect={() => onRestore(owner.id)}>
-                  <RotateCcwIcon />
-                  {m.common_restore()}
-                </DropdownMenuItem>
-              ) : (
-                <>
-                  <DropdownMenuItem onSelect={() => onEdit(owner.id)}>
-                    <PencilIcon />
-                    {m.common_edit()}
+          <RowActions>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label={m.owners_actions_for({ name: owner.name })}
+                >
+                  <MoreVerticalIcon />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                {showDeleted ? (
+                  <DropdownMenuItem onSelect={() => onRestore(owner.id)}>
+                    <RotateCcwIcon />
+                    {m.common_restore()}
                   </DropdownMenuItem>
-                  {isSelf ? null : (
-                    <DropdownMenuItem variant="destructive" onSelect={() => onDelete(owner.id)}>
-                      <Trash2Icon />
-                      {m.common_delete()}
+                ) : (
+                  <>
+                    <DropdownMenuItem onSelect={() => onEdit(owner.id)}>
+                      <PencilIcon />
+                      {m.common_edit()}
                     </DropdownMenuItem>
-                  )}
-                </>
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
+                    {isPending && onResendInvite ? (
+                      <DropdownMenuItem onSelect={() => onResendInvite(owner.id)}>
+                        <SendIcon />
+                        {m.user_resend_invite()}
+                      </DropdownMenuItem>
+                    ) : null}
+                    {isSelf ? null : (
+                      <DropdownMenuItem variant="destructive" onSelect={() => onDelete(owner.id)}>
+                        <Trash2Icon />
+                        {m.common_delete()}
+                      </DropdownMenuItem>
+                    )}
+                  </>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </RowActions>
         </TableCell>
       ) : null}
     </TableRow>
@@ -388,6 +427,21 @@ function SortableHead({
         <Icon data-icon="inline-end" className="text-muted-foreground" />
       </Button>
     </TableHead>
+  )
+}
+
+// Pending-invite countdown shown under the name. Relative ("Går ut om 6 dagar")
+// rather than a live ticker — it refreshes on refetch (realtime user.changed +
+// resend invalidation), which is plenty for a 7-day window.
+function InviteCountdown({ expiresAt }: { expiresAt: Date | null }) {
+  if (!expiresAt) return null
+  if (expiresAt.getTime() <= Date.now()) {
+    return <span className="text-destructive text-xs">{m.user_invite_expired()}</span>
+  }
+  return (
+    <span className="text-muted-foreground text-xs">
+      {m.user_invite_expires({ time: formatDistanceShort(expiresAt) })}
+    </span>
   )
 }
 

@@ -1,11 +1,13 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { KeyRoundIcon } from 'lucide-react'
 import { Suspense, useState } from 'react'
+import { PageContainer } from '~/components/layout/PageContainer'
 import { AddPasskeyButton } from '~/components/passkey/AddPasskeyButton'
 import { DeletePasskeyDialog } from '~/components/passkey/DeletePasskeyDialog'
 import { PasskeyRow } from '~/components/passkey/PasskeyRow'
 import { TooltipProvider } from '~/components/ui/tooltip'
 import { AvatarUpload } from '~/components/user/AvatarUpload'
+import { ProfileForm } from '~/components/user/ProfileForm'
 import { useListPasskeys } from '~/hooks/usePasskeys'
 import { orpc } from '~/lib/orpc/client'
 import { m } from '~/paraglide/messages'
@@ -31,11 +33,25 @@ function Account() {
 
   return (
     <TooltipProvider>
-      <div className="flex flex-col gap-6 p-4 md:p-8">
+      <PageContainer width="prose">
         <header className="flex flex-col gap-2">
-          <h1 className="font-semibold text-3xl tracking-tight md:text-4xl">{m.account_title()}</h1>
+          <h1 className="font-bold text-3xl tracking-tight text-balance md:text-4xl">
+            {m.account_title()}
+          </h1>
           <p className="text-muted-foreground text-sm">{m.account_description()}</p>
         </header>
+
+        <section className="flex flex-col gap-4">
+          <div className="flex flex-col gap-2">
+            <h2 className="font-semibold text-xl">{m.account_profile_heading()}</h2>
+            <p className="text-muted-foreground text-sm">{m.account_profile_description()}</p>
+          </div>
+          <Suspense
+            fallback={<div className="text-muted-foreground text-sm">{m.common_loading()}</div>}
+          >
+            <ProfileForm />
+          </Suspense>
+        </section>
 
         <section className="flex flex-col gap-4">
           <div className="flex flex-col gap-2">
@@ -81,7 +97,7 @@ function Account() {
         </section>
 
         <DeletePasskeyDialog passkeyId={deletePasskeyId} onClose={() => setDeletePasskeyId(null)} />
-      </div>
+      </PageContainer>
     </TooltipProvider>
   )
 }

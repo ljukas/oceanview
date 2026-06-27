@@ -4,7 +4,7 @@ import {
   getSortedRowModel,
   useReactTable,
 } from '@tanstack/react-table'
-import { FileIcon } from 'lucide-react'
+import { FileIcon, FolderOpenIcon, UploadIcon } from 'lucide-react'
 import { useCallback, useMemo, useState } from 'react'
 import {
   type CurrentUser,
@@ -18,7 +18,15 @@ import { DocumentTablePagination } from '~/components/document/table/DocumentTab
 import { DocumentTableRow } from '~/components/document/table/DocumentTableRow'
 import { columns } from '~/components/document/table/documentColumns'
 import { FolderTableRow, FolderUpRow } from '~/components/document/table/FolderTableRow'
-import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '~/components/ui/empty'
+import { Button } from '~/components/ui/button'
+import {
+  Empty,
+  EmptyContent,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from '~/components/ui/empty'
 import { Table, TableBody, TableCell, TableRow } from '~/components/ui/table'
 import { useRowSelection } from '~/hooks/useRowSelection'
 import { m } from '~/paraglide/messages'
@@ -30,6 +38,8 @@ type Props = {
   folders: Array<FolderRow>
   /** Resolved folder id from the URL, or null for the virtual root. */
   activeFolderId: string | null
+  /** Document id to scroll to + flash (command-palette `?focus`), or null. */
+  focusedDocId: string | null
   isAdmin: boolean
   /** The selection Set of composite keys (`seldoc:`/`selfolder:`), owned by DocumentsView. */
   selected: Set<string>
@@ -41,6 +51,8 @@ type Props = {
   /** True when the user may act on the whole selection (docs editable; folders ⇒ admin). */
   canActOnAll: boolean
   clearSelection: () => void
+  /** Opens the upload picker from the true-root empty-state CTA. */
+  onUpload?: () => void
 }
 
 export function DocumentTable({
@@ -48,6 +60,7 @@ export function DocumentTable({
   currentUser,
   folders,
   activeFolderId,
+  focusedDocId,
   isAdmin,
   selected,
   setSelected,
@@ -55,6 +68,7 @@ export function DocumentTable({
   selectedFolderIds,
   canActOnAll,
   clearSelection,
+  onUpload,
 }: Props) {
   const table = useReactTable({
     data: documents,
@@ -120,70 +134,99 @@ export function DocumentTable({
   // a folder we always render the table so the "up one level" row stays reachable.
   if (!hasAnyRow) {
     return (
-      <Empty className="rounded-lg border">
+      <Empty className="brand-wash rounded-lg border">
         <EmptyHeader>
-          <EmptyMedia variant="icon">
-            <FileIcon />
+          <EmptyMedia
+            variant="icon"
+            className="size-14 rounded-full bg-brand/10 text-brand ring-1 ring-brand/20"
+          >
+            <FileIcon className="size-7" />
           </EmptyMedia>
           <EmptyTitle>{m.document_table_empty()}</EmptyTitle>
           <EmptyDescription>{m.document_empty_description()}</EmptyDescription>
         </EmptyHeader>
+        {onUpload ? (
+          <EmptyContent>
+            <Button onClick={onUpload}>
+              <UploadIcon data-icon="inline-start" />
+              {m.upload_button()}
+            </Button>
+          </EmptyContent>
+        ) : null}
       </Empty>
     )
   }
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="rounded-lg border">
-        <Table className="table-fixed">
-          <DocumentTableHeader table={table} />
-          <TableBody>
-            {showUp ? (
-              <FolderUpRow parentId={parentId} parent={parent} onClear={clearSelection} />
-            ) : null}
-            {childFolders.map((folder) => (
-              <FolderTableRow
-                key={folder.id}
-                folder={folder}
-                isAdmin={isAdmin}
-                isSelected={
-                  isAdmin ? selected.has(selfolderKey(folder.id)) : cosmeticFolderId === folder.id
+    // `md:-mx-4` lets the table (and its pagination) break out wider than the
+    // page's `md:px-8` so it uses more of the panel — the header/toolbar above
+    // keep the roomier reading margin (Linear-style). Mobile stays aligned.
+    <div className="flex min-h-0 flex-1 flex-col gap-4 md:-mx-4">
+      <Table className="table-fixed" containerClassName="min-h-0">
+        <DocumentTableHeader table={table} />
+        <TableBody>
+          {showUp ? (
+            <FolderUpRow parentId={parentId} parent={parent} onClear={clearSelection} />
+          ) : null}
+          {childFolders.map((folder) => (
+            <FolderTableRow
+              key={folder.id}
+              folder={folder}
+              isAdmin={isAdmin}
+              isSelected={
+                isAdmin ? selected.has(selfolderKey(folder.id)) : cosmeticFolderId === folder.id
+              }
+              onSelect={(mods) => {
+                if (isAdmin) onRowClick(selfolderKey(folder.id), mods)
+                else {
+                  setSelected(new Set())
+                  setCosmeticFolderId(folder.id)
                 }
-                onSelect={(mods) => {
-                  if (isAdmin) onRowClick(selfolderKey(folder.id), mods)
-                  else {
-                    setSelected(new Set())
-                    setCosmeticFolderId(folder.id)
-                  }
-                }}
-              />
-            ))}
-            {documents.length === 0 ? (
-              <TableRow className="hover:bg-transparent">
-                <TableCell colSpan={6} className="py-8 text-center text-muted-foreground text-sm">
-                  {showUp ? m.document_folder_empty() : m.document_table_empty()}
+              }}
+            />
+          ))}
+          {documents.length === 0 ? (
+            // At root, folders are present here (the truly-empty root is handled
+            // above), so show nothing. Inside a subfolder, surface the branded
+            // empty-folder card.
+            showUp ? (
+              <TableRow className="hover:[--row-bg:transparent]">
+                <TableCell colSpan={6} className="p-0">
+                  <Empty className="brand-wash border-0">
+                    <EmptyHeader>
+                      <EmptyMedia
+                        variant="icon"
+                        className="size-14 rounded-full bg-brand/10 text-brand ring-1 ring-brand/20"
+                      >
+                        <FolderOpenIcon className="size-7" />
+                      </EmptyMedia>
+                      <EmptyTitle>{m.document_folder_empty_title()}</EmptyTitle>
+                      <EmptyDescription>{m.document_folder_empty_description()}</EmptyDescription>
+                    </EmptyHeader>
+                  </Empty>
                 </TableCell>
               </TableRow>
-            ) : (
-              rows.map((row) => (
-                <DocumentTableRow
-                  key={row.original.id}
-                  row={row}
-                  currentUser={currentUser}
-                  isSelected={selected.has(seldocKey(row.original.id))}
-                  selectedDocIds={selectedDocIds}
-                  selectedFolderIds={selectedFolderIds}
-                  selectionCount={selectionCount}
-                  canActOnAll={canActOnAll}
-                  onRowClick={onRowClick}
-                  selectRow={selectRow}
-                  clearSelection={clearSelection}
-                />
-              ))
-            )}
-          </TableBody>
-        </Table>
-      </div>
+            ) : null
+          ) : (
+            rows.map((row) => (
+              <DocumentTableRow
+                key={row.original.id}
+                row={row}
+                currentUser={currentUser}
+                isFocused={row.original.id === focusedDocId}
+                isSelected={selected.has(seldocKey(row.original.id))}
+                selectedDocIds={selectedDocIds}
+                selectedFolderIds={selectedFolderIds}
+                selectionCount={selectionCount}
+                canActOnAll={canActOnAll}
+                onRowClick={onRowClick}
+                selectRow={selectRow}
+                clearSelection={clearSelection}
+              />
+            ))
+          )}
+        </TableBody>
+      </Table>
 
       {documents.length > 0 ? (
         <DocumentTablePagination table={table} total={documents.length} />

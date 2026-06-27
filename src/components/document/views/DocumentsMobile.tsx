@@ -1,10 +1,9 @@
-import { FileIcon, FolderPlusIcon, UploadIcon } from 'lucide-react'
+import { FileIcon, FolderOpenIcon, FolderPlusIcon, UploadIcon } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { DocumentMobileSelectionBar } from '~/components/document/actions/DocumentMobileSelectionBar'
 import { DocumentCard } from '~/components/document/card/DocumentCard'
 import { FolderCard, FolderUpCard } from '~/components/document/card/FolderCard'
 import { CreateFolderDialog } from '~/components/document/dialogs/CreateFolderDialog'
-import { DocumentSearch } from '~/components/document/shared/DocumentSearch'
 import {
   type CurrentUser,
   seldocKey,
@@ -15,8 +14,16 @@ import {
   DocumentUpload,
   type DocumentUploadHandle,
 } from '~/components/document/upload/DocumentUpload'
+import { PageContainer } from '~/components/layout/PageContainer'
 import { Button } from '~/components/ui/button'
-import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '~/components/ui/empty'
+import {
+  Empty,
+  EmptyContent,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from '~/components/ui/empty'
 import { useDocumentSelection } from '~/hooks/useDocumentSelection'
 import { useDocumentsData } from '~/hooks/useDocumentsData'
 import { m } from '~/paraglide/messages'
@@ -25,6 +32,8 @@ type Props = {
   /** Resolved folder id from the URL, or null for the virtual root. */
   activeFolderId: string | null
   currentUser: CurrentUser
+  /** Document id to scroll to + flash (command-palette `?focus`), or null. */
+  focusedDocId: string | null
 }
 
 /**
@@ -34,7 +43,7 @@ type Props = {
  * Delete. Single-item actions live on each card's ⋮ menu. `DocumentsView` picks
  * this tree on coarse (touch) pointers; the mouse tree is `DocumentsDesktop`.
  */
-export function DocumentsMobile({ activeFolderId, currentUser }: Props) {
+export function DocumentsMobile({ activeFolderId, currentUser, focusedDocId }: Props) {
   const { folders, visibleDocuments } = useDocumentsData(activeFolderId)
   const { isAdmin, selected, setSelected, selectedDocIds, selectedFolderIds, canActOnAll } =
     useDocumentSelection({ visibleDocuments, folders, activeFolderId, currentUser })
@@ -86,13 +95,12 @@ export function DocumentsMobile({ activeFolderId, currentUser }: Props) {
   const hasAnyRow = showUp || childFolders.length > 0 || visibleDocuments.length > 0
 
   return (
-    <div className="flex flex-col gap-4 p-4">
-      <header className="flex flex-col gap-3">
-        <div className="flex flex-col gap-1">
-          <h1 className="font-semibold text-3xl tracking-tight">{m.nav_documents()}</h1>
-          <p className="text-muted-foreground text-sm">{m.document_page_description_mobile()}</p>
-        </div>
-        <DocumentSearch />
+    <PageContainer width="full" className="gap-4">
+      <header className="flex flex-col gap-2">
+        <h1 className="font-bold text-2xl tracking-tight text-balance md:text-3xl">
+          {m.nav_documents()}
+        </h1>
+        <p className="text-muted-foreground text-sm">{m.document_page_description_mobile()}</p>
       </header>
 
       {/* The breadcrumb/actions row and the select-mode bar swap in place — same
@@ -124,14 +132,23 @@ export function DocumentsMobile({ activeFolderId, currentUser }: Props) {
 
       <DocumentUpload ref={uploadRef} folderId={activeFolderId}>
         {!hasAnyRow ? (
-          <Empty className="rounded-lg border">
+          <Empty className="brand-wash rounded-lg border">
             <EmptyHeader>
-              <EmptyMedia variant="icon">
-                <FileIcon />
+              <EmptyMedia
+                variant="icon"
+                className="size-14 rounded-full bg-brand/10 text-brand ring-1 ring-brand/20"
+              >
+                <FileIcon className="size-7" />
               </EmptyMedia>
               <EmptyTitle>{m.document_table_empty()}</EmptyTitle>
               <EmptyDescription>{m.document_empty_description()}</EmptyDescription>
             </EmptyHeader>
+            <EmptyContent>
+              <Button onClick={() => uploadRef.current?.open()}>
+                <UploadIcon data-icon="inline-start" />
+                {m.upload_button_short()}
+              </Button>
+            </EmptyContent>
           </Empty>
         ) : (
           <div className="flex flex-col gap-2">
@@ -148,9 +165,20 @@ export function DocumentsMobile({ activeFolderId, currentUser }: Props) {
               />
             ))}
             {visibleDocuments.length === 0 && showUp ? (
-              <p className="py-8 text-center text-muted-foreground text-sm">
-                {m.document_folder_empty()}
-              </p>
+              // No files in this subfolder — branded medallion, whether or not
+              // subfolders sit above.
+              <Empty className="brand-wash rounded-lg border">
+                <EmptyHeader>
+                  <EmptyMedia
+                    variant="icon"
+                    className="size-14 rounded-full bg-brand/10 text-brand ring-1 ring-brand/20"
+                  >
+                    <FolderOpenIcon className="size-7" />
+                  </EmptyMedia>
+                  <EmptyTitle>{m.document_folder_empty_title()}</EmptyTitle>
+                  <EmptyDescription>{m.document_folder_empty_description()}</EmptyDescription>
+                </EmptyHeader>
+              </Empty>
             ) : (
               visibleDocuments.map((doc) => (
                 <DocumentCard
@@ -158,6 +186,7 @@ export function DocumentsMobile({ activeFolderId, currentUser }: Props) {
                   doc={doc}
                   currentUser={currentUser}
                   selectMode={selectMode}
+                  isFocused={doc.id === focusedDocId}
                   isSelected={selected.has(seldocKey(doc.id))}
                   onActivate={() =>
                     window.open(`/api/files/view/${doc.id}`, '_blank', 'noopener,noreferrer')
@@ -178,6 +207,6 @@ export function DocumentsMobile({ activeFolderId, currentUser }: Props) {
           parentId={activeFolderId}
         />
       ) : null}
-    </div>
+    </PageContainer>
   )
 }

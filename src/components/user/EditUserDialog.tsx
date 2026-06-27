@@ -2,6 +2,8 @@ import { isDefinedError } from '@orpc/client'
 import { useMutation, useQueryClient, useSuspenseQuery } from '@tanstack/react-query'
 import { Suspense } from 'react'
 import { toast } from 'sonner'
+import { Field, FieldDescription, FieldLabel } from '~/components/ui/field'
+import { Input } from '~/components/ui/input'
 import {
   ResponsiveDialog,
   ResponsiveDialogContent,
@@ -73,7 +75,6 @@ function EditUserDialogBody({ userId, onDone }: { userId: string; onDone: () => 
             (u) => ({
               ...u,
               name: vars.name,
-              email: vars.email,
               phone: vars.phone,
               role: vars.role,
             }),
@@ -84,7 +85,6 @@ function EditUserDialogBody({ userId, onDone }: { userId: string; onDone: () => 
             (u) => ({
               ...u,
               name: vars.name,
-              email: vars.email,
               phone: vars.phone,
               role: vars.role,
             }),
@@ -103,8 +103,9 @@ function EditUserDialogBody({ userId, onDone }: { userId: string; onDone: () => 
   )
 
   const defaultValues: UserFieldsValues = {
-    name: user.name,
-    email: user.email,
+    // Invited (unverified) users carry a name=email placeholder (ADR-0017); show an
+    // empty field so the admin enters a real name rather than editing the email.
+    name: user.emailVerified ? user.name : '',
     phone: user.phone ?? '',
     role: user.role === 'admin' ? 'admin' : 'user',
   }
@@ -128,7 +129,17 @@ function EditUserDialogBody({ userId, onDone }: { userId: string; onDone: () => 
         form.handleSubmit()
       }}
     >
-      <UserFormFields form={form} fields={userFieldsMap} />
+      <div className="flex flex-col gap-5">
+        {/* Email is the magic-link login identity, so it's immutable after invite
+            (ADR-0017) — shown read-only for context. Change of address = delete +
+            re-invite. */}
+        <Field>
+          <FieldLabel htmlFor="edit-user-email">{m.user_field_email()}</FieldLabel>
+          <Input id="edit-user-email" type="email" value={user.email} disabled readOnly />
+          <FieldDescription>{m.user_field_email_locked_hint()}</FieldDescription>
+        </Field>
+        <UserFormFields form={form} fields={userFieldsMap} />
+      </div>
 
       <ResponsiveDialogFooter className="mt-6">
         <form.AppForm>

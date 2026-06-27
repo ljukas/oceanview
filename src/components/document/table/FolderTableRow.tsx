@@ -16,6 +16,7 @@ import {
   OWNER_CELL,
   SIZE_CELL,
 } from '~/components/document/table/documentColumns'
+import { RowActions } from '~/components/ui/row-actions'
 import { TableCell, TableRow } from '~/components/ui/table'
 import { cn } from '~/lib/utils'
 import { m } from '~/paraglide/messages'
@@ -94,45 +95,35 @@ export function FolderTableRow({
         }
       }}
       className={cn(
+        'group/row',
         ROW_SHELL,
         isSelected &&
-          'bg-selected text-selected-foreground hover:bg-selected has-aria-expanded:bg-selected',
+          '[--row-bg:var(--selected-wash)] hover:[--row-bg:var(--selected-wash)] has-aria-expanded:[--row-bg:var(--selected-wash)]',
         // Drop-target feedback wins over selection while dragging over it.
-        isOver && 'bg-accent text-accent-foreground',
+        isOver && 'text-accent-foreground [--row-bg:var(--accent)]',
         isDragging && 'opacity-50',
       )}
     >
       <TableCell>
         <div className="flex min-w-0 items-center gap-3">
           <div className={ICON_TILE}>
-            <FolderIcon
-              aria-hidden="true"
-              className={cn(
-                'size-5',
-                isSelected ? 'text-selected-foreground' : 'text-muted-foreground',
-              )}
-            />
+            <FolderIcon aria-hidden="true" className="size-5 text-muted-foreground" />
           </div>
           <span className="min-w-0 truncate font-medium" title={folder.name}>
             {folder.name}
           </span>
         </div>
       </TableCell>
-      <TableCell
-        className={cn(
-          KIND_CELL,
-          isSelected ? 'text-selected-foreground/80' : 'text-muted-foreground',
-        )}
-      >
+      <TableCell className={cn(KIND_CELL, 'text-muted-foreground')}>
         {m.folder_kind_label()}
       </TableCell>
       <TableCell className={DATE_CELL} />
       <TableCell className={OWNER_CELL} />
       <TableCell className={SIZE_CELL} />
       <TableCell className="pl-0 text-right">
-        <div className="relative inline-flex">
+        <RowActions>
           <FolderActions folderId={folder.id} folderName={folder.name} isAdmin={isAdmin} />
-        </div>
+        </RowActions>
       </TableCell>
     </TableRow>
   )
@@ -177,7 +168,7 @@ export function FolderUpRow({
           goUp()
         }
       }}
-      className={cn(ROW_SHELL, isOver && 'bg-accent text-accent-foreground')}
+      className={cn(ROW_SHELL, isOver && 'text-accent-foreground [--row-bg:var(--accent)]')}
     >
       <TableCell>
         <div className="flex min-w-0 items-center gap-3">

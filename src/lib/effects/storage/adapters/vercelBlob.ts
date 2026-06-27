@@ -12,6 +12,12 @@ import { applyEnvPrefix, isRemoteOriginPathname, type StorageEffects } from '../
 
 const TOKEN_TTL_MS = 5 * 60 * 1000
 
+// Public-store objects (avatars, thumbnails) are content-addressed and immutable,
+// so cache them for a year. Prod reads route through `/_vercel/image`, which sets
+// its own cache headers, so this mainly hardens the raw blob URL; the SDK exposes
+// only `cacheControlMaxAge` (no literal `immutable` token). Mirrors the s3 adapter.
+const PUBLIC_CACHE_MAX_AGE_SECONDS = 31_536_000
+
 function tokenFor(access: 'public' | 'private'): string {
   const token =
     access === 'public'
@@ -46,6 +52,7 @@ export const vercelBlob: StorageEffects = {
       validUntil: Date.now() + TOKEN_TTL_MS,
       addRandomSuffix: false,
       allowOverwrite: false,
+      ...(access === 'public' ? { cacheControlMaxAge: PUBLIC_CACHE_MAX_AGE_SECONDS } : {}),
     })
     return { pathname: prefixed, upload: { kind: 'vercel-blob-client', clientToken } }
   },
@@ -80,6 +87,7 @@ export const vercelBlob: StorageEffects = {
       contentType,
       addRandomSuffix: false,
       allowOverwrite: true,
+      ...(access === 'public' ? { cacheControlMaxAge: PUBLIC_CACHE_MAX_AGE_SECONDS } : {}),
     })
   },
 

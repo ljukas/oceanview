@@ -23,3 +23,7 @@ yarn.lock
 .claude/plans/
 .env*.local
 .neon_local/
+
+# Vitest Browser Mode artifacts (failure screenshots + attachments)
+.vitest-attachments/
+**/__screenshots__/

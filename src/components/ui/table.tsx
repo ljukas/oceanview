@@ -2,12 +2,19 @@ import type * as React from 'react'
 
 import { cn } from '~/lib/utils'
 
-function Table({ className, ...props }: React.ComponentProps<'table'>) {
+function Table({
+  className,
+  containerClassName,
+  ...props
+}: React.ComponentProps<'table'> & { containerClassName?: string }) {
   return (
-    <div data-slot="table-container" className="relative w-full overflow-x-auto">
+    <div
+      data-slot="table-container"
+      className={cn('relative w-full overflow-x-auto', containerClassName)}
+    >
       <table
         data-slot="table"
-        className={cn('w-full caption-bottom text-sm', className)}
+        className={cn('w-full caption-bottom border-separate border-spacing-0 text-sm', className)}
         {...props}
       />
     </div>
@@ -15,17 +22,13 @@ function Table({ className, ...props }: React.ComponentProps<'table'>) {
 }
 
 function TableHeader({ className, ...props }: React.ComponentProps<'thead'>) {
-  return <thead data-slot="table-header" className={cn('[&_tr]:border-b', className)} {...props} />
+  // Only border that survives the borderless restyle: a hairline under the
+  // header cells (on `th`, since row borders don't render under border-separate).
+  return <thead data-slot="table-header" className={cn('[&_th]:border-b', className)} {...props} />
 }
 
 function TableBody({ className, ...props }: React.ComponentProps<'tbody'>) {
-  return (
-    <tbody
-      data-slot="table-body"
-      className={cn('[&_tr:last-child]:border-0', className)}
-      {...props}
-    />
-  )
+  return <tbody data-slot="table-body" className={className} {...props} />
 }
 
 function TableFooter({ className, ...props }: React.ComponentProps<'tfoot'>) {
@@ -42,8 +45,11 @@ function TableRow({ className, ...props }: React.ComponentProps<'tr'>) {
   return (
     <tr
       data-slot="table-row"
+      // Borderless Linear look: the row only drives a `--row-bg` custom property
+      // by state; the cells paint it (so it can be rounded — a `<tr>` ignores
+      // border-radius). `group/row` also powers RowActions' hover-reveal.
       className={cn(
-        'border-b transition-colors hover:bg-muted/50 has-aria-expanded:bg-muted/50 data-[state=selected]:bg-muted',
+        'group/row hover:[--row-bg:var(--muted)] has-aria-expanded:[--row-bg:var(--muted)] data-[state=selected]:[--row-bg:var(--muted)]',
         className,
       )}
       {...props}
@@ -68,7 +74,13 @@ function TableCell({ className, ...props }: React.ComponentProps<'td'>) {
   return (
     <td
       data-slot="table-cell"
-      className={cn('whitespace-nowrap p-2 align-middle [&:has([role=checkbox])]:pr-0', className)}
+      // Each body cell paints the row's `--row-bg`; the end cells round the pill's
+      // outer corners via --row-rt/--row-rb (rules in app.css), and adjacent
+      // selected rows flatten their shared edge to merge into one rounded block.
+      className={cn(
+        'whitespace-nowrap bg-[var(--row-bg,transparent)] p-2 align-middle transition-colors [&:has([role=checkbox])]:pr-0',
+        className,
+      )}
       {...props}
     />
   )
