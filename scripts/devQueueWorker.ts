@@ -4,6 +4,7 @@ import { Worker } from 'bullmq'
 import type { QueuePayloadMap, QueueTopic } from '~/lib/effects/queue/queue'
 import { logger } from '~/lib/logger/server'
 import { handleBlurhashMessage } from '~/lib/queue/handlers/blurhash'
+import { handleEmailUserInvitedMessage } from '~/lib/queue/handlers/emailUserInvited'
 import { handleImageThumbnailMessage } from '~/lib/queue/handlers/imageThumbnail'
 
 /**
@@ -36,6 +37,16 @@ const workers = [
     'image_thumbnail',
     async (job) => {
       await handleImageThumbnailMessage(job.data, {
+        messageId: job.id ?? 'local-unknown',
+        deliveryCount: job.attemptsMade + 1,
+      })
+    },
+    { connection: { url } },
+  ),
+  new Worker<QueuePayloadMap['email_user_invited']>(
+    'email_user_invited',
+    async (job) => {
+      await handleEmailUserInvitedMessage(job.data, {
         messageId: job.id ?? 'local-unknown',
         deliveryCount: job.attemptsMade + 1,
       })

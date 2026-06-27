@@ -5,6 +5,8 @@
 - **Deciders**: Lukas
 - **Decision in one line**: Heavy / deferred work runs on a queue. Producers call `queue.publish(topic, payload)` through `~/lib/effects/queue/`; the same handler in `src/lib/queue/handlers/<topic>.ts` runs in production (Vercel Queues → Nitro `vercel:queue` hook) and in local dev (BullMQ + Redis worker). The adapter is chosen at runtime from env; tests use a `devLog` no-op. **Supersedes the tier-3 / outbox passages in [ADR-0001](./0001-side-effects-architecture.md).**
 
+> **Amended 2026-06-24.** A fourth topic landed: **`email_user_invited`** (`{ to, inviteUrl, locale }`) — the first **email** topic, and the first producer that is **not** an oRPC procedure. It is published from Better Auth's `sendVerificationEmail` hook (`src/lib/auth.ts`), making user invitations tier-3 (delivery off the admin's request, with retry/backoff). Handler: `src/lib/queue/handlers/emailUserInvited.ts` (a thin `email.sendUserInvited(...)` — all token/link work happened on the producer side). Wired through all five places per *How to add a new topic*: the union/payload in `queue.ts`, the handler, the `vercel:queue` switch (`queueConsumer.ts`), the `vite.config.ts` trigger, and the dev `Worker` (`devQueueWorker.ts`). See [ADR-0008](./0008-email-architecture.md) (the email seam) and [ADR-0017](./0017-user-invitation-flow.md) (the invitation flow). Note this loosens the producer's "no auth hook" verification grep below — `publish('email_user_invited', …)` legitimately lives in `src/lib/auth.ts`.
+
 > **Amended 2026-06-10.** Vercel Queues re-verified: it is **GA**, no longer public beta. Billing is per operation, metered in 4 KiB chunks, across five operation types (Send / Receive / Delete / Visibility change / Notify); operations are regionally priced against plan credits; sends with an idempotency key and push deliveries with max concurrency bill at 2× for that operation; functions invoked in push mode are billed as normal Fluid compute. Default message retention is 24 h (max 7 days) — which *simplifies* the swap path documented below: unprocessed messages for recomputable jobs like blurhash self-expire, so there is nothing to migrate. At ~20 users our volume is trivially inside Hobby plan credits. The "exits beta with surprising pricing" revisit trigger is retired and restated in measurable terms below. Sources: [vercel.com/docs/queues](https://vercel.com/docs/queues), [vercel.com/docs/queues/pricing](https://vercel.com/docs/queues/pricing).
 
 ---
@@ -80,7 +82,7 @@ One interface, typed per topic via a discriminated payload map:
 
 ```ts
 // src/lib/effects/queue/queue.ts
-export type QueueTopic = 'blurhash' | 'image_thumbnail' | 'pdf_thumbnail'
+export type QueueTopic = 'blurhash' | 'image_thumbnail' | 'pdf_thumbnail' | 'email_user_invited'
 
 export type QueuePayloadMap = {
   blurhash:
@@ -88,6 +90,7 @@ export type QueuePayloadMap = {
     | { fileId: string; kind: 'document' }
   image_thumbnail: { documentId: string }
   pdf_thumbnail: { documentId: string } // reserved; not yet produced or consumed
+  email_user_invited: { to: string; inviteUrl: string; locale: Locale } // ADR-0017
 }
 
 export interface QueueEffects {
@@ -304,6 +307,7 @@ After this ADR's pattern lands or is touched:
 - `src/lib/effects/index.ts` — re-exports `queue` alongside `email`, `storage`, `realtime`.
 - `src/lib/queue/handlers/blurhash.ts` — shared consumer handler (`blurhash` topic).
 - `src/lib/queue/handlers/imageThumbnail.ts` — shared consumer handler (`image_thumbnail` topic; ADR-0010).
+- `src/lib/queue/handlers/emailUserInvited.ts` — shared consumer handler (`email_user_invited` topic; ADR-0017). Producer is Better Auth's `sendVerificationEmail` hook in `src/lib/auth.ts`, not an oRPC procedure.
 - `server/plugins/queueConsumer.ts` — Vercel Queues consumer (Nitro `vercel:queue` hook).
 - `scripts/devQueueWorker.ts` — local BullMQ consumer; run via `pnpm dev:worker`.
 - `compose.yaml` — `queue` and `queue-studio` services.

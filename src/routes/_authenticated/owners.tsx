@@ -1,13 +1,14 @@
-import { useQuery, useSuspenseQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient, useSuspenseQuery } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
-import { PlusIcon } from 'lucide-react'
+import { UserPlusIcon } from 'lucide-react'
+import { toast } from 'sonner'
 import { z } from 'zod'
 import { PageContainer } from '~/components/layout/PageContainer'
 import { Button } from '~/components/ui/button'
 import { ToggleGroup, ToggleGroupItem } from '~/components/ui/toggle-group'
-import { CreateUserDialog } from '~/components/user/CreateUserDialog'
 import { DeleteUserDialog } from '~/components/user/DeleteUserDialog'
 import { EditUserDialog } from '~/components/user/EditUserDialog'
+import { InviteUserDialog } from '~/components/user/InviteUserDialog'
 import { type OwnerRow, OwnersTable } from '~/components/user/OwnersTable'
 import { RestoreUserDialog } from '~/components/user/RestoreUserDialog'
 import { useUrlDialog } from '~/hooks/useUrlDialog'
@@ -17,7 +18,7 @@ import { seo } from '~/utils/seo'
 
 const ownersSearchSchema = z.object({
   filter: z.enum(['active', 'deleted']).optional(),
-  dialog: z.enum(['create', 'edit', 'delete', 'restore']).optional(),
+  dialog: z.enum(['invite', 'edit', 'delete', 'restore']).optional(),
   userId: z.string().optional(),
 })
 
@@ -72,7 +73,7 @@ function Owners() {
     clearKeys: ['userId'],
   })
 
-  const isCreate = isAdmin && isOpen('create')
+  const isInvite = isAdmin && isOpen('invite')
   const isEdit = isAdmin && isOpen('edit')
   const isDelete = isAdmin && isOpen('delete')
   const isRestore = isAdmin && isOpen('restore')
@@ -109,9 +110,9 @@ function Owners() {
           {showDeleted ? (
             <div />
           ) : (
-            <Button onClick={() => open('create')}>
-              <PlusIcon />
-              {m.owners_create_button()}
+            <Button onClick={() => open('invite')}>
+              <UserPlusIcon />
+              {m.owners_invite_button()}
             </Button>
           )}
 
@@ -150,8 +151,8 @@ function Owners() {
 
       {isAdmin ? (
         <>
-          <CreateUserDialog
-            open={isCreate}
+          <InviteUserDialog
+            open={isInvite}
             onOpenChange={(open) => {
               if (!open) close()
             }}
@@ -199,6 +200,16 @@ function ActiveOwners({
 }) {
   const { data: owners } = useSuspenseQuery(orpc.user.listContacts.queryOptions())
   const { data: onlineIds } = useSuspenseQuery(orpc.presence.listOnline.queryOptions())
+  const queryClient = useQueryClient()
+  const resendInvite = useMutation(
+    orpc.user.resendInvite.mutationOptions({
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: orpc.user.key() })
+        toast.success(m.user_resend_invite_success())
+      },
+      onError: () => toast.error(m.user_resend_invite_error()),
+    }),
+  )
   return (
     <OwnersTable
       owners={owners}
@@ -209,6 +220,11 @@ function ActiveOwners({
       onEdit={onEdit}
       onDelete={onDelete}
       onRestore={onRestore}
+      onResendInvite={
+        // Ignore a second click while a resend is already in flight, so a
+        // double-select doesn't fire two sends (and a spurious error toast).
+        isAdmin ? (id) => !resendInvite.isPending && resendInvite.mutate({ id }) : undefined
+      }
     />
   )
 }

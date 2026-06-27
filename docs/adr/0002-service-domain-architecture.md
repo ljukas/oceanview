@@ -164,6 +164,8 @@ export type UserDomainErrorCode =
   | 'TARGET_DELETED'
   | 'CANNOT_ACT_ON_SELF'
   | 'LAST_ADMIN'
+  | 'ALREADY_ACCEPTED' // resend on a verified user — added 2026-06-24, ADR-0017
+  | 'EMAIL_TAKEN'      // invite for an existing email — added 2026-06-24, ADR-0017
 
 export class UserDomainError extends Error {
   constructor(public readonly code: UserDomainErrorCode) {
@@ -386,3 +388,9 @@ mapping (a sanctioned follow-up). Prefer this code-only style when a client need
 to branch on the specific failure (inline field errors, contextual or distinct
 recovery UI); the message-mapping style remains fine when the client only needs to
 show the message.
+
+## Amendment (2026-06-24): user service grows the invitation ops + two codes
+
+The `user` service gained three exports for the invitation flow ([ADR-0017](./0017-user-invitation-flow.md)), all following the patterns above: `inviteUser(email)` (a check-first guarded write — `findIdByEmail` → `EMAIL_TAKEN`, the unique constraint staying the silent backstop, per "Check first" §), `markInvited(id)` (a bare timestamp bump, no invariant), and `assertInviteResendable(id)` (a read-only guard that throws `NOT_FOUND` / `ALREADY_ACCEPTED`). `create` was reshaped into `invite` + `resendInvite` at the procedure layer.
+
+The `UserDomainErrorCode` union grew two members — **`ALREADY_ACCEPTED`** (resend on an already-verified user) and **`EMAIL_TAKEN`** (invite for an existing email) — staying **code-only** per the 2026-06-14 amendment above: `userErrors` in `procedures/user.ts` declares them status-only (`satisfies Record<UserDomainErrorCode, …>` catches a missed key at build), and `src/lib/orpc/userErrorMessage.ts`'s exhaustive switch localizes them. No new Swedish in the procedure; the type system forced both the `userErrors` key and the `userErrorMessage` case the moment each code was added.

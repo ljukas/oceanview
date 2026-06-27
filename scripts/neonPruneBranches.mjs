@@ -18,7 +18,7 @@
 // branch survives until that branch is gone — fine, this is a janitor.
 
 import { execFileSync } from 'node:child_process'
-import { readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -50,6 +50,14 @@ const api = async (method, path) => {
 }
 
 const mappingsFile = resolve(root, '.neon_local/.branches')
+// Neon Local is paused (see compose.yaml + CLAUDE.md): it no longer writes the
+// .neon_local/.branches mappings this janitor prunes, so there is nothing to do.
+if (!existsSync(mappingsFile)) {
+  console.log(
+    '[neon:prune] Neon Local is paused — no .neon_local/.branches mappings; nothing to prune',
+  )
+  process.exit(0)
+}
 const mappings = JSON.parse(readFileSync(mappingsFile, 'utf8'))
 
 const gitBranches = execFileSync('git', ['branch', '--format=%(refname:short)'], {

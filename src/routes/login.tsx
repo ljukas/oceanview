@@ -61,7 +61,7 @@ function Login() {
   useAwaitSignIn({
     enabled: sentTo !== null,
     onSignedIn: () => {
-      navigate({ to: destination, search: destination === '/' ? { passkey: 'setup' } : undefined })
+      navigate({ to: destination })
     },
   })
 

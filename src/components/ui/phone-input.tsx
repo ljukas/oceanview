@@ -18,37 +18,91 @@ import { ScrollArea } from '~/components/ui/scroll-area'
 import { cn } from '~/lib/utils'
 import { m } from '~/paraglide/messages'
 
-type PhoneInputProps = Omit<React.ComponentProps<'input'>, 'onChange' | 'value' | 'ref'> &
+type PhoneInputSize = 'default' | 'xl'
+
+type PhoneInputContextValue = {
+  size: PhoneInputSize
+  // Optional class overrides for the two fused subcontrols, so a wrapper (e.g. the
+  // floating-label phone field) can grow them to a taller box than the size variant.
+  inputClassName?: string
+  countryButtonClassName?: string
+}
+
+// react-phone-number-input forwards extra props to the *input* component only, not
+// to the country-select component, so we can't thread sizing to both via RPNInput
+// props. A small context carries it to both subcomponents instead — keeps the
+// country button and number input in lockstep regardless of RPNInput's API.
+const PhoneInputContext = React.createContext<PhoneInputContextValue>({ size: 'default' })
+
+type PhoneInputProps = Omit<React.ComponentProps<'input'>, 'onChange' | 'value' | 'ref' | 'size'> &
   Omit<RPNInput.Props<typeof RPNInput.default>, 'onChange'> & {
     onChange?: (value: RPNInput.Value) => void
+    size?: PhoneInputSize
+    inputClassName?: string
+    countryButtonClassName?: string
   }
 
 const PhoneInput: React.ForwardRefExoticComponent<PhoneInputProps> = React.forwardRef<
   React.ComponentRef<typeof RPNInput.default>,
   PhoneInputProps
->(({ className, onChange, value, ...props }, ref) => {
-  return (
-    <RPNInput.default
-      ref={ref}
-      className={cn('flex', className)}
-      flagComponent={FlagComponent}
-      countrySelectComponent={CountrySelect}
-      inputComponent={InputComponent}
-      smartCaret={false}
-      value={value || undefined}
-      // react-phone-number-input fires onChange with undefined for invalid input;
-      // coerce to "" so the bound form keeps a string value.
-      onChange={(v) => onChange?.(v || ('' as RPNInput.Value))}
-      {...props}
-    />
-  )
-})
+>(
+  (
+    {
+      className,
+      onChange,
+      value,
+      size = 'default',
+      inputClassName,
+      countryButtonClassName,
+      ...props
+    },
+    ref,
+  ) => {
+    const context = React.useMemo<PhoneInputContextValue>(
+      () => ({ size, inputClassName, countryButtonClassName }),
+      [size, inputClassName, countryButtonClassName],
+    )
+    return (
+      <PhoneInputContext value={context}>
+        <RPNInput.default
+          ref={ref}
+          className={cn('flex', className)}
+          flagComponent={FlagComponent}
+          countrySelectComponent={CountrySelect}
+          inputComponent={InputComponent}
+          smartCaret={false}
+          value={value || undefined}
+          // react-phone-number-input fires onChange with undefined for invalid input;
+          // coerce to "" so the bound form keeps a string value.
+          onChange={(v) => onChange?.(v || ('' as RPNInput.Value))}
+          {...props}
+        />
+      </PhoneInputContext>
+    )
+  },
+)
 PhoneInput.displayName = 'PhoneInput'
 
 const InputComponent = React.forwardRef<HTMLInputElement, React.ComponentProps<typeof Input>>(
-  ({ className, ...props }, ref) => (
-    <Input className={cn('rounded-s-none rounded-e-lg', className)} {...props} ref={ref} />
-  ),
+  ({ className, ...props }, ref) => {
+    const { size, inputClassName } = React.useContext(PhoneInputContext)
+    return (
+      <Input
+        size={size}
+        // Match the start side of the fused country button: drop start rounding and
+        // mirror the size variant's corner radius on the end side. `inputClassName`
+        // (caller override) comes last so it wins.
+        className={cn(
+          'rounded-s-none',
+          size === 'xl' ? 'rounded-e-xl' : 'rounded-e-lg',
+          className,
+          inputClassName,
+        )}
+        {...props}
+        ref={ref}
+      />
+    )
+  },
 )
 InputComponent.displayName = 'InputComponent'
 
@@ -67,6 +121,7 @@ const CountrySelect = ({
   options: countryList,
   onChange,
 }: CountrySelectProps) => {
+  const { size, countryButtonClassName } = React.useContext(PhoneInputContext)
   const scrollAreaRef = React.useRef<HTMLDivElement>(null)
   const [searchValue, setSearchValue] = React.useState('')
   const [isOpen, setIsOpen] = React.useState(false)
@@ -84,12 +139,25 @@ const CountrySelect = ({
         <Button
           type="button"
           variant="outline"
-          className="flex gap-1 rounded-s-lg rounded-e-none border-r-0 px-3 focus:z-10 focus-visible:border-brand focus-visible:ring-1 focus-visible:ring-brand"
+          size={size}
+          // Fuse to the number input: round only the start side (mirroring the size
+          // variant's radius) and drop the shared border between the two.
+          // `countryButtonClassName` (caller override) comes last so it wins.
+          className={cn(
+            'flex gap-1 rounded-e-none border-r-0 px-3 focus:z-10 focus-visible:border-brand focus-visible:ring-1 focus-visible:ring-brand',
+            size === 'xl' ? 'rounded-s-xl' : 'rounded-s-lg',
+            countryButtonClassName,
+          )}
           disabled={disabled}
         >
           <FlagComponent country={selectedCountry} countryName={selectedCountry} />
           <ChevronsUpDownIcon
-            className={cn('-mr-2 size-4 opacity-50', disabled ? 'hidden' : 'opacity-100')}
+            // Keep the chevron in the layout flow even when disabled (e.g. while a
+            // form is submitting) — dim it rather than `hidden`, so the country
+            // button width stays constant and the field doesn't shift on submit.
+            // The floating-label variant relies on this constant width for its
+            // fixed `left-[4.5rem]` caption offset.
+            className={cn('-mr-2 size-4', disabled ? 'opacity-50' : 'opacity-100')}
           />
         </Button>
       </PopoverTrigger>

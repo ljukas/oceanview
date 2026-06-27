@@ -8,4 +8,10 @@ export const devLog: EmailEffects = {
     const safeUrl = process.env.NODE_ENV === 'production' ? '[redacted]' : url
     logger.info('magic-link (devLog)', { to, url: safeUrl, locale })
   },
+  async sendUserInvited({ to, inviteUrl, locale }) {
+    // Like the magic link, the invite URL grants sign-in (verify + auto-sign-in),
+    // so never write it to Runtime Logs in prod (ADR-0008).
+    const safeUrl = process.env.NODE_ENV === 'production' ? '[redacted]' : inviteUrl
+    logger.info('invite (devLog)', { to, inviteUrl: safeUrl, locale })
+  },
 }

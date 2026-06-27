@@ -23,5 +23,9 @@ export function userErrorMessage(
       return selfAction === 'delete' ? m.user_error_delete_self() : m.user_error_demote_self()
     case 'LAST_ADMIN':
       return m.user_error_last_admin()
+    case 'ALREADY_ACCEPTED':
+      return m.user_error_already_accepted()
+    case 'EMAIL_TAKEN':
+      return m.user_error_email_taken()
   }
 }
