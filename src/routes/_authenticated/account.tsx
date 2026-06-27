@@ -7,6 +7,7 @@ import { DeletePasskeyDialog } from '~/components/passkey/DeletePasskeyDialog'
 import { PasskeyRow } from '~/components/passkey/PasskeyRow'
 import { TooltipProvider } from '~/components/ui/tooltip'
 import { AvatarUpload } from '~/components/user/AvatarUpload'
+import { ProfileForm } from '~/components/user/ProfileForm'
 import { useListPasskeys } from '~/hooks/usePasskeys'
 import { orpc } from '~/lib/orpc/client'
 import { m } from '~/paraglide/messages'
@@ -39,6 +40,18 @@ function Account() {
           </h1>
           <p className="text-muted-foreground text-sm">{m.account_description()}</p>
         </header>
+
+        <section className="flex flex-col gap-4">
+          <div className="flex flex-col gap-2">
+            <h2 className="font-semibold text-xl">{m.account_profile_heading()}</h2>
+            <p className="text-muted-foreground text-sm">{m.account_profile_description()}</p>
+          </div>
+          <Suspense
+            fallback={<div className="text-muted-foreground text-sm">{m.common_loading()}</div>}
+          >
+            <ProfileForm />
+          </Suspense>
+        </section>
 
         <section className="flex flex-col gap-4">
           <div className="flex flex-col gap-2">

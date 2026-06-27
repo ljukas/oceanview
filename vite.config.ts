@@ -126,25 +126,48 @@ export default defineConfig({
         }),
       ],
   test: {
-    environment: 'node',
-    pool: 'forks',
-    // Each test creates its own Postgres schema (see test/setup.ts). Cap
-    // workers so the CREATE/DROP SCHEMA churn against Neon Local stays
-    // bounded; bump cautiously after observing CI stability.
-    maxWorkers: 4,
-    hookTimeout: 20_000,
-    // Per-test schema CREATE + migrations + DROP is the dominant cost; a
-    // single service-driven test with a couple of transactions can easily
-    // burn 5–10s. Default Vitest timeout is 5s — raise it so realistic
-    // multi-mutation scenarios don't false-fail.
-    testTimeout: 15_000,
-    // TEST_SCHEMA flips src/lib/db/index.ts into test mode (pinned single
-    // connection + exposed __testClient). Setting it here means the runner
-    // injects it into the worker before any module evaluates, so setup.ts
-    // can use a normal static import.
-    env: {
-      TEST_SCHEMA: '1',
-      ...(process.env.CI ? {} : { DATABASE_URL: TEST_DATABASE_URL }),
-    },
+    projects: [
+      {
+        // Existing node/DB suite — behaviour unchanged. `extends: true` inherits
+        // the root `resolve` (so `~/*` aliases resolve) and the root `plugins`,
+        // which are already `[]` under VITEST (see the isTest guard above).
+        extends: true,
+        test: {
+          name: 'node',
+          environment: 'node',
+          pool: 'forks',
+          // Distinct groupOrder from the browser project: Vitest 4 refuses to
+          // co-run projects that share a groupOrder but differ in maxWorkers.
+          // Group 0 runs first (node/DB), then group 1 (browser) — see
+          // vitest.browser.config.ts.
+          sequence: { groupOrder: 0 },
+          // Each test creates its own Postgres schema (see test/setup.ts). Cap
+          // workers so the CREATE/DROP SCHEMA churn against Neon Local stays
+          // bounded; bump cautiously after observing CI stability.
+          maxWorkers: 4,
+          hookTimeout: 20_000,
+          // Per-test schema CREATE + migrations + DROP is the dominant cost; a
+          // single service-driven test with a couple of transactions can easily
+          // burn 5–10s. Default Vitest timeout is 5s — raise it so realistic
+          // multi-mutation scenarios don't false-fail.
+          testTimeout: 15_000,
+          // TEST_SCHEMA flips src/lib/db/index.ts into test mode (pinned single
+          // connection + exposed __testClient). Setting it here means the runner
+          // injects it into the worker before any module evaluates, so setup.ts
+          // can use a normal static import.
+          env: {
+            TEST_SCHEMA: '1',
+            ...(process.env.CI ? {} : { DATABASE_URL: TEST_DATABASE_URL }),
+          },
+          include: ['src/**/*.test.{ts,tsx}', 'test/**/*.test.{ts,tsx}'],
+          // Component tests run in the browser project, not here.
+          exclude: ['**/*.browser.test.*', '**/node_modules/**'],
+        },
+      },
+      // Real-browser component tests live in their own standalone config so they
+      // can carry React + Paraglide plugins without the node project (or the
+      // app's Start/Nitro build chain) inheriting them.
+      './vitest.browser.config.ts',
+    ],
   },
 })
