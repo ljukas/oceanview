@@ -446,5 +446,15 @@
   "recommendation_error_delete_others": "You can only delete your own places.",
   "recommendation_error_no_photos": "Add at least one photo.",
   "recommendation_error_too_many_photos": "You can add at most 10 photos.",
-  "recommendation_error_duplicate_photos": "The same photo can't be added more than once."
+  "recommendation_error_duplicate_photos": "The same photo can't be added more than once.",
+  "tag_restaurant": "Restaurant",
+  "tag_anchorage": "Anchorage",
+  "tag_pier": "Pier",
+  "tag_cove": "Cove",
+  "tag_beach": "Beach",
+  "tag_marina": "Marina",
+  "tag_bar": "Bar",
+  "tag_snorkeling": "Snorkeling",
+  "tag_provisioning": "Provisioning",
+  "tag_viewpoint": "Viewpoint"
 }

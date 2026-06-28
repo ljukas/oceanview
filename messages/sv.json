@@ -446,5 +446,15 @@
   "recommendation_error_delete_others": "Du kan bara ta bort dina egna platser.",
   "recommendation_error_no_photos": "Lägg till minst ett foto.",
   "recommendation_error_too_many_photos": "Du kan lägga till högst 10 foton.",
-  "recommendation_error_duplicate_photos": "Samma foto kan inte läggas till flera gånger."
+  "recommendation_error_duplicate_photos": "Samma foto kan inte läggas till flera gånger.",
+  "tag_restaurant": "Restaurang",
+  "tag_anchorage": "Ankarplats",
+  "tag_pier": "Brygga",
+  "tag_cove": "Vik",
+  "tag_beach": "Strand",
+  "tag_marina": "Marina",
+  "tag_bar": "Bar",
+  "tag_snorkeling": "Snorkling",
+  "tag_provisioning": "Proviantering",
+  "tag_viewpoint": "Utsiktsplats"
 }
