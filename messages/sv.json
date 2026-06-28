@@ -440,5 +440,10 @@
   "validation_name_too_long": "Namnet är för långt (max 255 tecken)",
   "validation_phone_too_long": "Telefonnumret är för långt (max 30 tecken)",
   "validation_phone_too_short": "Telefonnumret är för kort (minst 5 tecken)",
-  "validation_role_required": "Välj en roll"
+  "validation_role_required": "Välj en roll",
+  "recommendation_error_not_found": "Platsen hittades inte.",
+  "recommendation_error_edit_others": "Du kan bara redigera dina egna platser.",
+  "recommendation_error_delete_others": "Du kan bara ta bort dina egna platser.",
+  "recommendation_error_no_photos": "Lägg till minst ett foto.",
+  "recommendation_error_too_many_photos": "Du kan lägga till högst 10 foton."
 }
