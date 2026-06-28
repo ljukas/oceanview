@@ -205,3 +205,70 @@ export async function findRecommendation(id: string): Promise<RecommendationList
   const [item] = await assemble(rows)
   return item
 }
+
+export async function reorderPhotos(input: {
+  id: string
+  actorId: string
+  actorRole: string | null
+  orderedPhotoIds: string[]
+}): Promise<{ id: string }> {
+  return db.transaction(async (tx) => {
+    const [row] = await tx
+      .select({ authorId: recommendation.authorId })
+      .from(recommendation)
+      .where(and(eq(recommendation.id, input.id), isNull(recommendation.deletedAt)))
+      .limit(1)
+    if (!row) throw new RecommendationDomainError('NOT_FOUND')
+    if (input.actorRole !== 'admin' && row.authorId !== input.actorId) {
+      throw new RecommendationDomainError('CANNOT_EDIT_OTHERS_RECOMMENDATION')
+    }
+
+    const current = await tx
+      .select({ id: recommendationPhoto.id })
+      .from(recommendationPhoto)
+      .where(eq(recommendationPhoto.recommendationId, input.id))
+    const currentSet = new Set(current.map((p) => p.id))
+    const valid =
+      input.orderedPhotoIds.length === currentSet.size &&
+      input.orderedPhotoIds.every((id) => currentSet.has(id))
+    if (!valid) throw new RecommendationDomainError('NOT_FOUND')
+
+    for (const [index, photoId] of input.orderedPhotoIds.entries()) {
+      await tx
+        .update(recommendationPhoto)
+        .set({ sortOrder: index })
+        .where(eq(recommendationPhoto.id, photoId))
+    }
+    return { id: input.id }
+  })
+}
+
+export async function softDeleteRecommendation(input: {
+  id: string
+  actorId: string
+  actorRole: string | null
+}): Promise<{ id: string }> {
+  return db.transaction(async (tx) => {
+    const [row] = await tx
+      .select({ authorId: recommendation.authorId })
+      .from(recommendation)
+      .where(and(eq(recommendation.id, input.id), isNull(recommendation.deletedAt)))
+      .limit(1)
+    if (!row) throw new RecommendationDomainError('NOT_FOUND')
+    if (input.actorRole !== 'admin' && row.authorId !== input.actorId) {
+      throw new RecommendationDomainError('CANNOT_DELETE_OTHERS_RECOMMENDATION')
+    }
+
+    const now = new Date()
+    const photoRows = await tx
+      .select({ fileId: recommendationPhoto.fileId })
+      .from(recommendationPhoto)
+      .where(eq(recommendationPhoto.recommendationId, input.id))
+    const fileIds = photoRows.map((p) => p.fileId)
+    if (fileIds.length > 0) {
+      await tx.update(file).set({ deletedAt: now }).where(inArray(file.id, fileIds))
+    }
+    await tx.update(recommendation).set({ deletedAt: now }).where(eq(recommendation.id, input.id))
+    return { id: input.id }
+  })
+}

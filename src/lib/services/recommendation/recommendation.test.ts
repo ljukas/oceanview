@@ -14,6 +14,8 @@ import {
   createRecommendation,
   findRecommendation,
   listRecommendations,
+  reorderPhotos,
+  softDeleteRecommendation,
   updateRecommendation,
 } from './recommendation'
 
@@ -244,4 +246,85 @@ test('listRecommendations does not cross-contaminate photos or tags between reco
 
   expect(itemB.photos.length).toBe(1)
   expect(itemB.tagIds).toEqual([cove])
+})
+
+async function photoIdsFor(id: string) {
+  const rows = await db
+    .select({ id: recommendationPhoto.id, sortOrder: recommendationPhoto.sortOrder })
+    .from(recommendationPhoto)
+    .where(eq(recommendationPhoto.recommendationId, id))
+  return rows.sort((a, b) => a.sortOrder - b.sortOrder).map((r) => r.id)
+}
+
+test('reorderPhotos rewrites sort_order for the author', async () => {
+  const authorId = await insertAuthor()
+  const { id } = await createRecommendation({
+    authorId,
+    title: 'G',
+    lat: 0,
+    lng: 0,
+    tagIds: [],
+    photos: [photo('a'), photo('b'), photo('c')],
+  })
+  const [p0, p1, p2] = await photoIdsFor(id)
+  await reorderPhotos({ id, actorId: authorId, actorRole: 'user', orderedPhotoIds: [p2, p0, p1] })
+  expect(await photoIdsFor(id)).toEqual([p2, p0, p1])
+})
+
+test('reorderPhotos blocks a non-owner non-admin', async () => {
+  const authorId = await insertAuthor('owner@test.oceanview.local')
+  const otherId = await insertAuthor('bob@test.oceanview.local')
+  const { id } = await createRecommendation({
+    authorId,
+    title: 'G',
+    lat: 0,
+    lng: 0,
+    tagIds: [],
+    photos: [photo('a'), photo('b')],
+  })
+  const ids = await photoIdsFor(id)
+  await expect(
+    reorderPhotos({ id, actorId: otherId, actorRole: 'user', orderedPhotoIds: ids }),
+  ).rejects.toMatchObject({
+    name: 'RecommendationDomainError',
+    code: 'CANNOT_EDIT_OTHERS_RECOMMENDATION',
+  })
+})
+
+test('softDeleteRecommendation hides the place and soft-deletes its files (author)', async () => {
+  const authorId = await insertAuthor()
+  const { id, photoFileIds } = await createRecommendation({
+    authorId,
+    title: 'G',
+    lat: 0,
+    lng: 0,
+    tagIds: [],
+    photos: [photo('a')],
+  })
+  await softDeleteRecommendation({ id, actorId: authorId, actorRole: 'user' })
+  expect((await listRecommendations()).find((r) => r.id === id)).toBeUndefined()
+  const [f] = await db
+    .select({ deletedAt: file.deletedAt })
+    .from(file)
+    .where(eq(file.id, photoFileIds[0]))
+  expect(f.deletedAt).not.toBeNull()
+})
+
+test('softDeleteRecommendation blocks a non-owner non-admin', async () => {
+  const authorId = await insertAuthor('owner@test.oceanview.local')
+  const otherId = await insertAuthor('bob@test.oceanview.local')
+  const { id } = await createRecommendation({
+    authorId,
+    title: 'G',
+    lat: 0,
+    lng: 0,
+    tagIds: [],
+    photos: [photo('a')],
+  })
+  await expect(
+    softDeleteRecommendation({ id, actorId: otherId, actorRole: 'user' }),
+  ).rejects.toMatchObject({
+    name: 'RecommendationDomainError',
+    code: 'CANNOT_DELETE_OTHERS_RECOMMENDATION',
+  })
 })
