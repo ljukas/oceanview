@@ -1,7 +1,7 @@
-import { eq } from 'drizzle-orm'
+import { eq, inArray } from 'drizzle-orm'
 import { expect, test } from 'vitest'
 import { db } from '~/lib/db'
-import { recommendationPhoto, recommendationTag, tag, user } from '~/lib/db/schema'
+import { file, recommendationPhoto, recommendationTag, tag, user } from '~/lib/db/schema'
 import { setupDatabase } from '~test/setup'
 import { createRecommendation } from './recommendation'
 
@@ -38,10 +38,22 @@ test('createRecommendation inserts the place, photos (ordered), and tag joins', 
   expect(result.photoFileIds.length).toBe(2)
 
   const photos = await db
-    .select()
+    .select({ fileId: recommendationPhoto.fileId, sortOrder: recommendationPhoto.sortOrder })
     .from(recommendationPhoto)
     .where(eq(recommendationPhoto.recommendationId, result.id))
-  expect(photos.map((p) => p.sortOrder).sort()).toEqual([0, 1])
+  expect(photos.map((p) => p.sortOrder).sort((a, b) => a - b)).toEqual([0, 1])
+  const sorted = [...photos].sort((a, b) => a.sortOrder - b.sortOrder)
+  expect(result.photoFileIds).toEqual(sorted.map((p) => p.fileId))
+
+  const fileRows = await db
+    .select({ access: file.access, ownerId: file.ownerId })
+    .from(file)
+    .where(inArray(file.id, result.photoFileIds))
+  expect(fileRows.length).toBe(2)
+  for (const row of fileRows) {
+    expect(row.access).toBe('public')
+    expect(row.ownerId).toBe(authorId)
+  }
 
   const joins = await db
     .select()
