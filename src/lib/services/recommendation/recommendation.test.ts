@@ -10,7 +10,12 @@ import {
   user,
 } from '~/lib/db/schema'
 import { setupDatabase } from '~test/setup'
-import { createRecommendation, findRecommendation, listRecommendations } from './recommendation'
+import {
+  createRecommendation,
+  findRecommendation,
+  listRecommendations,
+  updateRecommendation,
+} from './recommendation'
 
 setupDatabase()
 
@@ -131,6 +136,81 @@ test('findRecommendation throws NOT_FOUND for a soft-deleted id and listRecommen
 
   const list = await listRecommendations()
   expect(list.find((r) => r.id === id)).toBeUndefined()
+})
+
+test('updateRecommendation lets the author edit and replaces tags', async () => {
+  const authorId = await insertAuthor()
+  const [restaurant, cove, beach] = await tagIds('restaurant', 'cove', 'beach')
+  const { id } = await createRecommendation({
+    authorId,
+    title: 'Old',
+    lat: 38.7,
+    lng: 20.65,
+    tagIds: [restaurant, cove],
+    photos: [photo('a')],
+  })
+  await updateRecommendation({
+    id,
+    actorId: authorId,
+    actorRole: 'user',
+    title: 'New',
+    lat: 38.7,
+    lng: 20.65,
+    tagIds: [beach],
+  })
+  const item = await findRecommendation(id)
+  expect(item.title).toBe('New')
+  expect(item.tagIds).toEqual([beach])
+})
+
+test("updateRecommendation lets an admin edit someone else's place", async () => {
+  const authorId = await insertAuthor('owner@test.oceanview.local')
+  const adminId = await insertAuthor('admin@test.oceanview.local', 'admin')
+  const { id } = await createRecommendation({
+    authorId,
+    title: 'Old',
+    lat: 0,
+    lng: 0,
+    tagIds: [],
+    photos: [photo('a')],
+  })
+  await updateRecommendation({
+    id,
+    actorId: adminId,
+    actorRole: 'admin',
+    title: 'Admin edit',
+    lat: 0,
+    lng: 0,
+    tagIds: [],
+  })
+  expect((await findRecommendation(id)).title).toBe('Admin edit')
+})
+
+test('updateRecommendation blocks a non-owner non-admin', async () => {
+  const authorId = await insertAuthor('owner@test.oceanview.local')
+  const otherId = await insertAuthor('bob@test.oceanview.local')
+  const { id } = await createRecommendation({
+    authorId,
+    title: 'Old',
+    lat: 0,
+    lng: 0,
+    tagIds: [],
+    photos: [photo('a')],
+  })
+  await expect(
+    updateRecommendation({
+      id,
+      actorId: otherId,
+      actorRole: 'user',
+      title: 'X',
+      lat: 0,
+      lng: 0,
+      tagIds: [],
+    }),
+  ).rejects.toMatchObject({
+    name: 'RecommendationDomainError',
+    code: 'CANNOT_EDIT_OTHERS_RECOMMENDATION',
+  })
 })
 
 test('listRecommendations does not cross-contaminate photos or tags between recommendations', async () => {

@@ -148,6 +148,52 @@ export async function listRecommendations(): Promise<RecommendationListItem[]> {
   return assemble(rows)
 }
 
+export interface UpdateRecommendationInput {
+  id: string
+  actorId: string
+  actorRole: string | null
+  title: string
+  description?: string | null
+  lat: number
+  lng: number
+  tagIds: string[]
+}
+
+export async function updateRecommendation(
+  input: UpdateRecommendationInput,
+): Promise<{ id: string }> {
+  return db.transaction(async (tx) => {
+    const [row] = await tx
+      .select({ authorId: recommendation.authorId })
+      .from(recommendation)
+      .where(and(eq(recommendation.id, input.id), isNull(recommendation.deletedAt)))
+      .limit(1)
+    if (!row) throw new RecommendationDomainError('NOT_FOUND')
+    if (input.actorRole !== 'admin' && row.authorId !== input.actorId) {
+      throw new RecommendationDomainError('CANNOT_EDIT_OTHERS_RECOMMENDATION')
+    }
+
+    await tx
+      .update(recommendation)
+      .set({
+        title: input.title,
+        description: input.description ?? null,
+        lat: input.lat,
+        lng: input.lng,
+      })
+      .where(eq(recommendation.id, input.id))
+
+    await tx.delete(recommendationTag).where(eq(recommendationTag.recommendationId, input.id))
+    if (input.tagIds.length > 0) {
+      await tx
+        .insert(recommendationTag)
+        .values(input.tagIds.map((tagId) => ({ recommendationId: input.id, tagId })))
+    }
+
+    return { id: input.id }
+  })
+}
+
 export async function findRecommendation(id: string): Promise<RecommendationListItem> {
   const rows = await db
     .select(baseColumns)
