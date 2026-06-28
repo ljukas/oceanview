@@ -4,6 +4,7 @@ export type RecommendationDomainErrorCode =
   | 'CANNOT_DELETE_OTHERS_RECOMMENDATION'
   | 'NO_PHOTOS'
   | 'TOO_MANY_PHOTOS'
+  | 'DUPLICATE_PHOTOS'
 
 export class RecommendationDomainError extends Error {
   constructor(public readonly code: RecommendationDomainErrorCode) {

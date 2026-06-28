@@ -26,6 +26,7 @@ export const recommendationErrors = {
   CANNOT_DELETE_OTHERS_RECOMMENDATION: { status: 403 },
   NO_PHOTOS: { status: 400 },
   TOO_MANY_PHOTOS: { status: 400 },
+  DUPLICATE_PHOTOS: { status: 400 },
 } satisfies Record<RecommendationDomainErrorCode, { status: number }>
 
 const photoInput = z.object({

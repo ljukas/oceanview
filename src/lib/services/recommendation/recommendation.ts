@@ -25,6 +25,9 @@ export async function createRecommendation(
 ): Promise<{ id: string; photoFileIds: string[] }> {
   if (input.photos.length < MIN_PHOTOS) throw new RecommendationDomainError('NO_PHOTOS')
   if (input.photos.length > MAX_PHOTOS) throw new RecommendationDomainError('TOO_MANY_PHOTOS')
+  const pathnames = input.photos.map((p) => p.pathname)
+  if (new Set(pathnames).size !== pathnames.length)
+    throw new RecommendationDomainError('DUPLICATE_PHOTOS')
 
   return db.transaction(async (tx) => {
     const [rec] = await tx
@@ -225,6 +228,7 @@ export async function reorderPhotos(input: {
     const currentSet = new Set(current.map((p) => p.id))
     const valid =
       input.orderedPhotoIds.length === currentSet.size &&
+      new Set(input.orderedPhotoIds).size === input.orderedPhotoIds.length &&
       input.orderedPhotoIds.every((id) => currentSet.has(id))
     if (!valid) throw new RecommendationDomainError('NOT_FOUND')
 

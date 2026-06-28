@@ -14,5 +14,7 @@ export function recommendationErrorMessage(code: RecommendationDomainErrorCode):
       return m.recommendation_error_no_photos()
     case 'TOO_MANY_PHOTOS':
       return m.recommendation_error_too_many_photos()
+    case 'DUPLICATE_PHOTOS':
+      return m.recommendation_error_duplicate_photos()
   }
 }

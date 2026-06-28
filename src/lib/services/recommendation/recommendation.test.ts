@@ -83,6 +83,14 @@ test('createRecommendation rejects zero photos with NO_PHOTOS', async () => {
   ).rejects.toMatchObject({ name: 'RecommendationDomainError', code: 'NO_PHOTOS' })
 })
 
+test('createRecommendation rejects duplicate photo pathnames with DUPLICATE_PHOTOS', async () => {
+  const authorId = await insertAuthor()
+  const dup = photo('dup')
+  await expect(
+    createRecommendation({ authorId, title: 'X', lat: 0, lng: 0, tagIds: [], photos: [dup, dup] }),
+  ).rejects.toMatchObject({ name: 'RecommendationDomainError', code: 'DUPLICATE_PHOTOS' })
+})
+
 test('createRecommendation rejects more than MAX_PHOTOS with TOO_MANY_PHOTOS', async () => {
   const authorId = await insertAuthor()
   const photos = Array.from({ length: 11 }, (_, i) => photo(`p${i}`))
@@ -289,6 +297,28 @@ test('reorderPhotos blocks a non-owner non-admin', async () => {
     name: 'RecommendationDomainError',
     code: 'CANNOT_EDIT_OTHERS_RECOMMENDATION',
   })
+})
+
+test('reorderPhotos rejects duplicate photo ids and leaves order intact', async () => {
+  const authorId = await insertAuthor()
+  const { id } = await createRecommendation({
+    authorId,
+    title: 'G',
+    lat: 0,
+    lng: 0,
+    tagIds: [],
+    photos: [photo('a'), photo('b')],
+  })
+  const before = await photoIdsFor(id)
+  await expect(
+    reorderPhotos({
+      id,
+      actorId: authorId,
+      actorRole: 'user',
+      orderedPhotoIds: [before[0], before[0]],
+    }),
+  ).rejects.toMatchObject({ name: 'RecommendationDomainError', code: 'NOT_FOUND' })
+  expect(await photoIdsFor(id)).toEqual(before)
 })
 
 test('softDeleteRecommendation hides the place and soft-deletes its files (author)', async () => {

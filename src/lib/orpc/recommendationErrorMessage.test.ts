@@ -8,6 +8,7 @@ const codes: RecommendationDomainErrorCode[] = [
   'CANNOT_DELETE_OTHERS_RECOMMENDATION',
   'NO_PHOTOS',
   'TOO_MANY_PHOTOS',
+  'DUPLICATE_PHOTOS',
 ]
 
 test('every recommendation error code maps to a non-empty message', () => {
