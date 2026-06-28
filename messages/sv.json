@@ -456,5 +456,15 @@
   "tag_bar": "Bar",
   "tag_snorkeling": "Snorkling",
   "tag_provisioning": "Proviantering",
-  "tag_viewpoint": "Utsiktsplats"
+  "tag_viewpoint": "Utsiktsplats",
+  "nav_recommendations": "Platser",
+  "meta_recommendations_title": "Platser",
+  "meta_recommendations_description": "Rekommenderade platser att segla till.",
+  "recommendations_title": "Platser",
+  "recommendations_description": "Upptäck platser som delägarna rekommenderar.",
+  "recommendations_empty_title": "Inga platser än",
+  "recommendations_empty_description": "När någon lägger till en plats dyker den upp här på kartan.",
+  "recommendation_recommended_by": "Rekommenderad av {name}",
+  "recommendation_photo_alt": "Foto från {title}",
+  "recommendation_map_loading": "Laddar karta…"
 }

@@ -3,6 +3,7 @@ import {
   AnchorIcon,
   CalendarIcon,
   FolderIcon,
+  MapPinIcon,
   SearchIcon,
   Trash2Icon,
   UsersIcon,
@@ -35,6 +36,7 @@ type SidebarUser = {
 const mainNavItems = linkOptions([
   { to: '/', label: m.nav_calendar, icon: CalendarIcon },
   { to: '/owners', label: m.nav_owners, icon: UsersIcon },
+  { to: '/recommendations', label: m.nav_recommendations, icon: MapPinIcon },
   { to: '/documents', label: m.nav_documents, icon: FolderIcon },
 ])
 

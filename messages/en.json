@@ -456,5 +456,15 @@
   "tag_bar": "Bar",
   "tag_snorkeling": "Snorkeling",
   "tag_provisioning": "Provisioning",
-  "tag_viewpoint": "Viewpoint"
+  "tag_viewpoint": "Viewpoint",
+  "nav_recommendations": "Places",
+  "meta_recommendations_title": "Places",
+  "meta_recommendations_description": "Recommended places to sail to.",
+  "recommendations_title": "Places",
+  "recommendations_description": "Discover places the owners recommend.",
+  "recommendations_empty_title": "No places yet",
+  "recommendations_empty_description": "When someone adds a place, it shows up here on the map.",
+  "recommendation_recommended_by": "Recommended by {name}",
+  "recommendation_photo_alt": "Photo from {title}",
+  "recommendation_map_loading": "Loading map…"
 }
