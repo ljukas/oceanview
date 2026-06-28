@@ -49,6 +49,9 @@ function dispatch(queryClient: QueryClient, event: RealtimeEvent) {
       // and folder edits leave the bin query untouched.
       void queryClient.invalidateQueries({ queryKey: orpc.bin.key() })
       return
+    case 'recommendation.changed':
+      void queryClient.invalidateQueries({ queryKey: orpc.recommendation.key() })
+      return
   }
 }
 
