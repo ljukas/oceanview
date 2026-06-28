@@ -1750,17 +1750,17 @@
           "name": "recommendation_active_idx",
           "columns": [
             {
-              "expression": "id",
-              "isExpression": false,
+              "expression": "\"created_at\" desc",
               "asc": true,
+              "isExpression": true,
               "nulls": "last"
             }
           ],
           "isUnique": false,
           "with": {},
           "method": "btree",
-          "where": "\"recommendation\".\"deleted_at\" IS NULL",
-          "concurrently": false
+          "concurrently": false,
+          "where": "\"recommendation\".\"deleted_at\" IS NULL"
         }
       },
       "foreignKeys": {

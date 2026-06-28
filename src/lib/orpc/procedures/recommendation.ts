@@ -7,6 +7,7 @@ import {
   createRecommendation,
   findRecommendation,
   listRecommendations,
+  MAX_PHOTOS,
   RecommendationDomainError,
   type RecommendationDomainErrorCode,
   reorderPhotos,
@@ -16,6 +17,12 @@ import {
 import { protectedProcedure } from '../context'
 
 const IMAGE_MIME = z.enum(['image/jpeg', 'image/png', 'image/webp', 'image/avif'])
+const IMAGE_EXT: Record<z.infer<typeof IMAGE_MIME>, string> = {
+  'image/jpeg': 'jpg',
+  'image/png': 'png',
+  'image/webp': 'webp',
+  'image/avif': 'avif',
+}
 const MAX_PHOTO_BYTES = 15_000_000
 
 export const recommendationErrors = {
@@ -41,8 +48,7 @@ export const recommendationRouter = {
       }),
     )
     .handler(async ({ input, context }) => {
-      const ext = input.name.split('.').pop()?.toLowerCase() ?? 'jpg'
-      const pathname = `recommendations/${context.user.id}/${randomUUID()}.${ext}`
+      const pathname = `recommendations/${context.user.id}/${randomUUID()}.${IMAGE_EXT[input.contentType]}`
       return storage.mintUploadToken({
         access: 'public',
         pathname,
@@ -159,7 +165,12 @@ export const recommendationRouter = {
 
   reorderPhotos: protectedProcedure
     .errors(recommendationErrors)
-    .input(z.object({ id: z.string().uuid(), orderedPhotoIds: z.array(z.string().uuid()).min(1) }))
+    .input(
+      z.object({
+        id: z.string().uuid(),
+        orderedPhotoIds: z.array(z.string().uuid()).min(1).max(MAX_PHOTOS),
+      }),
+    )
     .handler(async ({ input, context, errors }) => {
       let result: Awaited<ReturnType<typeof reorderPhotos>>
       try {

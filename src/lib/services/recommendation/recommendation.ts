@@ -151,6 +151,8 @@ export async function listRecommendations(): Promise<RecommendationListItem[]> {
 export interface UpdateRecommendationInput {
   id: string
   actorId: string
+  // actorRole is string | null because Better Auth's session user types role as string — the
+  // `!== 'admin'` comparison is correct for any value (including undefined coerced via ?? null).
   actorRole: string | null
   title: string
   description?: string | null

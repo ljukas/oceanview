@@ -1,4 +1,4 @@
-import { relations, sql } from 'drizzle-orm'
+import { desc, relations, sql } from 'drizzle-orm'
 import {
   check,
   doublePrecision,
@@ -32,7 +32,9 @@ export const recommendation = pgTable(
   },
   (table) => [
     index('recommendation_author_id_idx').on(table.authorId),
-    index('recommendation_active_idx').on(table.id).where(sql`${table.deletedAt} IS NULL`),
+    index('recommendation_active_idx')
+      .on(desc(table.createdAt))
+      .where(sql`${table.deletedAt} IS NULL`),
     check('recommendation_lat_range_check', sql`${table.lat} BETWEEN -90 AND 90`),
     check('recommendation_lng_range_check', sql`${table.lng} BETWEEN -180 AND 180`),
   ],

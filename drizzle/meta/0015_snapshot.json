@@ -1750,9 +1750,9 @@
           "name": "recommendation_active_idx",
           "columns": [
             {
-              "expression": "id",
-              "isExpression": false,
+              "expression": "\"created_at\" desc",
               "asc": true,
+              "isExpression": true,
               "nulls": "last"
             }
           ],

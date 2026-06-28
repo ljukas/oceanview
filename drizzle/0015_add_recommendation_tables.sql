@@ -42,7 +42,7 @@ ALTER TABLE "recommendation_photo" ADD CONSTRAINT "recommendation_photo_file_id_
 ALTER TABLE "recommendation_tag" ADD CONSTRAINT "recommendation_tag_recommendation_id_recommendation_id_fk" FOREIGN KEY ("recommendation_id") REFERENCES "public"."recommendation"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "recommendation_tag" ADD CONSTRAINT "recommendation_tag_tag_id_tag_id_fk" FOREIGN KEY ("tag_id") REFERENCES "public"."tag"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX "recommendation_author_id_idx" ON "recommendation" USING btree ("author_id");--> statement-breakpoint
-CREATE INDEX "recommendation_active_idx" ON "recommendation" USING btree ("id") WHERE "recommendation"."deleted_at" IS NULL;--> statement-breakpoint
+CREATE INDEX "recommendation_active_idx" ON "recommendation" USING btree ("created_at" desc) WHERE "recommendation"."deleted_at" IS NULL;--> statement-breakpoint
 CREATE INDEX "recommendation_photo_recommendation_id_idx" ON "recommendation_photo" USING btree ("recommendation_id");--> statement-breakpoint
 CREATE INDEX "recommendation_tag_tag_id_idx" ON "recommendation_tag" USING btree ("tag_id");--> statement-breakpoint
 CREATE INDEX "tag_sort_order_idx" ON "tag" USING btree ("sort_order");
