@@ -34,6 +34,17 @@ const photoInput = z.object({
   sizeBytes: z.number().int().positive().max(MAX_PHOTO_BYTES),
 })
 
+// The map/list render via the unpic transformer, which needs a URL — the service
+// returns only the stored pathname. The procedure (glue, allowed to use effects;
+// the service is not) maps pathname -> public read URL. For the public store
+// getReadUrl returns a stable URL (vercelBlob: head().url; s3: deterministic), so
+// ttl is effectively unused here. Revisit: denormalize a url column if list
+// latency ever matters (ADR-0012).
+const PUBLIC_URL_TTL_SECONDS = 3600
+function publicPhotoUrl(pathname: string): Promise<string> {
+  return storage.getReadUrl('public', pathname, PUBLIC_URL_TTL_SECONDS)
+}
+
 export const recommendationRouter = {
   mintImageUpload: protectedProcedure
     .input(
@@ -116,18 +127,34 @@ export const recommendationRouter = {
       return result
     }),
 
-  list: protectedProcedure.handler(() => listRecommendations()),
+  list: protectedProcedure.handler(async () => {
+    const items = await listRecommendations()
+    // Only the cover (lowest sort_order = photos[0], already ordered) shows on the
+    // map/list, so enrich just that one per place to keep storage heads bounded.
+    return Promise.all(
+      items.map(async (item) => ({
+        ...item,
+        coverUrl: item.photos[0] ? await publicPhotoUrl(item.photos[0].pathname) : null,
+      })),
+    )
+  }),
 
   get: protectedProcedure
     .errors(recommendationErrors)
     .input(z.object({ id: z.string().uuid() }))
     .handler(async ({ input, errors }) => {
+      let item: Awaited<ReturnType<typeof findRecommendation>>
       try {
-        return await findRecommendation(input.id)
+        item = await findRecommendation(input.id)
       } catch (err) {
         if (err instanceof RecommendationDomainError) throw errors[err.code]()
         throw err
       }
+      // The detail carousel shows every photo, so enrich all with public URLs.
+      const photos = await Promise.all(
+        item.photos.map(async (p) => ({ ...p, url: await publicPhotoUrl(p.pathname) })),
+      )
+      return { ...item, photos }
     }),
 
   update: protectedProcedure
