@@ -1,5 +1,6 @@
+import { and, asc, desc, eq, inArray, isNull } from 'drizzle-orm'
 import { db } from '~/lib/db'
-import { file, recommendation, recommendationPhoto, recommendationTag } from '~/lib/db/schema'
+import { file, recommendation, recommendationPhoto, recommendationTag, user } from '~/lib/db/schema'
 import { MAX_PHOTOS, MIN_PHOTOS, RecommendationDomainError } from './errors'
 
 export interface CreateRecommendationInput {
@@ -56,4 +57,105 @@ export async function createRecommendation(
 
     return { id: rec.id, photoFileIds }
   })
+}
+
+export interface RecommendationListItem {
+  id: string
+  title: string
+  description: string | null
+  lat: number
+  lng: number
+  authorId: string | null
+  authorName: string | null
+  createdAt: Date
+  updatedAt: Date
+  photos: Array<{
+    id: string
+    fileId: string
+    pathname: string
+    blurhash: string | null
+    sortOrder: number
+  }>
+  tagIds: string[]
+}
+
+async function assemble(
+  rows: Array<{
+    id: string
+    title: string
+    description: string | null
+    lat: number
+    lng: number
+    authorId: string | null
+    authorName: string | null
+    createdAt: Date
+    updatedAt: Date
+  }>,
+): Promise<RecommendationListItem[]> {
+  if (rows.length === 0) return []
+  const ids = rows.map((r) => r.id)
+
+  const photoRows = await db
+    .select({
+      id: recommendationPhoto.id,
+      recommendationId: recommendationPhoto.recommendationId,
+      fileId: recommendationPhoto.fileId,
+      pathname: file.pathname,
+      blurhash: file.blurhash,
+      sortOrder: recommendationPhoto.sortOrder,
+    })
+    .from(recommendationPhoto)
+    .innerJoin(file, eq(recommendationPhoto.fileId, file.id))
+    .where(inArray(recommendationPhoto.recommendationId, ids))
+    .orderBy(asc(recommendationPhoto.sortOrder))
+
+  const tagRows = await db
+    .select({
+      recommendationId: recommendationTag.recommendationId,
+      tagId: recommendationTag.tagId,
+    })
+    .from(recommendationTag)
+    .where(inArray(recommendationTag.recommendationId, ids))
+
+  return rows.map((r) => ({
+    ...r,
+    photos: photoRows
+      .filter((p) => p.recommendationId === r.id)
+      .map(({ recommendationId: _omit, ...p }) => p),
+    tagIds: tagRows.filter((t) => t.recommendationId === r.id).map((t) => t.tagId),
+  }))
+}
+
+const baseColumns = {
+  id: recommendation.id,
+  title: recommendation.title,
+  description: recommendation.description,
+  lat: recommendation.lat,
+  lng: recommendation.lng,
+  authorId: recommendation.authorId,
+  authorName: user.name,
+  createdAt: recommendation.createdAt,
+  updatedAt: recommendation.updatedAt,
+}
+
+export async function listRecommendations(): Promise<RecommendationListItem[]> {
+  const rows = await db
+    .select(baseColumns)
+    .from(recommendation)
+    .leftJoin(user, eq(recommendation.authorId, user.id))
+    .where(isNull(recommendation.deletedAt))
+    .orderBy(desc(recommendation.createdAt))
+  return assemble(rows)
+}
+
+export async function findRecommendation(id: string): Promise<RecommendationListItem> {
+  const rows = await db
+    .select(baseColumns)
+    .from(recommendation)
+    .leftJoin(user, eq(recommendation.authorId, user.id))
+    .where(and(eq(recommendation.id, id), isNull(recommendation.deletedAt)))
+    .limit(1)
+  if (rows.length === 0) throw new RecommendationDomainError('NOT_FOUND')
+  const [item] = await assemble(rows)
+  return item
 }

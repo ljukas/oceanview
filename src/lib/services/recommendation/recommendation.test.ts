@@ -3,7 +3,7 @@ import { expect, test } from 'vitest'
 import { db } from '~/lib/db'
 import { file, recommendationPhoto, recommendationTag, tag, user } from '~/lib/db/schema'
 import { setupDatabase } from '~test/setup'
-import { createRecommendation } from './recommendation'
+import { createRecommendation, findRecommendation, listRecommendations } from './recommendation'
 
 setupDatabase()
 
@@ -75,4 +75,30 @@ test('createRecommendation rejects more than MAX_PHOTOS with TOO_MANY_PHOTOS', a
   await expect(
     createRecommendation({ authorId, title: 'X', lat: 0, lng: 0, tagIds: [], photos }),
   ).rejects.toMatchObject({ name: 'RecommendationDomainError', code: 'TOO_MANY_PHOTOS' })
+})
+
+test('listRecommendations returns active places with ordered photos and tagIds', async () => {
+  const authorId = await insertAuthor()
+  const [restaurant] = await tagIds('restaurant')
+  const { id } = await createRecommendation({
+    authorId,
+    title: 'Grytan',
+    lat: 38.7,
+    lng: 20.65,
+    tagIds: [restaurant],
+    photos: [photo('a'), photo('b')],
+  })
+  const list = await listRecommendations()
+  const item = list.find((r) => r.id === id)!
+  expect(item.title).toBe('Grytan')
+  expect(item.authorName).toBeTypeOf('string')
+  expect(item.photos.map((p) => p.sortOrder)).toEqual([0, 1])
+  expect(item.tagIds).toEqual([restaurant])
+})
+
+test('findRecommendation throws NOT_FOUND for an unknown id', async () => {
+  await expect(findRecommendation('00000000-0000-0000-0000-000000000000')).rejects.toMatchObject({
+    name: 'RecommendationDomainError',
+    code: 'NOT_FOUND',
+  })
 })
