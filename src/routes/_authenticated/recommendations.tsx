@@ -38,6 +38,9 @@ function Recommendations() {
   const navigate = Route.useNavigate()
   const place = Route.useSearch({ select: (s) => s.place })
   const { data: places } = useSuspenseQuery(orpc.recommendation.list.queryOptions())
+  // Accessible name for the map's loading state (a bare skeleton has none).
+  // Built at render so the locale is resolved per request, not at module load.
+  const mapFallback = <Skeleton className="size-full" aria-label={m.recommendation_map_loading()} />
 
   if (places.length === 0) {
     return (
@@ -60,8 +63,8 @@ function Recommendations() {
     <PageContainer width="full" fill>
       <Header />
       <div className="min-h-0 flex-1 overflow-hidden rounded-xl border">
-        <ClientOnly fallback={<Skeleton className="size-full" />}>
-          <Suspense fallback={<Skeleton className="size-full" />}>
+        <ClientOnly fallback={mapFallback}>
+          <Suspense fallback={mapFallback}>
             <RecommendationMap
               places={places}
               onSelect={(id) => navigate({ to: '.', search: { place: id } })}

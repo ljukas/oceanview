@@ -29,7 +29,11 @@ export function RecommendationDetailDialog({
   open: boolean
   onOpenChange: (open: boolean) => void
 }) {
-  const { data: place, isLoading } = useQuery({
+  const {
+    data: place,
+    isLoading,
+    isError,
+  } = useQuery({
     ...orpc.recommendation.get.queryOptions({ input: { id: placeId ?? '' } }),
     enabled: open && placeId !== undefined,
   })
@@ -44,7 +48,13 @@ export function RecommendationDetailDialog({
   return (
     <ResponsiveDialog open={open} onOpenChange={onOpenChange}>
       <ResponsiveDialogContent className="sm:max-w-2xl">
-        {isLoading || !place ? (
+        {isError ? (
+          // A stale/deleted deep-link (?place=<gone>) — surface it instead of an
+          // endless skeleton. Read-only slice: no retry, just an honest message.
+          <ResponsiveDialogHeader>
+            <ResponsiveDialogTitle>{m.recommendation_error_not_found()}</ResponsiveDialogTitle>
+          </ResponsiveDialogHeader>
+        ) : isLoading || !place ? (
           <div className="flex flex-col gap-4">
             {/* Radix requires a Title for a11y even while the place loads. */}
             <ResponsiveDialogHeader className="sr-only">

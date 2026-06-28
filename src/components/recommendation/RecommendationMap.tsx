@@ -25,7 +25,7 @@ const Orb = memo(function Orb({
         aria-label={place.title}
         onClick={() => onSelect(place.id)}
         // ≥44px touch target; circular cover thumbnail with a ring.
-        className="size-11 cursor-pointer overflow-hidden rounded-full border-2 border-background bg-muted shadow-md transition-transform hover:scale-110 focus-visible:scale-110 focus-visible:outline-2 focus-visible:outline-ring"
+        className="size-11 cursor-pointer overflow-hidden rounded-full border-2 border-background bg-muted shadow-md transition-transform hover:scale-110 focus-visible:scale-110 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2"
       >
         {place.coverUrl ? (
           <RecommendationImage
