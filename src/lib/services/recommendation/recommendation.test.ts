@@ -1,7 +1,14 @@
 import { eq, inArray } from 'drizzle-orm'
 import { expect, test } from 'vitest'
 import { db } from '~/lib/db'
-import { file, recommendationPhoto, recommendationTag, tag, user } from '~/lib/db/schema'
+import {
+  file,
+  recommendation,
+  recommendationPhoto,
+  recommendationTag,
+  tag,
+  user,
+} from '~/lib/db/schema'
 import { setupDatabase } from '~test/setup'
 import { createRecommendation, findRecommendation, listRecommendations } from './recommendation'
 
@@ -101,4 +108,60 @@ test('findRecommendation throws NOT_FOUND for an unknown id', async () => {
     name: 'RecommendationDomainError',
     code: 'NOT_FOUND',
   })
+})
+
+test('findRecommendation throws NOT_FOUND for a soft-deleted id and listRecommendations excludes it', async () => {
+  const authorId = await insertAuthor('bob@test.oceanview.local')
+  const [restaurant] = await tagIds('restaurant')
+  const { id } = await createRecommendation({
+    authorId,
+    title: 'Soft Delete Place',
+    lat: 59.0,
+    lng: 18.0,
+    tagIds: [restaurant],
+    photos: [photo('sd')],
+  })
+
+  await db.update(recommendation).set({ deletedAt: new Date() }).where(eq(recommendation.id, id))
+
+  await expect(findRecommendation(id)).rejects.toMatchObject({
+    name: 'RecommendationDomainError',
+    code: 'NOT_FOUND',
+  })
+
+  const list = await listRecommendations()
+  expect(list.find((r) => r.id === id)).toBeUndefined()
+})
+
+test('listRecommendations does not cross-contaminate photos or tags between recommendations', async () => {
+  const authorA = await insertAuthor('carol@test.oceanview.local')
+  const authorB = await insertAuthor('dave@test.oceanview.local')
+  const [restaurant, cove] = await tagIds('restaurant', 'cove')
+
+  const { id: idA } = await createRecommendation({
+    authorId: authorA,
+    title: 'Place A',
+    lat: 60.0,
+    lng: 25.0,
+    tagIds: [restaurant],
+    photos: [photo('a1'), photo('a2')],
+  })
+  const { id: idB } = await createRecommendation({
+    authorId: authorB,
+    title: 'Place B',
+    lat: 61.0,
+    lng: 26.0,
+    tagIds: [cove],
+    photos: [photo('b1')],
+  })
+
+  const list = await listRecommendations()
+  const itemA = list.find((r) => r.id === idA)!
+  const itemB = list.find((r) => r.id === idB)!
+
+  expect(itemA.photos.length).toBe(2)
+  expect(itemA.tagIds).toEqual([restaurant])
+
+  expect(itemB.photos.length).toBe(1)
+  expect(itemB.tagIds).toEqual([cove])
 })
