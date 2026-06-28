@@ -113,8 +113,7 @@ src/
   utils/seo.ts                  meta-tag helper
   styles/                       Tailwind v4 entry
 test/
-  setup.ts                      schema-per-test (CREATE/DROP); localhost guard
-  scope.ts                      newScope() — per-test prefixed IDs/emails
+  setup.ts                      schema-per-test (CREATE/migrate/DROP) + inline fixtures; localhost guard
   browser/                      component-test harness (Vitest Browser Mode)
     setup.ts                    registers vitest-browser-react
     render.tsx                  makeTestQueryClient() + renderWithProviders() (cache-seeding)
