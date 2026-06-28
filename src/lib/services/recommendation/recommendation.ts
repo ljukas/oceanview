@@ -1,7 +1,14 @@
 import { and, asc, desc, eq, inArray, isNull } from 'drizzle-orm'
 import { db } from '~/lib/db'
 import { file, recommendation, recommendationPhoto, recommendationTag, user } from '~/lib/db/schema'
-import { MAX_PHOTOS, MIN_PHOTOS, RecommendationDomainError } from './errors'
+import {
+  MAX_PHOTOS,
+  MIN_PHOTOS,
+  RecommendationDomainError,
+  type RecommendationDomainErrorCode,
+} from './errors'
+
+type DbOrTx = typeof db | Parameters<Parameters<typeof db.transaction>[0]>[0]
 
 export interface CreateRecommendationInput {
   authorId: string
@@ -165,15 +172,8 @@ export async function updateRecommendation(
   input: UpdateRecommendationInput,
 ): Promise<{ id: string }> {
   return db.transaction(async (tx) => {
-    const [row] = await tx
-      .select({ authorId: recommendation.authorId })
-      .from(recommendation)
-      .where(and(eq(recommendation.id, input.id), isNull(recommendation.deletedAt)))
-      .limit(1)
-    if (!row) throw new RecommendationDomainError('NOT_FOUND')
-    if (input.actorRole !== 'admin' && row.authorId !== input.actorId) {
-      throw new RecommendationDomainError('CANNOT_EDIT_OTHERS_RECOMMENDATION')
-    }
+    const row = await loadActiveRecommendationInTx(tx, input.id)
+    assertCanMutate(row, input.actorId, input.actorRole, 'CANNOT_EDIT_OTHERS_RECOMMENDATION')
 
     await tx
       .update(recommendation)
@@ -215,15 +215,8 @@ export async function reorderPhotos(input: {
   orderedPhotoIds: string[]
 }): Promise<{ id: string }> {
   return db.transaction(async (tx) => {
-    const [row] = await tx
-      .select({ authorId: recommendation.authorId })
-      .from(recommendation)
-      .where(and(eq(recommendation.id, input.id), isNull(recommendation.deletedAt)))
-      .limit(1)
-    if (!row) throw new RecommendationDomainError('NOT_FOUND')
-    if (input.actorRole !== 'admin' && row.authorId !== input.actorId) {
-      throw new RecommendationDomainError('CANNOT_EDIT_OTHERS_RECOMMENDATION')
-    }
+    const row = await loadActiveRecommendationInTx(tx, input.id)
+    assertCanMutate(row, input.actorId, input.actorRole, 'CANNOT_EDIT_OTHERS_RECOMMENDATION')
 
     const current = await tx
       .select({ id: recommendationPhoto.id })
@@ -251,15 +244,8 @@ export async function softDeleteRecommendation(input: {
   actorRole: string | null
 }): Promise<{ id: string }> {
   return db.transaction(async (tx) => {
-    const [row] = await tx
-      .select({ authorId: recommendation.authorId })
-      .from(recommendation)
-      .where(and(eq(recommendation.id, input.id), isNull(recommendation.deletedAt)))
-      .limit(1)
-    if (!row) throw new RecommendationDomainError('NOT_FOUND')
-    if (input.actorRole !== 'admin' && row.authorId !== input.actorId) {
-      throw new RecommendationDomainError('CANNOT_DELETE_OTHERS_RECOMMENDATION')
-    }
+    const row = await loadActiveRecommendationInTx(tx, input.id)
+    assertCanMutate(row, input.actorId, input.actorRole, 'CANNOT_DELETE_OTHERS_RECOMMENDATION')
 
     const now = new Date()
     const photoRows = await tx
@@ -273,4 +259,32 @@ export async function softDeleteRecommendation(input: {
     await tx.update(recommendation).set({ deletedAt: now }).where(eq(recommendation.id, input.id))
     return { id: input.id }
   })
+}
+
+// ─── helpers ───────────────────────────────────────────────────────────────
+
+/** Load an active recommendation's authorId within a tx; throws NOT_FOUND if absent or deleted. */
+async function loadActiveRecommendationInTx(
+  tx: DbOrTx,
+  id: string,
+): Promise<{ authorId: string | null }> {
+  const [row] = await tx
+    .select({ authorId: recommendation.authorId })
+    .from(recommendation)
+    .where(and(eq(recommendation.id, id), isNull(recommendation.deletedAt)))
+    .limit(1)
+  if (!row) throw new RecommendationDomainError('NOT_FOUND')
+  return row
+}
+
+/** Authorize a mutation: only the author or an admin may proceed; anyone else triggers `code`. */
+function assertCanMutate(
+  row: { authorId: string | null },
+  actorId: string,
+  actorRole: string | null,
+  code: RecommendationDomainErrorCode,
+): void {
+  if (actorRole !== 'admin' && row.authorId !== actorId) {
+    throw new RecommendationDomainError(code)
+  }
 }

@@ -3,11 +3,13 @@ import { z } from 'zod'
 import { queue, realtime, storage } from '~/lib/effects'
 import { stripEnvPrefix } from '~/lib/effects/storage'
 import { SHARP_DECODABLE_MIME_SET } from '~/lib/image/blurhash'
+import { UPLOAD_IMAGE_EXT, UPLOAD_IMAGE_MIME } from '~/lib/orpc/imageUpload'
 import {
   createRecommendation,
   findRecommendation,
   listRecommendations,
   MAX_PHOTOS,
+  MIN_PHOTOS,
   RecommendationDomainError,
   type RecommendationDomainErrorCode,
   reorderPhotos,
@@ -16,13 +18,6 @@ import {
 } from '~/lib/services/recommendation'
 import { protectedProcedure } from '../context'
 
-const IMAGE_MIME = z.enum(['image/jpeg', 'image/png', 'image/webp', 'image/avif'])
-const IMAGE_EXT: Record<z.infer<typeof IMAGE_MIME>, string> = {
-  'image/jpeg': 'jpg',
-  'image/png': 'png',
-  'image/webp': 'webp',
-  'image/avif': 'avif',
-}
 const MAX_PHOTO_BYTES = 15_000_000
 
 export const recommendationErrors = {
@@ -42,13 +37,13 @@ export const recommendationRouter = {
   mintImageUpload: protectedProcedure
     .input(
       z.object({
-        contentType: IMAGE_MIME,
+        contentType: z.enum(UPLOAD_IMAGE_MIME),
         sizeBytes: z.number().int().positive().max(MAX_PHOTO_BYTES),
         name: z.string().min(1).max(255),
       }),
     )
     .handler(async ({ input, context }) => {
-      const pathname = `recommendations/${context.user.id}/${randomUUID()}.${IMAGE_EXT[input.contentType]}`
+      const pathname = `recommendations/${context.user.id}/${randomUUID()}.${UPLOAD_IMAGE_EXT[input.contentType]}`
       return storage.mintUploadToken({
         access: 'public',
         pathname,
@@ -70,18 +65,23 @@ export const recommendationRouter = {
         lat: z.number().min(-90).max(90),
         lng: z.number().min(-180).max(180),
         tagIds: z.array(z.string().uuid()).max(20),
-        photos: z.array(photoInput).min(1).max(10),
+        photos: z.array(photoInput).min(MIN_PHOTOS).max(MAX_PHOTOS),
       }),
     )
     .handler(async ({ input, context, errors }) => {
       const prefix = `recommendations/${context.user.id}/`
-      const verified: Array<{ pathname: string; mime: string; sizeBytes: number }> = []
+      // Cheap ownership check first (no IO), then verify the uploaded blobs in
+      // parallel — these heads are independent and on a user-facing submit path.
       for (const p of input.photos) {
         if (!stripEnvPrefix(p.pathname).startsWith(prefix)) throw errors.INVALID_PATH()
-        const blob = await storage.head('public', p.pathname)
-        if (!blob) throw errors.FILE_NOT_IN_STORAGE()
-        verified.push({ pathname: p.pathname, mime: blob.contentType, sizeBytes: p.sizeBytes })
       }
+      const verified = await Promise.all(
+        input.photos.map(async (p) => {
+          const blob = await storage.head('public', p.pathname)
+          if (!blob) throw errors.FILE_NOT_IN_STORAGE()
+          return { pathname: p.pathname, mime: blob.contentType, sizeBytes: p.sizeBytes }
+        }),
+      )
 
       let result: Awaited<ReturnType<typeof createRecommendation>>
       try {
@@ -99,13 +99,15 @@ export const recommendationRouter = {
         throw err
       }
 
-      for (const [i, fileId] of result.photoFileIds.entries()) {
-        if (SHARP_DECODABLE_MIME_SET.has(verified[i].mime)) {
-          await queue
-            .publish('blurhash', { fileId, kind: 'recommendation' })
-            .catch((e) => context.log.warn('blurhash enqueue failed', { error: e }))
-        }
-      }
+      await Promise.all(
+        result.photoFileIds
+          .filter((_, i) => SHARP_DECODABLE_MIME_SET.has(verified[i].mime))
+          .map((fileId) =>
+            queue
+              .publish('blurhash', { fileId, kind: 'recommendation' })
+              .catch((e) => context.log.warn('blurhash enqueue failed', { error: e })),
+          ),
+      )
       await realtime.publish(
         { kind: 'recommendation.changed', ids: [result.id] },
         { source: context.user.id },

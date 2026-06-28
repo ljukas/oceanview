@@ -5,23 +5,17 @@ import { auth } from '~/lib/auth'
 import { queue, realtime, storage } from '~/lib/effects'
 import { stripEnvPrefix } from '~/lib/effects/storage'
 import { protectedProcedure } from '~/lib/orpc/context'
+import { UPLOAD_IMAGE_EXT, UPLOAD_IMAGE_MIME } from '~/lib/orpc/imageUpload'
 import * as fileService from '~/lib/services/file'
 import { m } from '~/paraglide/messages'
 
 const AVATAR_MAX_BYTES = 5_000_000
-const AVATAR_MIME = ['image/jpeg', 'image/png', 'image/webp', 'image/avif'] as const
-const AVATAR_EXT: Record<(typeof AVATAR_MIME)[number], string> = {
-  'image/jpeg': 'jpg',
-  'image/png': 'png',
-  'image/webp': 'webp',
-  'image/avif': 'avif',
-}
 
 export const imageRouter = {
   mintAvatarUpload: protectedProcedure
     .input(
       z.object({
-        contentType: z.enum(AVATAR_MIME),
+        contentType: z.enum(UPLOAD_IMAGE_MIME),
         sizeBytes: z.number().int().positive().max(AVATAR_MAX_BYTES),
         name: z.string().min(1).max(255),
       }),
@@ -29,7 +23,7 @@ export const imageRouter = {
     .handler(async ({ input, context }) => {
       return storage.mintUploadToken({
         access: 'public',
-        pathname: `avatars/${context.user.id}/${randomUUID()}.${AVATAR_EXT[input.contentType]}`,
+        pathname: `avatars/${context.user.id}/${randomUUID()}.${UPLOAD_IMAGE_EXT[input.contentType]}`,
         contentType: input.contentType,
         maxBytes: AVATAR_MAX_BYTES,
       })
