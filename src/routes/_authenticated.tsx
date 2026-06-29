@@ -51,7 +51,7 @@ function AuthenticatedLayout() {
           <SidebarProvider className="h-svh overflow-hidden">
             <AppSidebar user={user} />
             <SidebarInset className="min-h-0 overflow-hidden bg-surface-page">
-              <header className="sticky top-0 z-30 flex h-12 items-center gap-3 border-b bg-background px-4 md:hidden">
+              <header className="sticky top-0 z-30 flex h-12 items-center gap-3 border-b bg-surface-page px-4 md:hidden">
                 <SidebarTrigger />
                 <div className="flex flex-1 justify-center px-3">
                   <CommandTriggerButton className="max-w-xs" />
