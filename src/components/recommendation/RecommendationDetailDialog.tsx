@@ -1,5 +1,20 @@
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { Link } from '@tanstack/react-router'
+import { PencilIcon, Trash2Icon } from 'lucide-react'
+import { toast } from 'sonner'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '~/components/ui/alert-dialog'
 import { BlurhashImage } from '~/components/ui/blurhash-image'
+import { Button } from '~/components/ui/button'
 import {
   Carousel,
   CarouselContent,
@@ -16,6 +31,7 @@ import {
 } from '~/components/ui/responsive-dialog'
 import { Skeleton } from '~/components/ui/skeleton'
 import { orpc } from '~/lib/orpc/client'
+import { optimisticRemove } from '~/lib/orpc/optimistic'
 import { m } from '~/paraglide/messages'
 import { TagChip } from './TagChip'
 import { isTagSlug, type TagSlug } from './tagLabels'
@@ -38,6 +54,21 @@ export function RecommendationDetailDialog({
     enabled: open && placeId !== undefined,
   })
   const { data: tags } = useQuery(orpc.tag.list.queryOptions())
+
+  const queryClient = useQueryClient()
+  const { data: me } = useQuery(orpc.user.me.queryOptions())
+  const canManage = !!place && !!me && (me.role === 'admin' || place.authorId === me.id)
+
+  const deleteMutation = useMutation(
+    orpc.recommendation.softDelete.mutationOptions({
+      // Optimistic-close: callbacks live here (survive the dialog unmount), the place
+      // drops from the map list instantly, and onSettled re-syncs from the server.
+      onMutate: (vars) =>
+        optimisticRemove(queryClient, orpc.recommendation.list.queryKey(), (p) => p.id === vars.id),
+      onError: () => toast.error(m.recommendation_delete_error()),
+      onSettled: () => queryClient.invalidateQueries({ queryKey: orpc.recommendation.key() }),
+    }),
+  )
 
   const slugById = new Map((tags ?? []).map((t) => [t.id, t.slug]))
   const placeSlugs = (place?.tagIds ?? [])
@@ -107,6 +138,44 @@ export function RecommendationDetailDialog({
                 {placeSlugs.map((slug) => (
                   <TagChip key={slug} slug={slug} />
                 ))}
+              </div>
+            ) : null}
+
+            {canManage ? (
+              <div className="flex justify-end gap-2 border-t pt-4">
+                <Button asChild variant="outline" size="sm">
+                  <Link to="/recommendations/$id/edit" params={{ id: place.id }}>
+                    <PencilIcon />
+                    {m.recommendation_edit_action()}
+                  </Link>
+                </Button>
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button variant="outline" size="sm" className="text-destructive">
+                      <Trash2Icon />
+                      {m.recommendation_delete_action()}
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>{m.recommendation_delete_confirm_title()}</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        {m.recommendation_delete_confirm_description()}
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>{m.common_cancel()}</AlertDialogCancel>
+                      <AlertDialogAction
+                        onClick={() => {
+                          deleteMutation.mutate({ id: place.id })
+                          onOpenChange(false) // optimistic close; clears ?place via the route handler
+                        }}
+                      >
+                        {m.recommendation_delete_confirm_action()}
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
               </div>
             ) : null}
           </div>
