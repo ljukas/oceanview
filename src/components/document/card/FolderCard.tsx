@@ -73,7 +73,7 @@ export function FolderCard({
         CARD,
         isSelected
           ? 'bg-selected text-selected-foreground'
-          : 'bg-card hover:bg-muted/50 active:bg-muted',
+          : 'bg-surface-raised hover:bg-muted/50 active:bg-muted',
         inert && 'opacity-50',
       )}
     >
@@ -150,7 +150,11 @@ export function FolderUpCard({
           goUp()
         }
       }}
-      className={cn(CARD, 'bg-card hover:bg-muted/50 active:bg-muted', selectMode && 'opacity-50')}
+      className={cn(
+        CARD,
+        'bg-surface-raised hover:bg-muted/50 active:bg-muted',
+        selectMode && 'opacity-50',
+      )}
     >
       <div className={ICON_TILE}>
         <FolderUpIcon aria-hidden="true" className="size-5 text-muted-foreground" />

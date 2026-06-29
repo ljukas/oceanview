@@ -25,7 +25,7 @@ export function SharePartCard({ shareCode, part1, part2, onAssign, onUnassign, o
     shareBackgroundClass[shareCode as keyof typeof shareBackgroundClass] ?? 'bg-muted'
 
   return (
-    <article className="flex flex-col overflow-hidden rounded-lg border bg-card">
+    <article className="flex flex-col overflow-hidden rounded-lg border bg-surface-raised">
       <header
         className={cn(
           'flex items-baseline justify-between gap-2 px-4 py-3 text-foreground',
