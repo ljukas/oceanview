@@ -119,7 +119,7 @@ export function DocumentCard({
           'flex select-none items-center gap-3 rounded-lg border p-3 outline-none focus-visible:ring-2 focus-visible:ring-ring',
           isSelected
             ? 'bg-selected text-selected-foreground'
-            : 'bg-card hover:bg-muted/50 active:bg-muted',
+            : 'bg-surface-raised hover:bg-muted/50 active:bg-muted',
           isFocused && 'doc-focus-flash',
         )}
       >

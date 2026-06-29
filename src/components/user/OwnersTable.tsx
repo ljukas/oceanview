@@ -157,7 +157,7 @@ export function OwnersTable({
 
   return (
     <Table containerClassName="min-h-0 md:-mx-4">
-      <TableHeader className="sticky top-0 z-10 bg-background">
+      <TableHeader className="sticky top-0 z-10 bg-surface-page">
         <TableRow>
           <SortableHead column={table.getColumn('name')} label={m.user_field_name()} />
           <SortableHead
