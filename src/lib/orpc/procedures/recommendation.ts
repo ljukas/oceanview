@@ -34,6 +34,15 @@ const photoInput = z.object({
   sizeBytes: z.number().int().positive().max(MAX_PHOTO_BYTES),
 })
 
+const updatePhotoInput = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('existing'), photoId: z.string().uuid() }),
+  z.object({
+    kind: z.literal('new'),
+    pathname: z.string().min(1).max(512),
+    sizeBytes: z.number().int().positive().max(MAX_PHOTO_BYTES),
+  }),
+])
+
 // The map/list render via the unpic transformer, which needs a URL — the service
 // returns only the stored pathname. The procedure (glue, allowed to use effects;
 // the service is not) maps pathname -> public read URL. For the public store
@@ -179,7 +188,11 @@ export const recommendationRouter = {
     }),
 
   update: protectedProcedure
-    .errors(recommendationErrors)
+    .errors({
+      ...recommendationErrors,
+      INVALID_PATH: { status: 403 },
+      FILE_NOT_IN_STORAGE: { status: 404 },
+    })
     .input(
       z.object({
         id: z.string().uuid(),
@@ -188,9 +201,41 @@ export const recommendationRouter = {
         lat: z.number().min(-90).max(90),
         lng: z.number().min(-180).max(180),
         tagIds: z.array(z.string().uuid()).max(20),
+        photos: z.array(updatePhotoInput).min(MIN_PHOTOS).max(MAX_PHOTOS),
       }),
     )
     .handler(async ({ input, context, errors }) => {
+      const prefix = `recommendations/${context.user.id}/`
+      // Verify only the NEW photos' blobs (existing ones are already owned rows).
+      // Same cheap-prefix-check-then-parallel-head shape as `create`.
+      const newInputs = input.photos.filter((p) => p.kind === 'new') as Extract<
+        (typeof input.photos)[number],
+        { kind: 'new' }
+      >[]
+      for (const p of newInputs) {
+        if (!stripEnvPrefix(p.pathname).startsWith(prefix)) throw errors.INVALID_PATH()
+      }
+      const verifiedNew = await Promise.all(
+        newInputs.map(async (p) => {
+          const blob = await storage.head('public', p.pathname)
+          if (!blob) throw errors.FILE_NOT_IN_STORAGE()
+          return { pathname: p.pathname, mime: blob.contentType, sizeBytes: p.sizeBytes }
+        }),
+      )
+      const mimeByPathname = new Map(verifiedNew.map((v) => [v.pathname, v.mime]))
+
+      // Preserve the full desired order; resolve new-photo mime from the heads.
+      const servicePhotos = input.photos.map((p) =>
+        p.kind === 'existing'
+          ? { kind: 'existing' as const, photoId: p.photoId }
+          : {
+              kind: 'new' as const,
+              pathname: p.pathname,
+              mime: mimeByPathname.get(p.pathname) as string,
+              sizeBytes: p.sizeBytes,
+            },
+      )
+
       let result: Awaited<ReturnType<typeof updateRecommendation>>
       try {
         result = await updateRecommendation({
@@ -202,11 +247,24 @@ export const recommendationRouter = {
           lat: input.lat,
           lng: input.lng,
           tagIds: input.tagIds,
+          photos: servicePhotos,
         })
       } catch (err) {
         if (err instanceof RecommendationDomainError) throw errors[err.code]()
         throw err
       }
+
+      // newPhotoFileIds align with verifiedNew order (service filters kind:'new' in
+      // input order, same subset the procedure built) — gate blurhash by real mime.
+      await Promise.all(
+        result.newPhotoFileIds
+          .filter((_, i) => SHARP_DECODABLE_MIME_SET.has(verifiedNew[i].mime))
+          .map((fileId) =>
+            queue
+              .publish('blurhash', { fileId, kind: 'recommendation' })
+              .catch((e) => context.log.warn('blurhash enqueue failed', { error: e })),
+          ),
+      )
       await realtime.publish(
         { kind: 'recommendation.changed', ids: [result.id] },
         { source: context.user.id },
