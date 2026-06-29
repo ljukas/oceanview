@@ -52,7 +52,15 @@ const publicUrlCache = new Map<string, Promise<string>>()
 function publicPhotoUrl(pathname: string): Promise<string> {
   let url = publicUrlCache.get(pathname)
   if (!url) {
-    url = storage.getReadUrl('public', pathname, PUBLIC_URL_TTL_SECONDS)
+    // Evict on rejection: vercelBlob resolves the public URL via a fallible
+    // head() round-trip, and the cache holds the pending promise — without this
+    // a transient failure would poison the pathname for the instance lifetime,
+    // re-returning the rejected promise instead of retrying. A resolved URL is
+    // kept indefinitely (the pathname is an immutable randomUUID; see above).
+    url = storage.getReadUrl('public', pathname, PUBLIC_URL_TTL_SECONDS).catch((e) => {
+      publicUrlCache.delete(pathname)
+      throw e
+    })
     publicUrlCache.set(pathname, url)
   }
   return url
