@@ -1,11 +1,19 @@
 import { useSuspenseQuery } from '@tanstack/react-query'
-import { ClientOnly, createFileRoute } from '@tanstack/react-router'
-import { MapPinIcon } from 'lucide-react'
+import { ClientOnly, createFileRoute, Link } from '@tanstack/react-router'
+import { MapPinIcon, PlusIcon } from 'lucide-react'
 import { lazy, Suspense } from 'react'
 import { z } from 'zod'
 import { PageContainer } from '~/components/layout/PageContainer'
 import { RecommendationDetailDialog } from '~/components/recommendation/RecommendationDetailDialog'
-import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '~/components/ui/empty'
+import { Button } from '~/components/ui/button'
+import {
+  Empty,
+  EmptyContent,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from '~/components/ui/empty'
 import { Skeleton } from '~/components/ui/skeleton'
 import { orpc } from '~/lib/orpc/client'
 import { m } from '~/paraglide/messages'
@@ -54,6 +62,14 @@ function Recommendations() {
             <EmptyTitle>{m.recommendations_empty_title()}</EmptyTitle>
             <EmptyDescription>{m.recommendations_empty_description()}</EmptyDescription>
           </EmptyHeader>
+          <EmptyContent>
+            <Button asChild>
+              <Link to="/recommendations/new">
+                <PlusIcon />
+                {m.recommendation_add_button()}
+              </Link>
+            </Button>
+          </EmptyContent>
         </Empty>
       </PageContainer>
     )
@@ -86,11 +102,19 @@ function Recommendations() {
 
 function Header() {
   return (
-    <header className="flex flex-col gap-2">
-      <h1 className="text-balance font-bold text-2xl tracking-tight md:text-3xl">
-        {m.recommendations_title()}
-      </h1>
-      <p className="max-w-2xl text-muted-foreground text-sm">{m.recommendations_description()}</p>
+    <header className="flex flex-wrap items-center justify-between gap-2">
+      <div className="flex flex-col gap-2">
+        <h1 className="text-balance font-bold text-2xl tracking-tight md:text-3xl">
+          {m.recommendations_title()}
+        </h1>
+        <p className="max-w-2xl text-muted-foreground text-sm">{m.recommendations_description()}</p>
+      </div>
+      <Button asChild>
+        <Link to="/recommendations/new">
+          <PlusIcon />
+          {m.recommendation_add_button()}
+        </Link>
+      </Button>
     </header>
   )
 }

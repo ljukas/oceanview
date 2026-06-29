@@ -23,6 +23,7 @@ import { Route as AuthenticatedDocumentsIndexRouteImport } from './routes/_authe
 import { Route as AuthenticatedAccountIndexRouteImport } from './routes/_authenticated/account/index'
 import { Route as ApiRpcSplatRouteImport } from './routes/api/rpc/$'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
+import { Route as AuthenticatedRecommendationsNewRouteImport } from './routes/_authenticated/recommendations.new'
 import { Route as AuthenticatedDocumentsSplatRouteImport } from './routes/_authenticated/documents.$'
 import { Route as AuthenticatedAccountSecurityRouteImport } from './routes/_authenticated/account/security'
 import { Route as AuthenticatedAccountProfileRouteImport } from './routes/_authenticated/account/profile'
@@ -104,6 +105,12 @@ const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
   path: '/api/auth/$',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AuthenticatedRecommendationsNewRoute =
+  AuthenticatedRecommendationsNewRouteImport.update({
+    id: '/new',
+    path: '/new',
+    getParentRoute: () => AuthenticatedRecommendationsRoute,
+  } as any)
 const AuthenticatedDocumentsSplatRoute =
   AuthenticatedDocumentsSplatRouteImport.update({
     id: '/documents/$',
@@ -159,11 +166,12 @@ export interface FileRoutesByFullPath {
   '/account': typeof AuthenticatedAccountRouteWithChildren
   '/admin': typeof AuthenticatedAdminRouteWithChildren
   '/owners': typeof AuthenticatedOwnersRoute
-  '/recommendations': typeof AuthenticatedRecommendationsRoute
+  '/recommendations': typeof AuthenticatedRecommendationsRouteWithChildren
   '/api/log': typeof ApiLogRoute
   '/account/profile': typeof AuthenticatedAccountProfileRoute
   '/account/security': typeof AuthenticatedAccountSecurityRoute
   '/documents/$': typeof AuthenticatedDocumentsSplatRoute
+  '/recommendations/new': typeof AuthenticatedRecommendationsNewRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/rpc/$': typeof ApiRpcSplatRoute
   '/account/': typeof AuthenticatedAccountIndexRoute
@@ -180,12 +188,13 @@ export interface FileRoutesByTo {
   '/signed-in': typeof SignedInRoute
   '/admin': typeof AuthenticatedAdminRouteWithChildren
   '/owners': typeof AuthenticatedOwnersRoute
-  '/recommendations': typeof AuthenticatedRecommendationsRoute
+  '/recommendations': typeof AuthenticatedRecommendationsRouteWithChildren
   '/api/log': typeof ApiLogRoute
   '/': typeof AuthenticatedIndexRoute
   '/account/profile': typeof AuthenticatedAccountProfileRoute
   '/account/security': typeof AuthenticatedAccountSecurityRoute
   '/documents/$': typeof AuthenticatedDocumentsSplatRoute
+  '/recommendations/new': typeof AuthenticatedRecommendationsNewRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/rpc/$': typeof ApiRpcSplatRoute
   '/account': typeof AuthenticatedAccountIndexRoute
@@ -205,12 +214,13 @@ export interface FileRoutesById {
   '/_authenticated/account': typeof AuthenticatedAccountRouteWithChildren
   '/_authenticated/admin': typeof AuthenticatedAdminRouteWithChildren
   '/_authenticated/owners': typeof AuthenticatedOwnersRoute
-  '/_authenticated/recommendations': typeof AuthenticatedRecommendationsRoute
+  '/_authenticated/recommendations': typeof AuthenticatedRecommendationsRouteWithChildren
   '/api/log': typeof ApiLogRoute
   '/_authenticated/': typeof AuthenticatedIndexRoute
   '/_authenticated/account/profile': typeof AuthenticatedAccountProfileRoute
   '/_authenticated/account/security': typeof AuthenticatedAccountSecurityRoute
   '/_authenticated/documents/$': typeof AuthenticatedDocumentsSplatRoute
+  '/_authenticated/recommendations/new': typeof AuthenticatedRecommendationsNewRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/rpc/$': typeof ApiRpcSplatRoute
   '/_authenticated/account/': typeof AuthenticatedAccountIndexRoute
@@ -236,6 +246,7 @@ export interface FileRouteTypes {
     | '/account/profile'
     | '/account/security'
     | '/documents/$'
+    | '/recommendations/new'
     | '/api/auth/$'
     | '/api/rpc/$'
     | '/account/'
@@ -258,6 +269,7 @@ export interface FileRouteTypes {
     | '/account/profile'
     | '/account/security'
     | '/documents/$'
+    | '/recommendations/new'
     | '/api/auth/$'
     | '/api/rpc/$'
     | '/account'
@@ -282,6 +294,7 @@ export interface FileRouteTypes {
     | '/_authenticated/account/profile'
     | '/_authenticated/account/security'
     | '/_authenticated/documents/$'
+    | '/_authenticated/recommendations/new'
     | '/api/auth/$'
     | '/api/rpc/$'
     | '/_authenticated/account/'
@@ -405,6 +418,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAuthSplatRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_authenticated/recommendations/new': {
+      id: '/_authenticated/recommendations/new'
+      path: '/new'
+      fullPath: '/recommendations/new'
+      preLoaderRoute: typeof AuthenticatedRecommendationsNewRouteImport
+      parentRoute: typeof AuthenticatedRecommendationsRoute
+    }
     '/_authenticated/documents/$': {
       id: '/_authenticated/documents/$'
       path: '/documents/$'
@@ -495,11 +515,25 @@ const AuthenticatedAdminRouteChildren: AuthenticatedAdminRouteChildren = {
 const AuthenticatedAdminRouteWithChildren =
   AuthenticatedAdminRoute._addFileChildren(AuthenticatedAdminRouteChildren)
 
+interface AuthenticatedRecommendationsRouteChildren {
+  AuthenticatedRecommendationsNewRoute: typeof AuthenticatedRecommendationsNewRoute
+}
+
+const AuthenticatedRecommendationsRouteChildren: AuthenticatedRecommendationsRouteChildren =
+  {
+    AuthenticatedRecommendationsNewRoute: AuthenticatedRecommendationsNewRoute,
+  }
+
+const AuthenticatedRecommendationsRouteWithChildren =
+  AuthenticatedRecommendationsRoute._addFileChildren(
+    AuthenticatedRecommendationsRouteChildren,
+  )
+
 interface AuthenticatedRouteChildren {
   AuthenticatedAccountRoute: typeof AuthenticatedAccountRouteWithChildren
   AuthenticatedAdminRoute: typeof AuthenticatedAdminRouteWithChildren
   AuthenticatedOwnersRoute: typeof AuthenticatedOwnersRoute
-  AuthenticatedRecommendationsRoute: typeof AuthenticatedRecommendationsRoute
+  AuthenticatedRecommendationsRoute: typeof AuthenticatedRecommendationsRouteWithChildren
   AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
   AuthenticatedDocumentsSplatRoute: typeof AuthenticatedDocumentsSplatRoute
   AuthenticatedDocumentsIndexRoute: typeof AuthenticatedDocumentsIndexRoute
@@ -509,7 +543,8 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedAccountRoute: AuthenticatedAccountRouteWithChildren,
   AuthenticatedAdminRoute: AuthenticatedAdminRouteWithChildren,
   AuthenticatedOwnersRoute: AuthenticatedOwnersRoute,
-  AuthenticatedRecommendationsRoute: AuthenticatedRecommendationsRoute,
+  AuthenticatedRecommendationsRoute:
+    AuthenticatedRecommendationsRouteWithChildren,
   AuthenticatedIndexRoute: AuthenticatedIndexRoute,
   AuthenticatedDocumentsSplatRoute: AuthenticatedDocumentsSplatRoute,
   AuthenticatedDocumentsIndexRoute: AuthenticatedDocumentsIndexRoute,
