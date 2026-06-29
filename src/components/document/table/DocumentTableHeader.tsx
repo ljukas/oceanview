@@ -14,7 +14,7 @@ import { m } from '~/paraglide/messages'
 
 export function DocumentTableHeader({ table }: { table: Table<DocumentRow> }) {
   return (
-    <TableHeader className="sticky top-0 z-10 bg-background">
+    <TableHeader className="sticky top-0 z-10 bg-surface-page">
       <TableRow>
         <SortableHead
           column={table.getColumn('name')}

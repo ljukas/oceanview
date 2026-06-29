@@ -147,7 +147,7 @@ function BatchCard({ correlationId, items }: { correlationId: string; items: Arr
   const busy = restore.isPending || hardDelete.isPending
 
   return (
-    <div className="flex items-center justify-between gap-3 rounded-lg border bg-card p-4">
+    <div className="flex items-center justify-between gap-3 rounded-lg border bg-surface-raised p-4">
       <div className="flex min-w-0 items-center gap-2">
         <FolderIcon aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
         <div className="flex min-w-0 flex-col">
@@ -261,7 +261,7 @@ function LooseRow({ entry }: { entry: BinEntry }) {
   const Icon = appearance?.Icon ?? FolderIcon
 
   return (
-    <div className="flex items-center justify-between gap-3 rounded-lg border bg-card p-4">
+    <div className="flex items-center justify-between gap-3 rounded-lg border bg-surface-raised p-4">
       <div className="flex min-w-0 items-center gap-2">
         <Icon
           aria-hidden="true"

@@ -29,7 +29,7 @@ function AccountSecurity() {
 
         <AddPasskeyButton />
 
-        <div className="rounded-lg border bg-card">
+        <div className="rounded-lg border bg-surface-raised">
           {isLoading ? (
             <div className="p-6 text-center text-muted-foreground text-sm">
               {m.common_loading()}

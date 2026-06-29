@@ -33,7 +33,7 @@ export function DocumentMobileSelectionBar({
   return (
     // Sticks below the global mobile header (h-12) on phones; that header is
     // hidden from `md` up, where this bar sticks to the top instead.
-    <div className="sticky top-12 z-20 flex items-center gap-2 border-b bg-background py-2 md:top-0">
+    <div className="sticky top-12 z-20 flex items-center gap-2 border-b bg-surface-page py-2 md:top-0">
       <Button
         variant="ghost"
         size="icon-sm"

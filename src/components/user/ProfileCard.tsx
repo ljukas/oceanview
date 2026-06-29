@@ -59,7 +59,7 @@ export function ProfileCard() {
         form.handleSubmit()
       }}
     >
-      <div className="@container/field-group divide-y rounded-lg border bg-card">
+      <div className="@container/field-group divide-y rounded-lg border bg-surface-raised">
         {/* Profile picture — uploads immediately on its own (independent of Save).
             FieldTitle (a label-styled div, not a <label>) since the control is a
             button with its own aria-label — avoids an orphaned label. */}

@@ -102,6 +102,34 @@ wrap; both read as a distinct surface (the standard inset look). Text contrast i
 > white, and dark mode is pixel-identical** (there `--card` 0.205 already lifts on `--background`
 > 0.145). Applies app-wide (every authenticated page), matching Linear's off-white canvas.
 
+> **Amendment (2026-06-29, follow-on) — the surface tiers become a named scale, and dark mode
+> gains three distinct tiers.** The off-white canvas above added a *third* surface but left it
+> under-named: the page tier lived only as `bg-canvas` (one consumer), while `bg-background` — the
+> obvious-sounding name — meant the pure-white *content/primitive* tier, so layout code reached for
+> the wrong token (the Documents + Owners sticky table headers and the mobile selection bar painted
+> `bg-background` pure white on the off-white page, reading as white blocks). Two layered changes;
+> **the surface scale re-values nothing** (it only aliases existing tokens — one source of truth per
+> value), while the dark-mode tier change below deliberately re-values `--sidebar`/`--canvas`/`--card`:
+> - **A semantic surface scale** in `@theme inline`: `--color-surface-sidebar` → `--sidebar`,
+>   `--color-surface-page` → `--canvas`, `--color-surface-raised` → `--card`, exposing
+>   `bg-surface-{sidebar,page,raised}` as the canonical *app-layout* vocabulary for the three Linear
+>   tiers (chrome → page → content). shadcn primitives in `src/components/ui/` keep
+>   `bg-sidebar`/`bg-card`/`bg-background`; the ambiguous `bg-canvas` utility is dropped. Page-composition
+>   surfaces migrate: `SidebarInset` → `bg-surface-page`; hand-rolled content panels (profile, security,
+>   share cards, season table, bin, document/folder cards) → `bg-surface-raised`; the three sticky
+>   headers/bar → `bg-surface-page` (the fix). Overlays/floating surfaces (upload box, selection pills,
+>   drag previews, sheet items) and emails stay on `bg-card` — they aren't page tiers.
+> - **Dark mode gets three distinct tiers** (this **supersedes** the prior amendment's "dark mode is
+>   pixel-identical" note): dark `--sidebar` 0.205 → **0.155** (darkest), `--canvas` 0.145 → **0.185**
+>   (page), and `--card` 0.205 → **0.22** (content), so `--sidebar` < `--canvas` < `--card` read as three
+>   distinct surfaces in dark too (steps ~0.03), matching the Linear dark reference. `--background` stays
+>   0.145 as the primitive base (inputs/outline
+>   buttons read as slightly sunken). Light mode already had three tiers (`--sidebar` 0.97 < `--canvas`
+>   0.99 < `--card`/`--background` 1.0) and is unchanged. (Light `--canvas` shipped as `oklch(0.99 0 0)`,
+>   not the `0.98` quoted in the prior amendment.)
+>
+> Design doc: `docs/superpowers/specs/2026-06-29-surface-token-system-design.md`.
+
 ### Typography & type scale
 
 Both faces are **self-hosted woff2 under `public/fonts/`** with `@font-face` declarations in `app.css`

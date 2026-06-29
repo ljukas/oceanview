@@ -106,7 +106,7 @@ function WideLayout({
   onDeleteSeason,
 }: LayoutProps) {
   return (
-    <div className="hidden min-h-0 overflow-auto rounded-lg border bg-card lg:-mx-4 lg:block">
+    <div className="hidden min-h-0 overflow-auto rounded-lg border bg-surface-raised lg:-mx-4 lg:block">
       <table className="w-full text-sm">
         <tbody>
           {schedules.map((s, yearIdx) => {
@@ -289,7 +289,7 @@ function YearCard({
   return (
     <article
       className={cn(
-        'overflow-hidden rounded-lg border bg-card',
+        'overflow-hidden rounded-lg border bg-surface-raised',
         isCurrent && 'ring-1 ring-primary/30',
       )}
     >

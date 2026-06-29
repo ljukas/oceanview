@@ -16,14 +16,17 @@ const items = [
 // Inactive item: centered + flex-1 inside the mobile segmented control; left
 // aligned and full-width in the desktop rail.
 const itemClass =
-  'flex flex-1 items-center justify-center gap-2 rounded-md px-3 py-1.5 font-medium text-muted-foreground text-sm transition-colors hover:text-foreground md:flex-none md:justify-start md:py-2 md:font-normal md:hover:bg-accent/50'
+  'flex flex-1 items-center justify-center gap-2 rounded-md px-3 py-1.5 font-medium text-muted-foreground text-sm transition-colors hover:text-foreground md:flex-none md:justify-start md:py-2 md:font-normal md:hover:bg-foreground/[0.04]'
 
-// Active item: a raised pill on the mobile segmented control; a tinted row in
-// the desktop rail. Merged into itemClass via cn() (tailwind-merge) so the
-// colour/weight conflicts resolve deterministically — Link's activeProps would
-// just concatenate the strings and leave the winner to CSS source order.
+// Active item: a raised pill on the mobile segmented control; a neutral
+// foreground-tint fill in the desktop rail — a step darker than the hover
+// (md:hover:bg-foreground/[0.04]) so "selected" still wins, and theme-adaptive
+// (darkens light surfaces, lightens dark ones). Merged into itemClass via cn()
+// (tailwind-merge) so the colour/weight conflicts resolve deterministically —
+// Link's activeProps would just concatenate the strings and leave the winner to
+// CSS source order.
 const activeClass =
-  'bg-background text-foreground shadow-sm md:bg-accent md:text-accent-foreground md:font-medium md:shadow-none'
+  'bg-background text-foreground shadow-sm md:bg-foreground/[0.07] md:text-accent-foreground md:font-medium md:shadow-none'
 
 export function AccountNav({ className }: { className?: string }) {
   const matchRoute = useMatchRoute()
