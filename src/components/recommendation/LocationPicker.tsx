@@ -2,8 +2,8 @@ import 'maplibre-gl/dist/maplibre-gl.css'
 import {
   Map as MapGL,
   type MapLayerMouseEvent,
-  type MarkerDragEvent,
   Marker,
+  type MarkerDragEvent,
   NavigationControl,
 } from '@vis.gl/react-maplibre'
 import { MapPinIcon } from 'lucide-react'
