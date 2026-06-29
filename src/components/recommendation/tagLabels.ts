@@ -1,25 +1,11 @@
 import { m } from '~/paraglide/messages'
 
 // The fixed, curated tag vocabulary seeded by drizzle/0016_seed_system_tags.sql.
-// Order here is irrelevant — display order comes from tag.sortOrder; this registry
-// only maps slug -> localized label. A new seeded slug without a label here is a
-// TYPE error (Record key) and is also caught at runtime by tagLabels.test.ts.
-export const TAG_SLUGS = [
-  'restaurant',
-  'anchorage',
-  'pier',
-  'cove',
-  'beach',
-  'marina',
-  'bar',
-  'snorkeling',
-  'provisioning',
-  'viewpoint',
-] as const
-
-export type TagSlug = (typeof TAG_SLUGS)[number]
-
-export const tagLabels: Record<TagSlug, () => string> = {
+// `tagLabels` is the single source of truth: it maps each slug -> localized label,
+// and TagSlug / TAG_SLUGS derive from its keys. Order here is irrelevant — display
+// order comes from tag.sortOrder. The slugs must stay in sync with the seed; that
+// contract is enforced at runtime by tagLabels.test.ts.
+export const tagLabels = {
   restaurant: m.tag_restaurant,
   anchorage: m.tag_anchorage,
   pier: m.tag_pier,
@@ -30,7 +16,10 @@ export const tagLabels: Record<TagSlug, () => string> = {
   snorkeling: m.tag_snorkeling,
   provisioning: m.tag_provisioning,
   viewpoint: m.tag_viewpoint,
-}
+} satisfies Record<string, () => string>
+
+export type TagSlug = keyof typeof tagLabels
+export const TAG_SLUGS = Object.keys(tagLabels) as TagSlug[]
 
 export function isTagSlug(slug: string): slug is TagSlug {
   return slug in tagLabels

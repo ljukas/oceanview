@@ -1,8 +1,8 @@
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { Map as MapGL, type MapRef, Marker, NavigationControl } from '@vis.gl/react-maplibre'
 import { memo, useCallback, useEffect, useRef } from 'react'
+import { BlurhashImage } from '~/components/ui/blurhash-image'
 import type { RouterOutputs } from '~/lib/orpc/client'
-import { RecommendationImage } from './RecommendationImage'
 
 type Place = RouterOutputs['recommendation']['list'][number]
 
@@ -28,7 +28,7 @@ const Orb = memo(function Orb({
         className="size-11 cursor-pointer overflow-hidden rounded-full border-2 border-background bg-muted shadow-md transition-transform hover:scale-110 focus-visible:scale-110 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2"
       >
         {place.coverUrl ? (
-          <RecommendationImage
+          <BlurhashImage
             src={place.coverUrl}
             blurhash={place.photos[0]?.blurhash ?? null}
             alt={place.title}

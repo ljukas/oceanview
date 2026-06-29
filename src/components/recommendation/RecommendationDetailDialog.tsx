@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
+import { BlurhashImage } from '~/components/ui/blurhash-image'
 import {
   Carousel,
   CarouselContent,
@@ -16,9 +17,8 @@ import {
 import { Skeleton } from '~/components/ui/skeleton'
 import { orpc } from '~/lib/orpc/client'
 import { m } from '~/paraglide/messages'
-import { RecommendationImage } from './RecommendationImage'
 import { TagChip } from './TagChip'
-import { isTagSlug } from './tagLabels'
+import { isTagSlug, type TagSlug } from './tagLabels'
 
 export function RecommendationDetailDialog({
   placeId,
@@ -42,8 +42,7 @@ export function RecommendationDetailDialog({
   const slugById = new Map((tags ?? []).map((t) => [t.id, t.slug]))
   const placeSlugs = (place?.tagIds ?? [])
     .map((id) => slugById.get(id))
-    .filter((slug): slug is string => slug !== undefined)
-    .filter(isTagSlug)
+    .filter((slug): slug is TagSlug => slug !== undefined && isTagSlug(slug))
 
   return (
     <ResponsiveDialog open={open} onOpenChange={onOpenChange}>
@@ -70,7 +69,7 @@ export function RecommendationDetailDialog({
                 {place.photos.map((photo) => (
                   <CarouselItem key={photo.id}>
                     <div className="aspect-video w-full overflow-hidden rounded-lg bg-muted">
-                      <RecommendationImage
+                      <BlurhashImage
                         src={photo.url}
                         blurhash={photo.blurhash}
                         alt={m.recommendation_photo_alt({ title: place.title })}

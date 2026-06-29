@@ -38,11 +38,24 @@ const photoInput = z.object({
 // returns only the stored pathname. The procedure (glue, allowed to use effects;
 // the service is not) maps pathname -> public read URL. For the public store
 // getReadUrl returns a stable URL (vercelBlob: head().url; s3: deterministic), so
-// ttl is effectively unused here. Revisit: denormalize a url column if list
-// latency ever matters (ADR-0012).
+// ttl is effectively unused here.
+//
+// A public-store pathname carries a randomUUID and is never reused, so its URL is
+// immutable — memoize it. On Vercel Blob each resolution is a head() round-trip, so
+// without this every list load fires one HEAD per cover and every detail open one
+// per photo; the cache collapses repeat/warm loads to zero. Bounded by total photo
+// count (small here), so no eviction. The deeper fix — denormalize a url column
+// populated once at upload-confirm (the avatar `image` precedent) — needs a
+// migration + write-path change; revisit if list latency ever matters (ADR-0012).
 const PUBLIC_URL_TTL_SECONDS = 3600
+const publicUrlCache = new Map<string, Promise<string>>()
 function publicPhotoUrl(pathname: string): Promise<string> {
-  return storage.getReadUrl('public', pathname, PUBLIC_URL_TTL_SECONDS)
+  let url = publicUrlCache.get(pathname)
+  if (!url) {
+    url = storage.getReadUrl('public', pathname, PUBLIC_URL_TTL_SECONDS)
+    publicUrlCache.set(pathname, url)
+  }
+  return url
 }
 
 export const recommendationRouter = {
