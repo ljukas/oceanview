@@ -159,6 +159,7 @@ test('updateRecommendation lets the author edit and replaces tags', async () => 
     tagIds: [restaurant, cove],
     photos: [photo('a')],
   })
+  const [keep] = await photoIdsFor(id)
   await updateRecommendation({
     id,
     actorId: authorId,
@@ -167,6 +168,7 @@ test('updateRecommendation lets the author edit and replaces tags', async () => 
     lat: 38.7,
     lng: 20.65,
     tagIds: [beach],
+    photos: [{ kind: 'existing', photoId: keep }],
   })
   const item = await findRecommendation(id)
   expect(item.title).toBe('New')
@@ -184,6 +186,7 @@ test("updateRecommendation lets an admin edit someone else's place", async () =>
     tagIds: [],
     photos: [photo('a')],
   })
+  const [keep] = await photoIdsFor(id)
   await updateRecommendation({
     id,
     actorId: adminId,
@@ -192,6 +195,7 @@ test("updateRecommendation lets an admin edit someone else's place", async () =>
     lat: 0,
     lng: 0,
     tagIds: [],
+    photos: [{ kind: 'existing', photoId: keep }],
   })
   expect((await findRecommendation(id)).title).toBe('Admin edit')
 })
@@ -207,6 +211,7 @@ test('updateRecommendation blocks a non-owner non-admin', async () => {
     tagIds: [],
     photos: [photo('a')],
   })
+  const [keep] = await photoIdsFor(id)
   await expect(
     updateRecommendation({
       id,
@@ -216,6 +221,7 @@ test('updateRecommendation blocks a non-owner non-admin', async () => {
       lat: 0,
       lng: 0,
       tagIds: [],
+      photos: [{ kind: 'existing', photoId: keep }],
     }),
   ).rejects.toMatchObject({
     name: 'RecommendationDomainError',
@@ -357,4 +363,218 @@ test('softDeleteRecommendation blocks a non-owner non-admin', async () => {
     name: 'RecommendationDomainError',
     code: 'CANNOT_DELETE_OTHERS_RECOMMENDATION',
   })
+})
+
+test('updateRecommendation adds a new photo (kept existing + new), preserving order', async () => {
+  const authorId = await insertAuthor()
+  const { id } = await createRecommendation({
+    authorId,
+    title: 'P',
+    lat: 0,
+    lng: 0,
+    tagIds: [],
+    photos: [photo('a')],
+  })
+  const [existingPhotoId] = await photoIdsFor(id)
+  const result = await updateRecommendation({
+    id,
+    actorId: authorId,
+    actorRole: 'user',
+    title: 'P',
+    lat: 0,
+    lng: 0,
+    tagIds: [],
+    photos: [
+      { kind: 'existing', photoId: existingPhotoId },
+      { kind: 'new', pathname: 'recommendations/x/new.jpg', mime: 'image/jpeg', sizeBytes: 100 },
+    ],
+  })
+  expect(result.newPhotoFileIds.length).toBe(1)
+  const item = await findRecommendation(id)
+  expect(item.photos.length).toBe(2)
+  expect(item.photos.map((p) => p.sortOrder)).toEqual([0, 1])
+  // the kept photo stays first (cover), the new one is appended
+  expect(item.photos[0].id).toBe(existingPhotoId)
+})
+
+test('updateRecommendation removes a photo and soft-deletes its file', async () => {
+  const authorId = await insertAuthor()
+  const { id } = await createRecommendation({
+    authorId,
+    title: 'P',
+    lat: 0,
+    lng: 0,
+    tagIds: [],
+    photos: [photo('a'), photo('b')],
+  })
+  const [p0, p1] = await photoIdsFor(id)
+  const removedFileId = (
+    await db
+      .select({ fileId: recommendationPhoto.fileId })
+      .from(recommendationPhoto)
+      .where(eq(recommendationPhoto.id, p1))
+  )[0].fileId
+  await updateRecommendation({
+    id,
+    actorId: authorId,
+    actorRole: 'user',
+    title: 'P',
+    lat: 0,
+    lng: 0,
+    tagIds: [],
+    photos: [{ kind: 'existing', photoId: p0 }],
+  })
+  expect(await photoIdsFor(id)).toEqual([p0]) // join row for p1 gone
+  const [f] = await db
+    .select({ deletedAt: file.deletedAt })
+    .from(file)
+    .where(eq(file.id, removedFileId))
+  expect(f.deletedAt).not.toBeNull()
+})
+
+test('updateRecommendation persists a reorder of existing photos', async () => {
+  const authorId = await insertAuthor()
+  const { id } = await createRecommendation({
+    authorId,
+    title: 'P',
+    lat: 0,
+    lng: 0,
+    tagIds: [],
+    photos: [photo('a'), photo('b')],
+  })
+  const [p0, p1] = await photoIdsFor(id)
+  await updateRecommendation({
+    id,
+    actorId: authorId,
+    actorRole: 'user',
+    title: 'P',
+    lat: 0,
+    lng: 0,
+    tagIds: [],
+    photos: [
+      { kind: 'existing', photoId: p1 },
+      { kind: 'existing', photoId: p0 },
+    ],
+  })
+  expect(await photoIdsFor(id)).toEqual([p1, p0])
+})
+
+test('updateRecommendation rejects removing all photos with NO_PHOTOS', async () => {
+  const authorId = await insertAuthor()
+  const { id } = await createRecommendation({
+    authorId,
+    title: 'P',
+    lat: 0,
+    lng: 0,
+    tagIds: [],
+    photos: [photo('a')],
+  })
+  await expect(
+    updateRecommendation({
+      id,
+      actorId: authorId,
+      actorRole: 'user',
+      title: 'P',
+      lat: 0,
+      lng: 0,
+      tagIds: [],
+      photos: [],
+    }),
+  ).rejects.toMatchObject({ name: 'RecommendationDomainError', code: 'NO_PHOTOS' })
+})
+
+test('updateRecommendation rejects more than MAX_PHOTOS with TOO_MANY_PHOTOS', async () => {
+  const authorId = await insertAuthor()
+  const { id } = await createRecommendation({
+    authorId,
+    title: 'P',
+    lat: 0,
+    lng: 0,
+    tagIds: [],
+    photos: [photo('a')],
+  })
+  const [existing] = await photoIdsFor(id)
+  const photos = [
+    { kind: 'existing' as const, photoId: existing },
+    ...Array.from({ length: 10 }, (_, i) => ({
+      kind: 'new' as const,
+      pathname: `recommendations/x/n${i}.jpg`,
+      mime: 'image/jpeg',
+      sizeBytes: 100,
+    })),
+  ]
+  await expect(
+    updateRecommendation({
+      id,
+      actorId: authorId,
+      actorRole: 'user',
+      title: 'P',
+      lat: 0,
+      lng: 0,
+      tagIds: [],
+      photos,
+    }),
+  ).rejects.toMatchObject({ name: 'RecommendationDomainError', code: 'TOO_MANY_PHOTOS' })
+})
+
+test('updateRecommendation rejects duplicate new pathnames with DUPLICATE_PHOTOS', async () => {
+  const authorId = await insertAuthor()
+  const { id } = await createRecommendation({
+    authorId,
+    title: 'P',
+    lat: 0,
+    lng: 0,
+    tagIds: [],
+    photos: [photo('a')],
+  })
+  const [existing] = await photoIdsFor(id)
+  await expect(
+    updateRecommendation({
+      id,
+      actorId: authorId,
+      actorRole: 'user',
+      title: 'P',
+      lat: 0,
+      lng: 0,
+      tagIds: [],
+      photos: [
+        { kind: 'existing', photoId: existing },
+        { kind: 'new', pathname: 'recommendations/x/dup.jpg', mime: 'image/jpeg', sizeBytes: 100 },
+        { kind: 'new', pathname: 'recommendations/x/dup.jpg', mime: 'image/jpeg', sizeBytes: 100 },
+      ],
+    }),
+  ).rejects.toMatchObject({ name: 'RecommendationDomainError', code: 'DUPLICATE_PHOTOS' })
+})
+
+test('updateRecommendation rejects an existing photoId from another place with NOT_FOUND', async () => {
+  const authorId = await insertAuthor()
+  const { id: idA } = await createRecommendation({
+    authorId,
+    title: 'A',
+    lat: 0,
+    lng: 0,
+    tagIds: [],
+    photos: [photo('a')],
+  })
+  const { id: idB } = await createRecommendation({
+    authorId,
+    title: 'B',
+    lat: 0,
+    lng: 0,
+    tagIds: [],
+    photos: [photo('b')],
+  })
+  const [foreignPhotoId] = await photoIdsFor(idB)
+  await expect(
+    updateRecommendation({
+      id: idA,
+      actorId: authorId,
+      actorRole: 'user',
+      title: 'A',
+      lat: 0,
+      lng: 0,
+      tagIds: [],
+      photos: [{ kind: 'existing', photoId: foreignPhotoId }],
+    }),
+  ).rejects.toMatchObject({ name: 'RecommendationDomainError', code: 'NOT_FOUND' })
 })

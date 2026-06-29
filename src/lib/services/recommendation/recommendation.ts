@@ -158,6 +158,10 @@ export async function listRecommendations(): Promise<RecommendationListItem[]> {
   return assemble(rows)
 }
 
+export type UpdatePhoto =
+  | { kind: 'existing'; photoId: string }
+  | { kind: 'new'; pathname: string; mime: string; sizeBytes: number }
+
 export interface UpdateRecommendationInput {
   id: string
   actorId: string
@@ -169,11 +173,26 @@ export interface UpdateRecommendationInput {
   lat: number
   lng: number
   tagIds: string[]
+  photos: UpdatePhoto[] // the full desired ordered set (existing kept by id + new uploads)
 }
 
 export async function updateRecommendation(
   input: UpdateRecommendationInput,
-): Promise<{ id: string }> {
+): Promise<{ id: string; newPhotoFileIds: string[] }> {
+  // Count + duplicate checks mirror createRecommendation (check-first, ADR-0002).
+  if (input.photos.length < MIN_PHOTOS) throw new RecommendationDomainError('NO_PHOTOS')
+  if (input.photos.length > MAX_PHOTOS) throw new RecommendationDomainError('TOO_MANY_PHOTOS')
+  const newPhotos = input.photos.filter((p) => p.kind === 'new') as Extract<
+    UpdatePhoto,
+    { kind: 'new' }
+  >[]
+  const newPathnames = newPhotos.map((p) => p.pathname)
+  if (new Set(newPathnames).size !== newPathnames.length)
+    throw new RecommendationDomainError('DUPLICATE_PHOTOS')
+  const existingIds = input.photos.flatMap((p) => (p.kind === 'existing' ? [p.photoId] : []))
+  if (new Set(existingIds).size !== existingIds.length)
+    throw new RecommendationDomainError('NOT_FOUND') // duplicate existing ref = malformed set
+
   return db.transaction(async (tx) => {
     const row = await loadActiveRecommendationInTx(tx, input.id)
     assertCanMutate(row, input.actorId, input.actorRole, 'CANNOT_EDIT_OTHERS_RECOMMENDATION')
@@ -195,7 +214,76 @@ export async function updateRecommendation(
         .values(input.tagIds.map((tagId) => ({ recommendationId: input.id, tagId })))
     }
 
-    return { id: input.id }
+    // --- photo reconciliation -------------------------------------------------
+    const current = await tx
+      .select({ id: recommendationPhoto.id, fileId: recommendationPhoto.fileId })
+      .from(recommendationPhoto)
+      .where(eq(recommendationPhoto.recommendationId, input.id))
+    const currentIds = new Set(current.map((p) => p.id))
+
+    // Every kept 'existing' ref must belong to this recommendation (else NOT_FOUND,
+    // consistent with reorderPhotos' bad-id-set rule).
+    const keptIds = new Set<string>()
+    for (const photoId of existingIds) {
+      if (!currentIds.has(photoId)) throw new RecommendationDomainError('NOT_FOUND')
+      keptIds.add(photoId)
+    }
+
+    // Remove dropped photos: delete the join row, soft-delete the file row (no byte
+    // delete — mirrors softDeleteRecommendation; a future bin/GC reclaims bytes).
+    const removed = current.filter((p) => !keptIds.has(p.id))
+    if (removed.length > 0) {
+      await tx.delete(recommendationPhoto).where(
+        inArray(
+          recommendationPhoto.id,
+          removed.map((p) => p.id),
+        ),
+      )
+      await tx
+        .update(file)
+        .set({ deletedAt: new Date() })
+        .where(
+          inArray(
+            file.id,
+            removed.map((p) => p.fileId),
+          ),
+        )
+    }
+
+    // Insert new photos (file + join, temp sort_order rewritten below).
+    const newPhotoFileIds: string[] = []
+    const newPhotoIdByPathname = new Map<string, string>()
+    for (const p of newPhotos) {
+      const [f] = await tx
+        .insert(file)
+        .values({
+          ownerId: input.actorId,
+          pathname: p.pathname,
+          mime: p.mime,
+          sizeBytes: p.sizeBytes,
+          access: 'public',
+        })
+        .returning({ id: file.id })
+      const [rp] = await tx
+        .insert(recommendationPhoto)
+        .values({ recommendationId: input.id, fileId: f.id, sortOrder: 0 })
+        .returning({ id: recommendationPhoto.id })
+      newPhotoFileIds.push(f.id)
+      newPhotoIdByPathname.set(p.pathname, rp.id)
+    }
+
+    // Rewrite sort_order across the full desired order (sort_order is not uniquely
+    // constrained, so a plain rewrite is safe — ADR-0012 schema notes).
+    for (const [index, p] of input.photos.entries()) {
+      const photoId =
+        p.kind === 'existing' ? p.photoId : (newPhotoIdByPathname.get(p.pathname) as string)
+      await tx
+        .update(recommendationPhoto)
+        .set({ sortOrder: index })
+        .where(eq(recommendationPhoto.id, photoId))
+    }
+
+    return { id: input.id, newPhotoFileIds }
   })
 }
 
