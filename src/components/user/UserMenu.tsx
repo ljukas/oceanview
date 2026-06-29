@@ -175,7 +175,7 @@ function UserMenuContent({
       </DropdownMenuLabel>
       <DropdownMenuSeparator />
       <DropdownMenuItem asChild>
-        <Link to="/account" onClick={onNavigate}>
+        <Link to="/account/profile" onClick={onNavigate}>
           <UserIcon />
           {m.nav_account()}
         </Link>

@@ -8,7 +8,7 @@ import { Progress } from '~/components/ui/progress'
 import { Spinner } from '~/components/ui/spinner'
 import { runUploadFlow, type UploadProgress } from '~/lib/effects/storage/clientUpload'
 import { orpc } from '~/lib/orpc/client'
-import { initials } from '~/lib/utils'
+import { cn, initials } from '~/lib/utils'
 import { m } from '~/paraglide/messages'
 
 const ACCEPT = 'image/jpeg,image/png,image/webp,image/avif,image/heic,image/heif,.heic,.heif'
@@ -46,9 +46,13 @@ type Props = {
   // block navigation that would drop an in-flight image. Existing callers omit
   // it and are unaffected.
   onUploadingChange?: (uploading: boolean) => void
+  // Presentation. `default` (avatar + Change button + progress/hint) is the
+  // stand-alone layout used by onboarding. `row` is a compact clickable avatar
+  // for a settings row (ProfileCard) — same upload logic, no inline button/bar.
+  variant?: 'default' | 'row'
 }
 
-export function AvatarUpload({ onUploadingChange }: Props = {}) {
+export function AvatarUpload({ onUploadingChange, variant = 'default' }: Props = {}) {
   const queryClient = useQueryClient()
   const inputRef = useRef<HTMLInputElement>(null)
   const [progress, setProgress] = useState<UploadProgress | null>(null)
@@ -129,6 +133,60 @@ export function AvatarUpload({ onUploadingChange }: Props = {}) {
     onUploadingChange?.(busy)
   }, [busy, onUploadingChange])
 
+  const fileInput = (
+    <input
+      ref={inputRef}
+      type="file"
+      accept={ACCEPT}
+      className="sr-only"
+      onChange={(e) => {
+        const f = e.target.files?.[0]
+        if (f) void handleFile(f)
+      }}
+    />
+  )
+
+  // Compact settings-row presentation: a single clickable avatar with a
+  // hover/busy overlay. `type="button"` so it never submits the surrounding
+  // ProfileCard form. Format hint + toasts are owned by the row / handleFile.
+  if (variant === 'row') {
+    return (
+      <>
+        {fileInput}
+        <button
+          type="button"
+          onClick={() => inputRef.current?.click()}
+          disabled={busy}
+          aria-label={me.image ? m.avatar_change_button() : m.avatar_add_button()}
+          className="group relative w-fit rounded-full outline-none focus-visible:ring-2 focus-visible:ring-brand disabled:pointer-events-none"
+        >
+          <Avatar className="size-14 shadow-sm">
+            {me.image ? (
+              <AvatarImage
+                src={me.image}
+                alt={me.name}
+                width={56}
+                height={56}
+                blurhash={me.imageBlurhash}
+              />
+            ) : null}
+            <AvatarFallback className="font-medium">{initials(me.name)}</AvatarFallback>
+          </Avatar>
+          <span
+            className={cn(
+              'absolute inset-0 flex items-center justify-center rounded-full bg-foreground/45 text-background transition-opacity',
+              busy
+                ? 'opacity-100'
+                : 'opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100',
+            )}
+          >
+            {busy ? <Spinner /> : <ImageUpIcon className="size-5" />}
+          </span>
+        </button>
+      </>
+    )
+  }
+
   return (
     <div className="flex items-center gap-4">
       <Avatar className="size-20 shadow-sm">
@@ -144,16 +202,7 @@ export function AvatarUpload({ onUploadingChange }: Props = {}) {
         <AvatarFallback className="font-medium text-lg">{initials(me.name)}</AvatarFallback>
       </Avatar>
       <div className="flex flex-col gap-2">
-        <input
-          ref={inputRef}
-          type="file"
-          accept={ACCEPT}
-          className="sr-only"
-          onChange={(e) => {
-            const f = e.target.files?.[0]
-            if (f) void handleFile(f)
-          }}
-        />
+        {fileInput}
         <Button
           variant="outline"
           onClick={() => inputRef.current?.click()}
