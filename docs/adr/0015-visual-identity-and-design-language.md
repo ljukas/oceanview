@@ -107,8 +107,9 @@ wrap; both read as a distinct surface (the standard inset look). Text contrast i
 > under-named: the page tier lived only as `bg-canvas` (one consumer), while `bg-background` — the
 > obvious-sounding name — meant the pure-white *content/primitive* tier, so layout code reached for
 > the wrong token (the Documents + Owners sticky table headers and the mobile selection bar painted
-> `bg-background` pure white on the off-white page, reading as white blocks). Two layered changes; **no
-> shadcn token is re-valued**:
+> `bg-background` pure white on the off-white page, reading as white blocks). Two layered changes;
+> **the surface scale re-values nothing** (it only aliases existing tokens — one source of truth per
+> value), while the dark-mode tier change below deliberately re-values `--sidebar`/`--canvas`/`--card`:
 > - **A semantic surface scale** in `@theme inline`: `--color-surface-sidebar` → `--sidebar`,
 >   `--color-surface-page` → `--canvas`, `--color-surface-raised` → `--card`, exposing
 >   `bg-surface-{sidebar,page,raised}` as the canonical *app-layout* vocabulary for the three Linear
