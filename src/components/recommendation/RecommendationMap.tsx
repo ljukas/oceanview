@@ -3,12 +3,9 @@ import { Map as MapGL, type MapRef, Marker, NavigationControl } from '@vis.gl/re
 import { memo, useCallback, useEffect, useRef } from 'react'
 import { BlurhashImage } from '~/components/ui/blurhash-image'
 import type { RouterOutputs } from '~/lib/orpc/client'
+import { LEFKADA, mapStyleUrl } from './mapConfig'
 
 type Place = RouterOutputs['recommendation']['list'][number]
-
-// Lefkada, the boat's home water — the empty-state and fallback center (ADR-0012 §1).
-const LEFKADA = { longitude: 20.65, latitude: 38.7, zoom: 9 } as const
-const MAP_STYLE = `https://api.maptiler.com/maps/satellite/style.json?key=${import.meta.env.VITE_MAPTILER_API_KEY}`
 
 // Memoized so panning/zooming (which re-renders the parent) doesn't re-render every orb.
 const Orb = memo(function Orb({
@@ -83,7 +80,7 @@ export default function RecommendationMap({
     <MapGL
       ref={mapRef}
       initialViewState={LEFKADA}
-      mapStyle={MAP_STYLE}
+      mapStyle={mapStyleUrl()}
       onLoad={fitToPlaces}
       style={{ width: '100%', height: '100%' }}
     >
