@@ -22,6 +22,15 @@ type Props = {
   srOnlyLabel?: boolean
   onKeyDown?: KeyboardEventHandler<HTMLInputElement>
   /**
+   * Field layout. Defaults to `vertical` (label over control). `responsive`
+   * stacks on a narrow field-group and goes label-left at the @md container
+   * breakpoint — used for Linear-style settings rows (needs a
+   * `@container/field-group` ancestor).
+   */
+  orientation?: 'vertical' | 'horizontal' | 'responsive'
+  /** Extra classes on the `Field` wrapper (e.g. row padding inside a card). */
+  fieldClassName?: string
+  /**
    * Non-editable text pinned to the trailing edge of the input (e.g. a locked
    * file extension). When set, the field renders as an input group.
    */
@@ -39,6 +48,8 @@ export function TextField({
   inputSize,
   srOnlyLabel,
   onKeyDown,
+  orientation = 'vertical',
+  fieldClassName,
   suffix,
 }: Props) {
   const field = useFieldContext<string>()
@@ -61,7 +72,7 @@ export function TextField({
   }
 
   return (
-    <Field data-invalid={isInvalid}>
+    <Field data-invalid={isInvalid} orientation={orientation} className={fieldClassName}>
       <FieldLabel htmlFor={field.name} className={srOnlyLabel ? 'sr-only' : undefined}>
         {label}
       </FieldLabel>

@@ -3,7 +3,7 @@ import type { RouterOutputs } from '~/lib/orpc/client'
 import { orpc } from '~/lib/orpc/client'
 import { m } from '~/paraglide/messages'
 import { makeTestQueryClient, renderWithProviders } from '~test/browser/render'
-import { ProfileForm } from './ProfileForm'
+import { ProfileCard } from './ProfileCard'
 
 // The exact `user.me` output shape, derived from the router so the seed can't
 // drift from what the component reads (type-only import → erased from bundle).
@@ -37,22 +37,24 @@ function seededClient() {
 }
 
 test('prefills the name field from the current user', async () => {
-  const { screen } = await renderWithProviders(<ProfileForm />, { queryClient: seededClient() })
+  const { screen } = await renderWithProviders(<ProfileCard />, { queryClient: seededClient() })
 
   await expect.element(screen.getByLabelText(m.user_field_name())).toHaveValue('Alice Svensson')
 })
 
 test('shows the email read-only with the immutability hint', async () => {
-  const { screen } = await renderWithProviders(<ProfileForm />, { queryClient: seededClient() })
+  const { screen } = await renderWithProviders(<ProfileCard />, { queryClient: seededClient() })
 
-  const email = screen.getByLabelText(m.user_field_email())
-  await expect.element(email).toHaveValue('alice@example.se')
-  await expect.element(email).toBeDisabled()
-  await expect.element(screen.getByText(m.account_email_locked_hint())).toBeVisible()
+  // Email is no longer an editable input — it's static text with a lock
+  // affordance whose accessible name carries the immutability reason (ADR-0017).
+  await expect.element(screen.getByText('alice@example.se')).toBeVisible()
+  await expect
+    .element(screen.getByRole('img', { name: m.account_email_locked_hint() }))
+    .toBeVisible()
 })
 
 test('blocks submit and shows the required error when the name is cleared', async () => {
-  const { screen } = await renderWithProviders(<ProfileForm />, { queryClient: seededClient() })
+  const { screen } = await renderWithProviders(<ProfileCard />, { queryClient: seededClient() })
 
   await screen.getByLabelText(m.user_field_name()).fill('')
   await screen.getByRole('button', { name: m.common_save() }).click()

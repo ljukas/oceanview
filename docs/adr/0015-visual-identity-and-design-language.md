@@ -74,6 +74,21 @@ wrap; both read as a distinct surface (the standard inset look). Text contrast i
 > `text-3xl md:text-4xl` — now matched to Calendar/Owners). Ultrawide column stretch on the now-full tables
 > is accepted; a `max-w-7xl` cap is the documented fallback if it ever bothers.
 
+> **Amendment (2026-06-28) — settings pages with an inner nav + Linear-style card rows.** The Account
+> screen splits into subpages (`/account/profile`, `/account/security`) switched by an **inner
+> navigation** that lives *inside* the page content, not the app sidebar: a left rail from `md:` up, a
+> top segmented control below it (`src/components/account/AccountNav.tsx`, routed `Link`s with
+> `activeProps`). Because the rail eats horizontal room, the account **layout** uses `width="default"`
+> (max-w-5xl) with the content column itself capped at `max-w-2xl` — the prose measure is preserved for
+> the form, the rail just sits beside it (a deliberate exception to "settings = `prose`"). Editable
+> settings render as **Linear-style rows**: one bordered `divide-y` card whose container is
+> `@container/field-group`, each field a `<Field orientation="responsive">` (stacked on a narrow card,
+> label-left at the `@md` container breakpoint) with the control pinned to a fixed width on the right
+> (`w-full @md/field-group:w-64`). The bound `TextField`/`PhoneField` gained optional `orientation` /
+> `fieldClassName` / `controlClassName` props (default `vertical` — every existing caller unchanged) so
+> they compose into these rows without bypassing ADR-0005. This is the reusable template for future
+> settings screens.
+
 ### Typography & type scale
 
 Both faces are **self-hosted woff2 under `public/fonts/`** with `@font-face` declarations in `app.css`
