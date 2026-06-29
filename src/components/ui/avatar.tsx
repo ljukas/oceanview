@@ -1,11 +1,8 @@
-import { blurhashToCssGradientString } from '@unpic/placeholder'
-import { Image } from '@unpic/react/base'
 import { Avatar as AvatarPrimitive } from 'radix-ui'
 import type * as React from 'react'
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 
-import { snapBreakpoints } from '~/lib/image/sizes'
-import { transformer } from '~/lib/image/transformer'
+import { BlurhashImage } from '~/components/ui/blurhash-image'
 import { cn } from '~/lib/utils'
 
 function Avatar({
@@ -56,31 +53,20 @@ function AvatarImage({
   blurhash?: string | null
 }) {
   const [hasError, setHasError] = useState(false)
-  // Memoize the gradient string — blurhashToCssGradientString builds a
-  // multi-stop CSS expression and we don't want it recomputed each render.
-  const gradient = useMemo(
-    () => (blurhash ? blurhashToCssGradientString(blurhash) : undefined),
-    [blurhash],
-  )
 
   if (hasError) return null
   return (
-    <Image
+    <BlurhashImage
       data-slot="avatar-image"
       src={src}
       alt={alt}
       width={width}
       height={height}
-      background={gradient}
-      layout="constrained"
-      breakpoints={snapBreakpoints(width)}
-      transformer={transformer}
+      blurhash={blurhash}
       onError={() => setHasError(true)}
-      className={cn(
-        // Layered over the permanent fallback, filling the avatar box
-        'absolute inset-0 size-full rounded-full object-cover',
-        className,
-      )}
+      // Layered over the permanent fallback, filling the avatar box (object-cover
+      // comes from BlurhashImage).
+      className={cn('absolute inset-0 size-full rounded-full', className)}
     />
   )
 }

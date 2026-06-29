@@ -34,6 +34,38 @@ const photoInput = z.object({
   sizeBytes: z.number().int().positive().max(MAX_PHOTO_BYTES),
 })
 
+// The map/list render via the unpic transformer, which needs a URL — the service
+// returns only the stored pathname. The procedure (glue, allowed to use effects;
+// the service is not) maps pathname -> public read URL. For the public store
+// getReadUrl returns a stable URL (vercelBlob: head().url; s3: deterministic), so
+// ttl is effectively unused here.
+//
+// A public-store pathname carries a randomUUID and is never reused, so its URL is
+// immutable — memoize it. On Vercel Blob each resolution is a head() round-trip, so
+// without this every list load fires one HEAD per cover and every detail open one
+// per photo; the cache collapses repeat/warm loads to zero. Bounded by total photo
+// count (small here), so no eviction. The deeper fix — denormalize a url column
+// populated once at upload-confirm (the avatar `image` precedent) — needs a
+// migration + write-path change; revisit if list latency ever matters (ADR-0012).
+const PUBLIC_URL_TTL_SECONDS = 3600
+const publicUrlCache = new Map<string, Promise<string>>()
+function publicPhotoUrl(pathname: string): Promise<string> {
+  let url = publicUrlCache.get(pathname)
+  if (!url) {
+    // Evict on rejection: vercelBlob resolves the public URL via a fallible
+    // head() round-trip, and the cache holds the pending promise — without this
+    // a transient failure would poison the pathname for the instance lifetime,
+    // re-returning the rejected promise instead of retrying. A resolved URL is
+    // kept indefinitely (the pathname is an immutable randomUUID; see above).
+    url = storage.getReadUrl('public', pathname, PUBLIC_URL_TTL_SECONDS).catch((e) => {
+      publicUrlCache.delete(pathname)
+      throw e
+    })
+    publicUrlCache.set(pathname, url)
+  }
+  return url
+}
+
 export const recommendationRouter = {
   mintImageUpload: protectedProcedure
     .input(
@@ -116,18 +148,34 @@ export const recommendationRouter = {
       return result
     }),
 
-  list: protectedProcedure.handler(() => listRecommendations()),
+  list: protectedProcedure.handler(async () => {
+    const items = await listRecommendations()
+    // Only the cover (lowest sort_order = photos[0], already ordered) shows on the
+    // map/list, so enrich just that one per place to keep storage heads bounded.
+    return Promise.all(
+      items.map(async (item) => ({
+        ...item,
+        coverUrl: item.photos[0] ? await publicPhotoUrl(item.photos[0].pathname) : null,
+      })),
+    )
+  }),
 
   get: protectedProcedure
     .errors(recommendationErrors)
     .input(z.object({ id: z.string().uuid() }))
     .handler(async ({ input, errors }) => {
+      let item: Awaited<ReturnType<typeof findRecommendation>>
       try {
-        return await findRecommendation(input.id)
+        item = await findRecommendation(input.id)
       } catch (err) {
         if (err instanceof RecommendationDomainError) throw errors[err.code]()
         throw err
       }
+      // The detail carousel shows every photo, so enrich all with public URLs.
+      const photos = await Promise.all(
+        item.photos.map(async (p) => ({ ...p, url: await publicPhotoUrl(p.pathname) })),
+      )
+      return { ...item, photos }
     }),
 
   update: protectedProcedure

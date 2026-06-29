@@ -15,6 +15,7 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated/index'
 import { Route as ApiLogRouteImport } from './routes/api/log'
+import { Route as AuthenticatedRecommendationsRouteImport } from './routes/_authenticated/recommendations'
 import { Route as AuthenticatedOwnersRouteImport } from './routes/_authenticated/owners'
 import { Route as AuthenticatedAdminRouteImport } from './routes/_authenticated/admin'
 import { Route as AuthenticatedAccountRouteImport } from './routes/_authenticated/account'
@@ -60,6 +61,12 @@ const ApiLogRoute = ApiLogRouteImport.update({
   path: '/api/log',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AuthenticatedRecommendationsRoute =
+  AuthenticatedRecommendationsRouteImport.update({
+    id: '/recommendations',
+    path: '/recommendations',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 const AuthenticatedOwnersRoute = AuthenticatedOwnersRouteImport.update({
   id: '/owners',
   path: '/owners',
@@ -152,6 +159,7 @@ export interface FileRoutesByFullPath {
   '/account': typeof AuthenticatedAccountRouteWithChildren
   '/admin': typeof AuthenticatedAdminRouteWithChildren
   '/owners': typeof AuthenticatedOwnersRoute
+  '/recommendations': typeof AuthenticatedRecommendationsRoute
   '/api/log': typeof ApiLogRoute
   '/account/profile': typeof AuthenticatedAccountProfileRoute
   '/account/security': typeof AuthenticatedAccountSecurityRoute
@@ -172,6 +180,7 @@ export interface FileRoutesByTo {
   '/signed-in': typeof SignedInRoute
   '/admin': typeof AuthenticatedAdminRouteWithChildren
   '/owners': typeof AuthenticatedOwnersRoute
+  '/recommendations': typeof AuthenticatedRecommendationsRoute
   '/api/log': typeof ApiLogRoute
   '/': typeof AuthenticatedIndexRoute
   '/account/profile': typeof AuthenticatedAccountProfileRoute
@@ -196,6 +205,7 @@ export interface FileRoutesById {
   '/_authenticated/account': typeof AuthenticatedAccountRouteWithChildren
   '/_authenticated/admin': typeof AuthenticatedAdminRouteWithChildren
   '/_authenticated/owners': typeof AuthenticatedOwnersRoute
+  '/_authenticated/recommendations': typeof AuthenticatedRecommendationsRoute
   '/api/log': typeof ApiLogRoute
   '/_authenticated/': typeof AuthenticatedIndexRoute
   '/_authenticated/account/profile': typeof AuthenticatedAccountProfileRoute
@@ -221,6 +231,7 @@ export interface FileRouteTypes {
     | '/account'
     | '/admin'
     | '/owners'
+    | '/recommendations'
     | '/api/log'
     | '/account/profile'
     | '/account/security'
@@ -241,6 +252,7 @@ export interface FileRouteTypes {
     | '/signed-in'
     | '/admin'
     | '/owners'
+    | '/recommendations'
     | '/api/log'
     | '/'
     | '/account/profile'
@@ -264,6 +276,7 @@ export interface FileRouteTypes {
     | '/_authenticated/account'
     | '/_authenticated/admin'
     | '/_authenticated/owners'
+    | '/_authenticated/recommendations'
     | '/api/log'
     | '/_authenticated/'
     | '/_authenticated/account/profile'
@@ -335,6 +348,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/api/log'
       preLoaderRoute: typeof ApiLogRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/_authenticated/recommendations': {
+      id: '/_authenticated/recommendations'
+      path: '/recommendations'
+      fullPath: '/recommendations'
+      preLoaderRoute: typeof AuthenticatedRecommendationsRouteImport
+      parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/owners': {
       id: '/_authenticated/owners'
@@ -479,6 +499,7 @@ interface AuthenticatedRouteChildren {
   AuthenticatedAccountRoute: typeof AuthenticatedAccountRouteWithChildren
   AuthenticatedAdminRoute: typeof AuthenticatedAdminRouteWithChildren
   AuthenticatedOwnersRoute: typeof AuthenticatedOwnersRoute
+  AuthenticatedRecommendationsRoute: typeof AuthenticatedRecommendationsRoute
   AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
   AuthenticatedDocumentsSplatRoute: typeof AuthenticatedDocumentsSplatRoute
   AuthenticatedDocumentsIndexRoute: typeof AuthenticatedDocumentsIndexRoute
@@ -488,6 +509,7 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedAccountRoute: AuthenticatedAccountRouteWithChildren,
   AuthenticatedAdminRoute: AuthenticatedAdminRouteWithChildren,
   AuthenticatedOwnersRoute: AuthenticatedOwnersRoute,
+  AuthenticatedRecommendationsRoute: AuthenticatedRecommendationsRoute,
   AuthenticatedIndexRoute: AuthenticatedIndexRoute,
   AuthenticatedDocumentsSplatRoute: AuthenticatedDocumentsSplatRoute,
   AuthenticatedDocumentsIndexRoute: AuthenticatedDocumentsIndexRoute,
