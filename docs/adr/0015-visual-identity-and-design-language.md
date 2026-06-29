@@ -119,9 +119,10 @@ wrap; both read as a distinct surface (the standard inset look). Text contrast i
 >   headers/bar → `bg-surface-page` (the fix). Overlays/floating surfaces (upload box, selection pills,
 >   drag previews, sheet items) and emails stay on `bg-card` — they aren't page tiers.
 > - **Dark mode gets three distinct tiers** (this **supersedes** the prior amendment's "dark mode is
->   pixel-identical" note): dark `--sidebar` 0.205 → **0.165** (darkest) and `--canvas` 0.145 → **0.185**
->   (page), so `--sidebar` < `--canvas` < `--card` (0.205) now read as three surfaces in dark too,
->   matching the Linear dark reference. `--background` stays 0.145 as the primitive base (inputs/outline
+>   pixel-identical" note): dark `--sidebar` 0.205 → **0.155** (darkest), `--canvas` 0.145 → **0.185**
+>   (page), and `--card` 0.205 → **0.22** (content), so `--sidebar` < `--canvas` < `--card` read as three
+>   distinct surfaces in dark too (steps ~0.03), matching the Linear dark reference. `--background` stays
+>   0.145 as the primitive base (inputs/outline
 >   buttons read as slightly sunken). Light mode already had three tiers (`--sidebar` 0.97 < `--canvas`
 >   0.99 < `--card`/`--background` 1.0) and is unchanged. (Light `--canvas` shipped as `oklch(0.99 0 0)`,
 >   not the `0.98` quoted in the prior amendment.)

@@ -152,12 +152,12 @@
 .dark {
   --background: oklch(0.145 0 0);
   /* Tier-2 page surface (bg-surface-page). Sits between the darker --sidebar
-     (0.165) frame and the lighter --card (0.205) content, so all three tiers
+     (0.155) frame and the lighter --card (0.22) content, so all three tiers
      read as distinct in dark mode too (Linear-style). --background stays 0.145
      as the primitive base, so inputs/outline buttons read as slightly sunken. */
   --canvas: oklch(0.185 0 0);
   --foreground: oklch(0.97 0 0);
-  --card: oklch(0.205 0 0);
+  --card: oklch(0.22 0 0);
   --card-foreground: oklch(0.97 0 0);
   --popover: oklch(0.205 0 0);
   --popover-foreground: oklch(0.97 0 0);
@@ -188,7 +188,7 @@
   --chart-4: oklch(0.627 0.265 303.9);
   --chart-5: oklch(0.645 0.246 16.439);
   /* Tier-1 chrome — the darkest surface (bg-surface-sidebar), below the page. */
-  --sidebar: oklch(0.165 0 0);
+  --sidebar: oklch(0.155 0 0);
   --sidebar-foreground: oklch(0.97 0 0);
   --sidebar-primary: oklch(0.488 0.243 264.376);
   --sidebar-primary-foreground: oklch(0.97 0 0);

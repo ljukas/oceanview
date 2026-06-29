@@ -20,9 +20,9 @@ Introduce an **app-facing semantic surface scale**, layered over the existing sh
 
 | Tier | New utility | Backed by | Light | Dark (new) |
 |---|---|---|---|---|
-| 1 — chrome / sidebar (darkest) | `bg-surface-sidebar` | `--sidebar` | `oklch(0.97 0 0)` | `oklch(0.165 0 0)` |
+| 1 — chrome / sidebar (darkest) | `bg-surface-sidebar` | `--sidebar` | `oklch(0.97 0 0)` | `oklch(0.155 0 0)` |
 | 2 — page surface (off-white) | `bg-surface-page` | `--canvas` | `oklch(0.99 0 0)` | `oklch(0.185 0 0)` |
-| 3 — content / card (lifted) | `bg-surface-raised` | `--card` | `oklch(1 0 0)` | `oklch(0.205 0 0)` |
+| 3 — content / card (lifted) | `bg-surface-raised` | `--card` | `oklch(1 0 0)` | `oklch(0.22 0 0)` |
 
 Implemented in `src/styles/app.css`'s `@theme inline` block as aliases:
 
@@ -40,9 +40,11 @@ The ambiguous `bg-canvas` utility is removed (its `--color-canvas` mapping dropp
 
 Today dark mode collapses to two levels (`--canvas` == `--background` == `0.145`; `--card` == `--sidebar` == `0.205`), so the sidebar is *not* the darkest tier. The Linear dark reference (user-provided) shows three distinct tiers: sidebar darkest → page → card lightest. New dark values:
 
-- `--sidebar`: `0.205` → **`0.165`** (now the darkest)
+- `--sidebar`: `0.205` → **`0.155`** (now the darkest)
 - `--canvas`: `0.145` → **`0.185`** (page surface, lifts off the sidebar frame)
-- `--card`: stays **`0.205`** (content lifts off the page)
+- `--card`: `0.205` → **`0.22`** (content lifts further off the page)
+
+Steps land at ~`0.03` apart (widened from an initial `0.02` after reviewing the rendered result).
 
 `--background` stays `0.145` (the shadcn primitive base — unchanged blast radius). Exact steps tuned against the reference in the browser; ordering (sidebar < canvas < card) is the invariant.
 
@@ -70,7 +72,7 @@ This work is three different hats; each is a separate commit so every diff is al
 2. **`fix(ui): sticky table headers/bars use the page surface, not pure white`** — *behavior change (the reported bug).*
    `DocumentTableHeader`, `OwnersTable`, `DocumentMobileSelectionBar`: `bg-background` → `bg-surface-page`. Light mode: white → off-white (the fix). Verify visually.
 3. **`style(ui): give dark mode three distinct surface tiers`** — *behavior change (restyle).*
-   Dark `--sidebar` → 0.165, `--canvas` → 0.185. Verify visually in dark against the Linear reference.
+   Dark `--sidebar` → 0.155, `--canvas` → 0.185, `--card` → 0.22 (steps ~0.03). Verify visually in dark against the Linear reference.
 
 (Squash-merge collapses these to one commit on `main`; the split keeps the branch reviewable per refactor-workflow Phase 5.)
 
