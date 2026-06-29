@@ -1,16 +1,11 @@
 import { useSuspenseQuery } from '@tanstack/react-query'
-import {
-  createFileRoute,
-  Navigate,
-  useCanGoBack,
-  useNavigate,
-  useRouter,
-} from '@tanstack/react-router'
+import { createFileRoute, Navigate, useNavigate } from '@tanstack/react-router'
 import { ArrowLeftIcon } from 'lucide-react'
 import { PageContainer } from '~/components/layout/PageContainer'
 import { RecommendationEditor } from '~/components/recommendation/RecommendationEditor'
 import type { FormPhoto } from '~/components/recommendation/recommendationFormTypes'
 import { Button } from '~/components/ui/button'
+import { useGoBack } from '~/hooks/useGoBack'
 import { orpc } from '~/lib/orpc/client'
 import { m } from '~/paraglide/messages'
 import { seo } from '~/utils/seo'
@@ -32,9 +27,7 @@ export const Route = createFileRoute('/_authenticated/recommendations/$id/edit')
 function EditRecommendationPage() {
   const { id } = Route.useParams()
   const navigate = useNavigate()
-  const router = useRouter()
-  const canGoBack = useCanGoBack()
-  const goBack = () => (canGoBack ? router.history.back() : navigate({ to: '/recommendations' }))
+  const goBack = useGoBack('/recommendations')
 
   const { data: place } = useSuspenseQuery(orpc.recommendation.get.queryOptions({ input: { id } }))
   const { data: me } = useSuspenseQuery(orpc.user.me.queryOptions())

@@ -1,8 +1,9 @@
-import { createFileRoute, useCanGoBack, useNavigate, useRouter } from '@tanstack/react-router'
+import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { ArrowLeftIcon } from 'lucide-react'
 import { PageContainer } from '~/components/layout/PageContainer'
 import { RecommendationEditor } from '~/components/recommendation/RecommendationEditor'
 import { Button } from '~/components/ui/button'
+import { useGoBack } from '~/hooks/useGoBack'
 import { orpc } from '~/lib/orpc/client'
 import { m } from '~/paraglide/messages'
 import { seo } from '~/utils/seo'
@@ -16,9 +17,7 @@ export const Route = createFileRoute('/_authenticated/recommendations/new')({
 
 function NewRecommendationPage() {
   const navigate = useNavigate()
-  const router = useRouter()
-  const canGoBack = useCanGoBack()
-  const goBack = () => (canGoBack ? router.history.back() : navigate({ to: '/recommendations' }))
+  const goBack = useGoBack('/recommendations')
 
   return (
     <PageContainer width="prose">
