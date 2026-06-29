@@ -27,6 +27,7 @@ export const recommendationErrors = {
   NO_PHOTOS: { status: 400 },
   TOO_MANY_PHOTOS: { status: 400 },
   DUPLICATE_PHOTOS: { status: 400 },
+  DUPLICATE_TAGS: { status: 400 },
 } satisfies Record<RecommendationDomainErrorCode, { status: number }>
 
 const photoInput = z.object({

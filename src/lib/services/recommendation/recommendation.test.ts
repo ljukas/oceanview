@@ -99,6 +99,21 @@ test('createRecommendation rejects more than MAX_PHOTOS with TOO_MANY_PHOTOS', a
   ).rejects.toMatchObject({ name: 'RecommendationDomainError', code: 'TOO_MANY_PHOTOS' })
 })
 
+test('createRecommendation rejects duplicate tagIds with DUPLICATE_TAGS', async () => {
+  const authorId = await insertAuthor()
+  const [restaurant] = await tagIds('restaurant')
+  await expect(
+    createRecommendation({
+      authorId,
+      title: 'X',
+      lat: 0,
+      lng: 0,
+      tagIds: [restaurant, restaurant],
+      photos: [photo('a')],
+    }),
+  ).rejects.toMatchObject({ name: 'RecommendationDomainError', code: 'DUPLICATE_TAGS' })
+})
+
 test('listRecommendations returns active places with ordered photos and tagIds', async () => {
   const authorId = await insertAuthor()
   const [restaurant] = await tagIds('restaurant')
@@ -544,6 +559,32 @@ test('updateRecommendation rejects duplicate new pathnames with DUPLICATE_PHOTOS
       ],
     }),
   ).rejects.toMatchObject({ name: 'RecommendationDomainError', code: 'DUPLICATE_PHOTOS' })
+})
+
+test('updateRecommendation rejects duplicate tagIds with DUPLICATE_TAGS', async () => {
+  const authorId = await insertAuthor()
+  const [restaurant] = await tagIds('restaurant')
+  const { id } = await createRecommendation({
+    authorId,
+    title: 'P',
+    lat: 0,
+    lng: 0,
+    tagIds: [],
+    photos: [photo('a')],
+  })
+  const [existing] = await photoIdsFor(id)
+  await expect(
+    updateRecommendation({
+      id,
+      actorId: authorId,
+      actorRole: 'user',
+      title: 'P',
+      lat: 0,
+      lng: 0,
+      tagIds: [restaurant, restaurant],
+      photos: [{ kind: 'existing', photoId: existing }],
+    }),
+  ).rejects.toMatchObject({ name: 'RecommendationDomainError', code: 'DUPLICATE_TAGS' })
 })
 
 test('updateRecommendation rejects an existing photoId from another place with NOT_FOUND', async () => {

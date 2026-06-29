@@ -36,6 +36,7 @@ const RECOMMENDATION_ERROR_CODES: Record<RecommendationDomainErrorCode, true> = 
   NO_PHOTOS: true,
   TOO_MANY_PHOTOS: true,
   DUPLICATE_PHOTOS: true,
+  DUPLICATE_TAGS: true,
 }
 function isRecommendationErrorCode(code: string): code is RecommendationDomainErrorCode {
   return Object.hasOwn(RECOMMENDATION_ERROR_CODES, code)

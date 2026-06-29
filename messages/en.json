@@ -449,6 +449,7 @@
   "recommendation_error_no_photos": "Add at least one photo.",
   "recommendation_error_too_many_photos": "You can add at most 10 photos.",
   "recommendation_error_duplicate_photos": "The same photo can't be added more than once.",
+  "recommendation_error_duplicate_tags": "The same tag can't be added more than once.",
   "tag_restaurant": "Restaurant",
   "tag_anchorage": "Anchorage",
   "tag_pier": "Pier",

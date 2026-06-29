@@ -16,5 +16,7 @@ export function recommendationErrorMessage(code: RecommendationDomainErrorCode):
       return m.recommendation_error_too_many_photos()
     case 'DUPLICATE_PHOTOS':
       return m.recommendation_error_duplicate_photos()
+    case 'DUPLICATE_TAGS':
+      return m.recommendation_error_duplicate_tags()
   }
 }

@@ -28,6 +28,8 @@ export async function createRecommendation(
   const pathnames = input.photos.map((p) => p.pathname)
   if (new Set(pathnames).size !== pathnames.length)
     throw new RecommendationDomainError('DUPLICATE_PHOTOS')
+  if (new Set(input.tagIds).size !== input.tagIds.length)
+    throw new RecommendationDomainError('DUPLICATE_TAGS')
 
   return db.transaction(async (tx) => {
     const [rec] = await tx
@@ -192,6 +194,8 @@ export async function updateRecommendation(
   const existingIds = input.photos.flatMap((p) => (p.kind === 'existing' ? [p.photoId] : []))
   if (new Set(existingIds).size !== existingIds.length)
     throw new RecommendationDomainError('NOT_FOUND') // duplicate existing ref = malformed set
+  if (new Set(input.tagIds).size !== input.tagIds.length)
+    throw new RecommendationDomainError('DUPLICATE_TAGS')
 
   return db.transaction(async (tx) => {
     const row = await loadActiveRecommendationInTx(tx, input.id)
