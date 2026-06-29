@@ -89,6 +89,19 @@ wrap; both read as a distinct surface (the standard inset look). Text contrast i
 > they compose into these rows without bypassing ADR-0005. This is the reusable template for future
 > settings screens.
 
+> **Amendment (2026-06-29) — off-white content canvas so cards lift (light mode).** The original
+> "pure-white `--background` panel lifts above the near-white `--sidebar` wrap" reads flat for
+> card-based screens: in light mode `--background` and `--card` were both `oklch(1 0 0)`, so white
+> cards (ProfileCard, document/folder cards, empty states, …) only separated by their border. A new
+> **`--canvas` token** (light `oklch(0.98 0 0)`, dark `oklch(0.145 0 0)` = today's `--background`)
+> paints the inset content panel: `SidebarInset` gets `bg-canvas` at its single call site
+> (`src/routes/_authenticated.tsx`), tailwind-merge overriding the component's base `bg-background` —
+> `sidebar.tsx` is untouched. Now the white `--card` is the lifted surface and the panel is the
+> recessed off-white one (inverting the original panel-lifts framing, light mode only). `--background`,
+> `--card`, and `--popover` are unchanged, so **dialogs, popovers, inputs, and the login wash stay
+> white, and dark mode is pixel-identical** (there `--card` 0.205 already lifts on `--background`
+> 0.145). Applies app-wide (every authenticated page), matching Linear's off-white canvas.
+
 ### Typography & type scale
 
 Both faces are **self-hosted woff2 under `public/fonts/`** with `@font-face` declarations in `app.css`
