@@ -25,7 +25,7 @@ const recommendationsSearchSchema = z.object({
   place: z.string().optional(),
 })
 
-export const Route = createFileRoute('/_authenticated/recommendations')({
+export const Route = createFileRoute('/_authenticated/recommendations/')({
   head: () => ({
     meta: seo({
       title: m.meta_recommendations_title(),
