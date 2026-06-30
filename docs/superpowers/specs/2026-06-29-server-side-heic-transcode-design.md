@@ -4,6 +4,8 @@
 **Status**: Design approved; ready for implementation plan
 **Relates to**: ADR-0006 (file storage), ADR-0007 (background jobs), ADR-0010 (documents), ADR-0012 (recommended places)
 
+> **Implementation correction (2026-06-30, shipped in PR #61; mirrored in ADR-0006's 2026-06-30 amendment).** One design assumption below proved wrong and is corrected here authoritatively: **native iPhone HEICs have no extractable embedded EXIF JPEG thumbnail.** iPhone stores the preview as an HEVC `thmb` derived item in the HEIF container, *not* an EXIF IFD1 JPEG, so `exifreader`'s `tags.Thumbnail` is null for them (verified on a real `IMG_*.HEIC`: GPS present, zero `ff d8 ff` JPEG markers anywhere in the file). The "instant preview from the embedded EXIF thumbnail" therefore does **not** fire for the common iPhone case — it degrades gracefully to a neutral/blurhash placeholder until the worker's JPEG arrives. Read the "(rare for iPhone)" parenthetical in Decision 2 and the "shows the EXIF thumbnail" phrasings below with this caveat (corrected inline). Everything else shipped as designed; the **primary goals — no client freeze, server transcode, ~3 MB smaller bundle — are unaffected**, the no-freeze instant *tile* still holds (it just shows a placeholder, not a preview, for iPhone HEICs), and GPS extraction (plain EXIF, not the thumbnail) is unaffected. A real instant preview would require decoding the HEVC `thmb` (a follow-up, out of scope).
+
 ## Context & problem
 
 iOS shoots HEIC. Browsers (except Safari) can't render HEIC in an `<img>`, and our
@@ -37,7 +39,7 @@ workers).
 - Eliminate the client-side transcode freeze for HEIC in the avatar + recommendation flows.
 - Remove `heic-to` from the client bundle.
 - Give HEIC documents a thumbnail/preview (closes today's gap) **without altering the stored original**.
-- Keep "see your photo immediately" via the HEIC's embedded EXIF thumbnail.
+- Keep "see your photo immediately" via the HEIC's embedded EXIF thumbnail **when present** (per the 2026-06-30 correction above, native iPhone HEICs have none, so this degrades to a placeholder — but the no-freeze instant *tile* still holds).
 
 **Non-goals**
 - No change to non-HEIC uploads (jpeg/png/webp/avif keep today's exact path).
@@ -50,7 +52,7 @@ workers).
 1. **Scope = all flows that involve HEIC**, with two output behaviors:
    - **Avatar + recommendation** → *replace*: the HEIC becomes the canonical JPEG.
    - **Documents** → *preview-only*: keep the original HEIC untouched; generate a derived thumbnail.
-2. **EXIF stays client-side.** The existing `exifreader` call (GPS) **also** extracts the embedded JPEG thumbnail (`tags.Thumbnail`) for an instant low-res preview during the pending window. Fallback to a neutral placeholder when a HEIC has no embedded thumbnail (rare for iPhone).
+2. **EXIF stays client-side.** The existing `exifreader` call (GPS) **also** extracts the embedded JPEG thumbnail (`tags.Thumbnail`) for an instant low-res preview during the pending window **when one exists**. Fallback to a neutral placeholder when a HEIC has no embedded thumbnail — which, contrary to the original assumption, is the **norm for native iPhone HEICs** (they carry an HEVC `thmb`, not an EXIF JPEG; see the 2026-06-30 correction above).
 3. **Transcode timing = post-submit, keyed on the `file` row** (worker runs after `create`/`update`/`confirm`, like the existing workers). Rejected: row-less, blob-keyed transcode-at-upload (more coupling + intermediate-blob lifecycle for marginal gain).
 4. **Decode library = `heic-convert`** (Node, wraps `libheif-js` wasm — no canvas/DOM; the Node counterpart to the browser's `heic-to`). Decoded JPEG bytes feed `sharp` for any resizing (document thumbnail). `sharp` cannot be used to decode HEIC: the prebuilt binary omits libheif (this is why `SHARP_DECODABLE_MIME_SET` excludes HEIC). Fallback if `heic-convert` proves unsuitable: `libheif-js` directly.
 5. **Permanent transcode failure** is tracked with a new nullable `file.transcodeFailedAt timestamptz`, so the UI shows a "couldn't process" placeholder (and the author can re-pick) instead of a perpetual spinner.
@@ -61,7 +63,7 @@ workers).
 ### A. Client (upload side) — recommendation + avatar
 
 - Remove the transcode step: drop `isHeicCandidate`/`transcodeHeicToJpeg` usage from `PhotoUploader.tsx` and `AvatarUpload.tsx`. Once unused, remove `src/lib/image/heic.ts` and the `heic-to` dependency. (`isHeicCandidate` may move server-side as a small MIME/extension helper if still needed for enqueue gating.)
-- **Immediate preview from EXIF**: the client already calls `exifreader` for GPS; extend that call (or reuse its result) to pull `tags.Thumbnail` → `URL.createObjectURL(new Blob([thumb]))` → use as the tile/avatar `previewUrl`. No embedded thumbnail → neutral placeholder. This removes the "delay before the tile shows up" entirely (tile renders instantly, raw HEIC uploads in the background with the existing progress UI).
+- **Immediate preview from EXIF**: the client already calls `exifreader` for GPS; extend that call (or reuse its result) to pull `tags.Thumbnail` → `URL.createObjectURL(new Blob([thumb]))` → use as the tile/avatar `previewUrl`. No embedded thumbnail → neutral placeholder — the common case for native iPhone HEICs (see the 2026-06-30 correction above). This still removes the multi-second freeze entirely: the tile renders instantly (with the EXIF thumbnail when present, else the placeholder), and the raw HEIC uploads in the background with the existing progress UI.
 - **Upload raw HEIC**: the upload flow (`runUploadFlow` → mint → PUT) is unchanged except it sends the original HEIC file. The `PhotoUploader.addFiles` reordering so the tile is created *before* any async work also closes the no-feedback gap for non-HEIC (general UX win).
 
 ### B. Upload mint / server
@@ -96,8 +98,8 @@ All `queue.publish` calls stay fire-and-forget with `.catch(log)`, matching the 
 
 After submit, before the worker finishes, a replaced photo is still HEIC with no blurhash and no JPEG (a few seconds).
 - **Recommendation read path** (`recommendation.list`/`get`): expose a per-photo **`pending` signal** (derived from `mime` still being HEIC and `transcodeFailedAt` null) and a **`failed`** signal (`transcodeFailedAt` set). The list/detail render: pending → neutral placeholder; failed → "couldn't process" placeholder; done → `coverUrl`/`url` + blurhash. The worker's `recommendation.changed` realtime event triggers a refetch, swapping placeholder → JPEG.
-- **Editor (pre-submit)**: shows the EXIF embedded thumbnail throughout the session. After submit + navigation, the author sees the brief pending placeholder → JPEG.
-- **Avatar**: during pending, shared surfaces (sidebar, owners list) fall back to initials/placeholder; the uploader keeps its local EXIF preview. Refetch after `user`/avatar realtime swaps to JPEG.
+- **Editor (pre-submit)**: shows the EXIF embedded thumbnail throughout the session **when present** (a neutral placeholder for native iPhone HEICs, which have none — see the 2026-06-30 correction above). After submit + navigation, the author sees the brief pending placeholder → JPEG.
+- **Avatar**: during pending, shared surfaces (sidebar, owners list) fall back to initials/placeholder; the uploader keeps its local EXIF preview when it has one (else the same placeholder/initials). Refetch after `user`/avatar realtime swaps to JPEG.
 
 ### F. Data model changes
 
