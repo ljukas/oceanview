@@ -100,14 +100,19 @@ export function RecommendationDetailDialog({
                 {place.photos.map((photo) => (
                   <CarouselItem key={photo.id}>
                     <div className="aspect-video w-full overflow-hidden rounded-lg bg-muted">
-                      <BlurhashImage
-                        src={photo.url}
-                        blurhash={photo.blurhash}
-                        alt={m.recommendation_photo_alt({ title: place.title })}
-                        width={800}
-                        height={450}
-                        className="size-full"
-                      />
+                      {/* A pending (still-HEIC) or failed transcode has no displayable
+                          URL yet (url: null); show the bare muted box until a later
+                          slice (task 11) renders explicit pending/failed placeholders. */}
+                      {photo.url ? (
+                        <BlurhashImage
+                          src={photo.url}
+                          blurhash={photo.blurhash}
+                          alt={m.recommendation_photo_alt({ title: place.title })}
+                          width={800}
+                          height={450}
+                          className="size-full"
+                        />
+                      ) : null}
                     </div>
                   </CarouselItem>
                 ))}

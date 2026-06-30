@@ -85,7 +85,9 @@ export interface RecommendationListItem {
     id: string
     fileId: string
     pathname: string
+    mime: string
     blurhash: string | null
+    transcodeFailedAt: Date | null
     sortOrder: number
   }>
   tagIds: string[]
@@ -113,7 +115,9 @@ async function assemble(
       recommendationId: recommendationPhoto.recommendationId,
       fileId: recommendationPhoto.fileId,
       pathname: file.pathname,
+      mime: file.mime,
       blurhash: file.blurhash,
+      transcodeFailedAt: file.transcodeFailedAt,
       sortOrder: recommendationPhoto.sortOrder,
     })
     .from(recommendationPhoto)

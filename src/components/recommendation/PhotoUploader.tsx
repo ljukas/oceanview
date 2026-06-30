@@ -248,8 +248,10 @@ const PhotoTile = memo(function PhotoTile({
       {...attributes}
       {...listeners}
     >
-      {/* Plain <img> on object-URL/known URL — no transformer needed for a local preview. */}
-      <img src={src} alt="" className="size-full object-cover" />
+      {/* Plain <img> on object-URL/known URL — no transformer needed for a local preview.
+          src may be null for an existing photo with a pending/failed transcode; coerce
+          to undefined so we render the bare muted box rather than a broken image. */}
+      <img src={src ?? undefined} alt="" className="size-full object-cover" />
       {isCover ? (
         <span className="absolute top-1 left-1 rounded bg-foreground/70 px-1.5 py-0.5 text-[10px] text-background">
           {m.recommendation_photo_cover()}

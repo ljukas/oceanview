@@ -173,11 +173,23 @@ export const recommendationRouter = {
     const items = await listRecommendations()
     // Only the cover (lowest sort_order = photos[0], already ordered) shows on the
     // map/list, so enrich just that one per place to keep storage heads bounded.
+    // A cover that's still HEIC (transcode pending) or whose transcode failed has no
+    // displayable URL yet, so null coverUrl; per-photo pending/failed flags drive the
+    // editor placeholders (task 11).
     return Promise.all(
-      items.map(async (item) => ({
-        ...item,
-        coverUrl: item.photos[0] ? await publicPhotoUrl(item.photos[0].pathname) : null,
-      })),
+      items.map(async (item) => {
+        const cover = item.photos[0]
+        const coverPending = !!cover && (HEIC_MIME.has(cover.mime) || !!cover.transcodeFailedAt)
+        return {
+          ...item,
+          photos: item.photos.map((p) => ({
+            ...p,
+            pending: HEIC_MIME.has(p.mime) && !p.transcodeFailedAt,
+            failed: !!p.transcodeFailedAt,
+          })),
+          coverUrl: cover && !coverPending ? await publicPhotoUrl(cover.pathname) : null,
+        }
+      }),
     )
   }),
 
@@ -192,9 +204,17 @@ export const recommendationRouter = {
         if (err instanceof RecommendationDomainError) throw errors[err.code]()
         throw err
       }
-      // The detail carousel shows every photo, so enrich all with public URLs.
+      // The detail carousel shows every photo, so enrich all with public URLs —
+      // except photos still HEIC (transcode pending) or whose transcode failed, which
+      // have no displayable URL yet (url: null, plus pending/failed flags for the UI).
       const photos = await Promise.all(
-        item.photos.map(async (p) => ({ ...p, url: await publicPhotoUrl(p.pathname) })),
+        item.photos.map(async (p) => ({
+          ...p,
+          pending: HEIC_MIME.has(p.mime) && !p.transcodeFailedAt,
+          failed: !!p.transcodeFailedAt,
+          url:
+            HEIC_MIME.has(p.mime) || p.transcodeFailedAt ? null : await publicPhotoUrl(p.pathname),
+        })),
       )
       return { ...item, photos }
     }),

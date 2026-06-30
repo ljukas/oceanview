@@ -134,6 +134,26 @@ test('listRecommendations returns active places with ordered photos and tagIds',
   expect(item.tagIds).toEqual([restaurant])
 })
 
+test('assemble surfaces each photo mime and transcodeFailedAt on the read path', async () => {
+  const authorId = await insertAuthor('mime@test.oceanview.local')
+  const { id } = await createRecommendation({
+    authorId,
+    title: 'HEIC Place',
+    lat: 38.7,
+    lng: 20.65,
+    tagIds: [],
+    photos: [
+      { pathname: 'recommendations/x/heic.heic', mime: 'image/heic', sizeBytes: 100 },
+      photo('jpg'),
+    ],
+  })
+  const item = await findRecommendation(id)
+  const [heic, jpg] = item.photos
+  expect(heic.mime).toBe('image/heic')
+  expect(heic.transcodeFailedAt).toBeNull()
+  expect(jpg.mime).toBe('image/jpeg')
+})
+
 test('findRecommendation throws NOT_FOUND for an unknown id', async () => {
   await expect(findRecommendation('00000000-0000-0000-0000-000000000000')).rejects.toMatchObject({
     name: 'RecommendationDomainError',
