@@ -7,6 +7,7 @@ import { Button } from '~/components/ui/button'
 import { Progress } from '~/components/ui/progress'
 import { Spinner } from '~/components/ui/spinner'
 import { runUploadFlow, type UploadProgress } from '~/lib/effects/storage/clientUpload'
+import { isHeicCandidate, transcodeHeicToJpeg } from '~/lib/image/heic'
 import { orpc } from '~/lib/orpc/client'
 import { cn, initials } from '~/lib/utils'
 import { m } from '~/paraglide/messages'
@@ -24,20 +25,6 @@ function formatBytes(n: number) {
 
 function isDirectUploadMime(t: string): t is DirectUploadMime {
   return (DIRECT_UPLOAD_MIME as readonly string[]).includes(t)
-}
-
-function isHeicCandidate(file: File): boolean {
-  const t = file.type.toLowerCase()
-  if (t === 'image/heic' || t === 'image/heif') return true
-  const n = file.name.toLowerCase()
-  return n.endsWith('.heic') || n.endsWith('.heif')
-}
-
-async function transcodeHeicToJpeg(file: File): Promise<File> {
-  const { heicTo } = await import('heic-to')
-  const blob = await heicTo({ blob: file, type: 'image/jpeg', quality: 0.85 })
-  const renamed = file.name.replace(/\.(heic|heif)$/i, '.jpg')
-  return new File([blob], renamed, { type: 'image/jpeg' })
 }
 
 type Props = {

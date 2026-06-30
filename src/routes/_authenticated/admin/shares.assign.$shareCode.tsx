@@ -1,16 +1,11 @@
 import { useSuspenseQuery } from '@tanstack/react-query'
-import {
-  createFileRoute,
-  Navigate,
-  redirect,
-  useCanGoBack,
-  useRouter,
-} from '@tanstack/react-router'
+import { createFileRoute, Navigate, redirect } from '@tanstack/react-router'
 import { ArrowLeftIcon } from 'lucide-react'
 import { useMemo } from 'react'
 import { PageContainer } from '~/components/layout/PageContainer'
 import { ShareAssignForm } from '~/components/share/ShareAssignForm'
 import { Button } from '~/components/ui/button'
+import { useGoBack } from '~/hooks/useGoBack'
 import { orpc } from '~/lib/orpc/client'
 import { SHARE_CODES, type ShareCode } from '~/lib/shares/codes'
 import { m } from '~/paraglide/messages'
@@ -38,16 +33,7 @@ export const Route = createFileRoute('/_authenticated/admin/shares/assign/$share
 
 function AssignSharePage() {
   const { shareCode } = Route.useParams()
-  const navigate = Route.useNavigate()
-  const router = useRouter()
-  const canGoBack = useCanGoBack()
-
-  // Pop history (restores the grid's scroll via scrollRestoration) when we got
-  // here from the grid; fall back to a fresh navigate on a cold deep-link.
-  const goBack = () => {
-    if (canGoBack) router.history.back()
-    else navigate({ to: '/admin/shares' })
-  }
+  const goBack = useGoBack('/admin/shares')
 
   const { data: parts } = useSuspenseQuery(orpc.share.listAll.queryOptions())
   const { data: users } = useSuspenseQuery(

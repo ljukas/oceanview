@@ -5,6 +5,7 @@ export type RecommendationDomainErrorCode =
   | 'NO_PHOTOS'
   | 'TOO_MANY_PHOTOS'
   | 'DUPLICATE_PHOTOS'
+  | 'DUPLICATE_TAGS'
 
 export class RecommendationDomainError extends Error {
   constructor(public readonly code: RecommendationDomainErrorCode) {
