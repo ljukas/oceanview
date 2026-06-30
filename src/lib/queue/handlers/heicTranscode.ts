@@ -113,17 +113,21 @@ export async function handleHeicTranscodeMessage(
     mime: 'image/jpeg',
     sizeBytes: jpeg.byteLength,
   })
-  await storage
-    .delete(row.access, row.pathname)
-    .catch((error) => log.warn('heic_transcode: failed to delete original HEIC', { error }))
-  await queue
-    .publish(
-      'blurhash',
-      kind === 'avatar'
-        ? { fileId, kind: 'avatar', userId: msg.userId }
-        : { fileId, kind: 'recommendation' },
-    )
-    .catch((error) => log.warn('heic_transcode: blurhash enqueue failed', { error }))
+  // Independent, both already non-throwing — delete the original HEIC and enqueue
+  // the blurhash backstop concurrently rather than back-to-back.
+  await Promise.all([
+    storage
+      .delete(row.access, row.pathname)
+      .catch((error) => log.warn('heic_transcode: failed to delete original HEIC', { error })),
+    queue
+      .publish(
+        'blurhash',
+        kind === 'avatar'
+          ? { fileId, kind: 'avatar', userId: msg.userId }
+          : { fileId, kind: 'recommendation' },
+      )
+      .catch((error) => log.warn('heic_transcode: blurhash enqueue failed', { error })),
+  ])
 
   if (kind === 'avatar') {
     const blob = await storage.head(row.access, jpegPath)

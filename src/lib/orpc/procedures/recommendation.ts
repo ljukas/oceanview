@@ -36,6 +36,48 @@ const photoInput = z.object({
   sizeBytes: z.number().int().positive().max(MAX_PHOTO_BYTES),
 })
 
+// A recommendation photo whose displayable asset isn't ready yet: still HEIC
+// (server transcode pending) or whose transcode permanently failed. The single
+// definition of this worker↔read-path contract, consumed by `list`/`get` so the
+// map orb, detail dialog, and editor placeholders never drift. `pending` and
+// `failed` are mutually exclusive; either means there's no public URL to resolve.
+function photoTranscodeState(photo: { mime: string; transcodeFailedAt: Date | null }): {
+  pending: boolean
+  failed: boolean
+} {
+  return {
+    pending: HEIC_MIME.has(photo.mime) && !photo.transcodeFailedAt,
+    failed: !!photo.transcodeFailedAt,
+  }
+}
+
+// After a recommendation create/update commits, enqueue the background job that
+// derives each new photo's displayable asset: HEIC photos go to the transcode
+// worker (its blurhash backstop runs post-re-encode), sharp-decodable photos go
+// straight to blurhash, and anything else is a no-op (the explicit
+// `Promise.resolve()` keeps the `Promise.all` well-typed). Enqueue failures are
+// logged and swallowed (fire-and-forget, ADR-0001) — the row is already saved.
+function enqueuePhotoDerivations(
+  photos: Array<{ fileId: string; mime: string }>,
+  log: { warn: (msg: string, meta?: Record<string, unknown>) => void },
+): Promise<void[]> {
+  return Promise.all(
+    photos.map(({ fileId, mime }) => {
+      if (HEIC_MIME.has(mime)) {
+        return queue
+          .publish('heic_transcode', { fileId, kind: 'recommendation' })
+          .catch((e) => log.warn('heic_transcode enqueue failed', { error: e }))
+      }
+      if (SHARP_DECODABLE_MIME_SET.has(mime)) {
+        return queue
+          .publish('blurhash', { fileId, kind: 'recommendation' })
+          .catch((e) => log.warn('blurhash enqueue failed', { error: e }))
+      }
+      return Promise.resolve()
+    }),
+  )
+}
+
 const updatePhotoInput = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('existing'), photoId: z.string().uuid() }),
   z.object({
@@ -143,24 +185,9 @@ export const recommendationRouter = {
         throw err
       }
 
-      // HEIC photos can't be decoded by sharp directly: enqueue the server-side
-      // transcode worker (its blurhash backstop runs after re-encode). Otherwise
-      // sharp-decodable photos enqueue blurhash directly; non-decodable skip both.
-      await Promise.all(
-        result.photoFileIds.map((fileId, i) => {
-          const mime = verified[i].mime
-          if (HEIC_MIME.has(mime)) {
-            return queue
-              .publish('heic_transcode', { fileId, kind: 'recommendation' })
-              .catch((e) => context.log.warn('heic_transcode enqueue failed', { error: e }))
-          }
-          if (SHARP_DECODABLE_MIME_SET.has(mime)) {
-            return queue
-              .publish('blurhash', { fileId, kind: 'recommendation' })
-              .catch((e) => context.log.warn('blurhash enqueue failed', { error: e }))
-          }
-          return Promise.resolve()
-        }),
+      await enqueuePhotoDerivations(
+        result.photoFileIds.map((fileId, i) => ({ fileId, mime: verified[i].mime })),
+        context.log,
       )
       await realtime.publish(
         { kind: 'recommendation.changed', ids: [result.id] },
@@ -179,15 +206,12 @@ export const recommendationRouter = {
     return Promise.all(
       items.map(async (item) => {
         const cover = item.photos[0]
-        const coverPending = !!cover && (HEIC_MIME.has(cover.mime) || !!cover.transcodeFailedAt)
+        const coverState = cover ? photoTranscodeState(cover) : null
+        const coverReady = !!coverState && !coverState.pending && !coverState.failed
         return {
           ...item,
-          photos: item.photos.map((p) => ({
-            ...p,
-            pending: HEIC_MIME.has(p.mime) && !p.transcodeFailedAt,
-            failed: !!p.transcodeFailedAt,
-          })),
-          coverUrl: cover && !coverPending ? await publicPhotoUrl(cover.pathname) : null,
+          photos: item.photos.map((p) => ({ ...p, ...photoTranscodeState(p) })),
+          coverUrl: cover && coverReady ? await publicPhotoUrl(cover.pathname) : null,
         }
       }),
     )
@@ -208,13 +232,14 @@ export const recommendationRouter = {
       // except photos still HEIC (transcode pending) or whose transcode failed, which
       // have no displayable URL yet (url: null, plus pending/failed flags for the UI).
       const photos = await Promise.all(
-        item.photos.map(async (p) => ({
-          ...p,
-          pending: HEIC_MIME.has(p.mime) && !p.transcodeFailedAt,
-          failed: !!p.transcodeFailedAt,
-          url:
-            HEIC_MIME.has(p.mime) || p.transcodeFailedAt ? null : await publicPhotoUrl(p.pathname),
-        })),
+        item.photos.map(async (p) => {
+          const state = photoTranscodeState(p)
+          return {
+            ...p,
+            ...state,
+            url: state.pending || state.failed ? null : await publicPhotoUrl(p.pathname),
+          }
+        }),
       )
       return { ...item, photos }
     }),
@@ -287,23 +312,10 @@ export const recommendationRouter = {
       }
 
       // newPhotoFileIds align with verifiedNew order (service filters kind:'new' in
-      // input order, same subset the procedure built) — branch by real mime: HEIC
-      // photos enqueue the transcode worker, sharp-decodable ones enqueue blurhash.
-      await Promise.all(
-        result.newPhotoFileIds.map((fileId, i) => {
-          const mime = verifiedNew[i].mime
-          if (HEIC_MIME.has(mime)) {
-            return queue
-              .publish('heic_transcode', { fileId, kind: 'recommendation' })
-              .catch((e) => context.log.warn('heic_transcode enqueue failed', { error: e }))
-          }
-          if (SHARP_DECODABLE_MIME_SET.has(mime)) {
-            return queue
-              .publish('blurhash', { fileId, kind: 'recommendation' })
-              .catch((e) => context.log.warn('blurhash enqueue failed', { error: e }))
-          }
-          return Promise.resolve()
-        }),
+      // input order, same subset the procedure built), so pair them by index.
+      await enqueuePhotoDerivations(
+        result.newPhotoFileIds.map((fileId, i) => ({ fileId, mime: verifiedNew[i].mime })),
+        context.log,
       )
       await realtime.publish(
         { kind: 'recommendation.changed', ids: [result.id] },
