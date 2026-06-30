@@ -207,10 +207,12 @@ All free tiers exceed ~20 users by ~100×, so cost is not the differentiator —
 - ➖ Bytes never transit a Function (ADR-0006); the server doesn't see the image. We'd need a fetch-back worker to read metadata the client already holds at upload time.
 - **Verdict**: rejected — fights the out-of-process byte path.
 
-#### B. Client-side `exifr` before upload, first GPS-bearing photo wins (chosen)
-- ➕ Reads GPS from each original file in the browser (handles HEIC + JPEG), before the HEIC transcode that would strip it; pre-fills from the first photo with coordinates. Sends `{ lat, lng }` in the create payload. Fits the byte path exactly.
+#### B. Client-side EXIF read before upload, first GPS-bearing photo wins (chosen)
+- ➕ Reads GPS from each original file in the browser, before the HEIC transcode that would strip it; pre-fills from the first photo with coordinates. Sends `{ lat, lng }` in the create payload. Fits the byte path exactly.
 - ➖ Not every photo has GPS — mitigated by manual placement and "always editable."
 - **Verdict**: chosen.
+
+> **2026-06-29 amendment — `exifr` → `exifreader`.** The library was originally `exifr`, whose docs advertise HEIC support. In practice exifr's HEIC detector rejects any file whose `ftyp` box exceeds 50 bytes (`getUint16(2) > 50`), throwing "Unknown file format". Every modern iPhone HEIC has a larger `ftyp` box (major brand `heic` + several compatible brands, e.g. `mif1 MiHB MiHA heix` → 52 bytes), so GPS was silently never read for the dominant photo source and `readGpsFromFile` always fell back to manual placement. exifr 7.1.3 is the latest release, so no version bump fixes it. Switched to `exifreader` (used identically in `src/lib/files/exif.ts`, the lone EXIF consumer), which parses iPhone HEIC correctly; `{ expanded: true }` returns `gps.Latitude`/`gps.Longitude` as sign-applied decimals. Also fixed a latent companion bug: `LocationPicker` only honored `value` at mount via `initialViewState`, so a programmatically-set location outside the default Lefkada view dropped the pin off-screen — it now `flyTo`s the point when it isn't already visible (guarded so manual click/drag never jars the camera).
 
 ### Likes & comments — build now vs. design for later
 

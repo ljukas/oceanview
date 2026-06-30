@@ -10,6 +10,7 @@ allowBuilds:
   '@prisma/client': false
   better-sqlite3: false
   esbuild: true
+  exifreader: false
   msgpackr-extract: true
   msw: false
   sharp: true
