@@ -23,8 +23,8 @@ import { Button } from '~/components/ui/button'
 import { Progress } from '~/components/ui/progress'
 import { Spinner } from '~/components/ui/spinner'
 import { runUploadFlow } from '~/lib/effects/storage/clientUpload'
-import { readGpsFromFile } from '~/lib/files/exif'
-import { isHeicCandidate, transcodeHeicToJpeg } from '~/lib/image/heic'
+import { readImageMetaFromFile } from '~/lib/files/exif'
+import { isHeicFile } from '~/lib/image/heicMime'
 import { orpc } from '~/lib/orpc/client'
 import { UPLOAD_IMAGE_MIME } from '~/lib/orpc/imageUpload'
 import { cn } from '~/lib/utils'
@@ -79,43 +79,42 @@ export function PhotoUploader({
         toast.error(m.recommendation_photo_max())
         break
       }
-      // EXIF on the ORIGINAL file, before transcode (transcode strips metadata).
-      if (!exifReported && onExifLocation) {
-        const gps = await readGpsFromFile(raw)
-        if (gps) {
-          onExifLocation(gps)
-          exifReported = true
-        }
+      // Single EXIF pass on the RAW file (GPS + any embedded JPEG thumbnail).
+      // No client transcode anymore — HEIC bytes upload as-is and the server
+      // `heic_transcode` worker derives the displayable asset (ADR-0012 §4).
+      const { gps, thumbnail } = await readImageMetaFromFile(raw)
+      if (!exifReported && gps && onExifLocation) {
+        onExifLocation(gps)
+        exifReported = true
       }
 
-      let file = raw
-      if (isHeicCandidate(raw)) {
-        try {
-          file = await transcodeHeicToJpeg(raw)
-        } catch {
-          toast.error(m.recommendation_photo_heic_failed())
-          continue
-        }
-      } else if (!isDirectMime(raw.type)) {
-        toast.error(m.recommendation_photo_unsupported())
-        continue
-      }
-      if (file.size > MAX_BYTES) {
-        toast.error(m.recommendation_photo_too_large())
-        continue
-      }
-      const contentType = file.type
+      // Validate the RAW file — HEIC is now an accepted upload type (task 6).
+      const contentType = raw.type
       if (!isDirectMime(contentType)) {
         toast.error(m.recommendation_photo_unsupported())
         continue
       }
+      if (raw.size > MAX_BYTES) {
+        toast.error(m.recommendation_photo_too_large())
+        continue
+      }
+
+      // Native iPhone HEICs usually carry NO extractable EXIF JPEG (their preview
+      // is an HEVC `thmb` item), so `thumbnail` is normally null — an empty-string
+      // previewUrl tells PhotoTile to render the neutral placeholder until the
+      // server transcode lands. Non-HEIC files preview directly from their bytes.
+      const isHeic = isHeicFile(raw)
+      const previewUrl = isHeic
+        ? thumbnail
+          ? URL.createObjectURL(thumbnail)
+          : ''
+        : URL.createObjectURL(raw)
 
       const localId = uid()
-      const previewUrl = URL.createObjectURL(file)
       const slot: FormPhoto = {
         kind: 'new',
         localId,
-        sizeBytes: file.size,
+        sizeBytes: raw.size,
         previewUrl,
         status: 'uploading',
       }
@@ -123,14 +122,14 @@ export function PhotoUploader({
 
       try {
         let pathname = ''
-        await runUploadFlow(file, {
+        await runUploadFlow(raw, {
           access: 'public',
           contentType,
           mint: async () => {
             const minted = await mintMutation.mutateAsync({
               contentType,
-              sizeBytes: file.size,
-              name: file.name,
+              sizeBytes: raw.size,
+              name: raw.name,
             })
             pathname = minted.pathname
             return minted
@@ -162,7 +161,9 @@ export function PhotoUploader({
 
   function removeAt(key: string) {
     const target = value.find((p) => photoKey(p) === key)
-    if (target?.kind === 'new') URL.revokeObjectURL(target.previewUrl)
+    // previewUrl is '' for a HEIC with no embedded thumbnail (placeholder tile);
+    // never revoke an empty string — it isn't an object URL.
+    if (target?.kind === 'new' && target.previewUrl) URL.revokeObjectURL(target.previewUrl)
     onChange(value.filter((p) => photoKey(p) !== key))
   }
 
@@ -249,9 +250,17 @@ const PhotoTile = memo(function PhotoTile({
       {...listeners}
     >
       {/* Plain <img> on object-URL/known URL — no transformer needed for a local preview.
-          src may be null for an existing photo with a pending/failed transcode; coerce
-          to undefined so we render the bare muted box rather than a broken image. */}
-      <img src={src ?? undefined} alt="" className="size-full object-cover" />
+          `src` is falsy when there's nothing to show yet: a HEIC with no embedded EXIF
+          thumbnail (the common iPhone case — preview arrives after the server transcode),
+          or an existing photo whose transcode is still pending. Render a neutral icon
+          placeholder instead of a broken <img>. */}
+      {src ? (
+        <img src={src} alt="" className="size-full object-cover" />
+      ) : (
+        <div className="flex size-full items-center justify-center text-muted-foreground">
+          <ImagePlusIcon className="size-8" />
+        </div>
+      )}
       {isCover ? (
         <span className="absolute top-1 left-1 rounded bg-foreground/70 px-1.5 py-0.5 text-[10px] text-background">
           {m.recommendation_photo_cover()}
