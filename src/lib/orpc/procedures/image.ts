@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { auth } from '~/lib/auth'
 import { queue, realtime, storage } from '~/lib/effects'
 import { stripEnvPrefix } from '~/lib/effects/storage'
+import { HEIC_MIME } from '~/lib/image/heicMime'
 import { protectedProcedure } from '~/lib/orpc/context'
 import { UPLOAD_IMAGE_EXT, UPLOAD_IMAGE_MIME } from '~/lib/orpc/imageUpload'
 import * as fileService from '~/lib/services/file'
@@ -63,15 +64,31 @@ export const imageRouter = {
           }),
         ),
       )
-      await queue
-        .publish('blurhash', { fileId: newRow.id, kind: 'avatar', userId: context.user.id })
-        .catch((error) => {
-          context.log.warn('failed to enqueue avatar blurhash', { fileId: newRow.id, error })
+      const isHeic = HEIC_MIME.has(blob.contentType)
+      if (isHeic) {
+        // Defer the avatar pointer + blurhash to the transcode worker (it sets
+        // user.image to the JPEG url and enqueues blurhash itself). Until then the
+        // avatar falls back to initials on shared surfaces; the uploader shows its
+        // local EXIF preview. (spec §E)
+        await queue
+          .publish('heic_transcode', { fileId: newRow.id, kind: 'avatar', userId: context.user.id })
+          .catch((error) => {
+            context.log.warn('failed to enqueue avatar heic_transcode', {
+              fileId: newRow.id,
+              error,
+            })
+          })
+      } else {
+        await queue
+          .publish('blurhash', { fileId: newRow.id, kind: 'avatar', userId: context.user.id })
+          .catch((error) => {
+            context.log.warn('failed to enqueue avatar blurhash', { fileId: newRow.id, error })
+          })
+        await auth.api.updateUser({
+          body: { image: blob.url },
+          headers: context.headers,
         })
-      await auth.api.updateUser({
-        body: { image: blob.url },
-        headers: context.headers,
-      })
+      }
       context.log.info('avatar uploaded', {
         pathname: input.pathname,
         replacedCount: previousPathnames.length,
@@ -80,6 +97,6 @@ export const imageRouter = {
         { kind: 'user.changed', ids: [context.user.id] },
         { source: context.user.id },
       )
-      return { imageUrl: blob.url }
+      return { imageUrl: isHeic ? null : blob.url, pending: isHeic }
     }),
 }
