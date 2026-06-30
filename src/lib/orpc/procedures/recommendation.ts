@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { queue, realtime, storage } from '~/lib/effects'
 import { stripEnvPrefix } from '~/lib/effects/storage'
 import { SHARP_DECODABLE_MIME_SET } from '~/lib/image/blurhash'
+import { HEIC_MIME } from '~/lib/image/heicMime'
 import { UPLOAD_IMAGE_EXT, UPLOAD_IMAGE_MIME } from '~/lib/orpc/imageUpload'
 import {
   createRecommendation,
@@ -142,14 +143,24 @@ export const recommendationRouter = {
         throw err
       }
 
+      // HEIC photos can't be decoded by sharp directly: enqueue the server-side
+      // transcode worker (its blurhash backstop runs after re-encode). Otherwise
+      // sharp-decodable photos enqueue blurhash directly; non-decodable skip both.
       await Promise.all(
-        result.photoFileIds
-          .filter((_, i) => SHARP_DECODABLE_MIME_SET.has(verified[i].mime))
-          .map((fileId) =>
-            queue
+        result.photoFileIds.map((fileId, i) => {
+          const mime = verified[i].mime
+          if (HEIC_MIME.has(mime)) {
+            return queue
+              .publish('heic_transcode', { fileId, kind: 'recommendation' })
+              .catch((e) => context.log.warn('heic_transcode enqueue failed', { error: e }))
+          }
+          if (SHARP_DECODABLE_MIME_SET.has(mime)) {
+            return queue
               .publish('blurhash', { fileId, kind: 'recommendation' })
-              .catch((e) => context.log.warn('blurhash enqueue failed', { error: e })),
-          ),
+              .catch((e) => context.log.warn('blurhash enqueue failed', { error: e }))
+          }
+          return Promise.resolve()
+        }),
       )
       await realtime.publish(
         { kind: 'recommendation.changed', ids: [result.id] },
@@ -256,15 +267,23 @@ export const recommendationRouter = {
       }
 
       // newPhotoFileIds align with verifiedNew order (service filters kind:'new' in
-      // input order, same subset the procedure built) — gate blurhash by real mime.
+      // input order, same subset the procedure built) — branch by real mime: HEIC
+      // photos enqueue the transcode worker, sharp-decodable ones enqueue blurhash.
       await Promise.all(
-        result.newPhotoFileIds
-          .filter((_, i) => SHARP_DECODABLE_MIME_SET.has(verifiedNew[i].mime))
-          .map((fileId) =>
-            queue
+        result.newPhotoFileIds.map((fileId, i) => {
+          const mime = verifiedNew[i].mime
+          if (HEIC_MIME.has(mime)) {
+            return queue
+              .publish('heic_transcode', { fileId, kind: 'recommendation' })
+              .catch((e) => context.log.warn('heic_transcode enqueue failed', { error: e }))
+          }
+          if (SHARP_DECODABLE_MIME_SET.has(mime)) {
+            return queue
               .publish('blurhash', { fileId, kind: 'recommendation' })
-              .catch((e) => context.log.warn('blurhash enqueue failed', { error: e })),
-          ),
+              .catch((e) => context.log.warn('blurhash enqueue failed', { error: e }))
+          }
+          return Promise.resolve()
+        }),
       )
       await realtime.publish(
         { kind: 'recommendation.changed', ids: [result.id] },
