@@ -65,6 +65,7 @@ Companion: **[feature-workflow.md](./feature-workflow.md)** for adding capabilit
 - `superpowers:subagent-driven-development` / `dispatching-parallel-agents` — fan out independent mechanical edits (renames, extractions across files).
 - `code-simplifier` (agent) / `/simplify` — the mechanical-cleanup workhorses: reuse, simplification, efficiency, altitude on recently-changed code. **Quality only — they don't hunt bugs.** This is exactly where agents are strong (local, mechanical edits).
 - `superpowers:systematic-debugging` when a step unexpectedly goes red — the suite just told you behavior moved; don't paper over it.
+- `ralph-loop:ralph-loop` — **optional**, and only once the safety net is green (Phase 1): a passing characterization/approval suite *is* the automatic success criterion a Ralph loop needs. Run it with `--completion-promise` tied to the suite staying green and **always** `--max-iterations`. Subject to the hard rules below — one hat per commit, small reviewable diffs. Never for the design target (Phase 2).
 - Domain/library skills as relevant — `vercel-composition-patterns` (untangling boolean-prop proliferation / into compound components), `vercel:react-best-practices`, `supabase-postgres-best-practices`, plus the CLAUDE.md skill-loading router for whatever area you're in.
 
 ### 6. Verify behavior preservation
@@ -78,6 +79,7 @@ Companion: **[feature-workflow.md](./feature-workflow.md)** for adding capabilit
 - `test-completeness` — if services/effects/`errors.ts` moved.
 - `code-reviewer` — ADR adherence.
 - `superpowers:requesting-`/`receiving-code-review`; `superpowers:finishing-a-development-branch`.
+- Committing/pushing fires `security-guidance`'s agentic multi-file review automatically; clear or consciously dismiss any findings before the PR.
 **Loop-back:** *if the refactor changed an architectural decision*, record it — an **ADR amendment** or new ADR (and update CLAUDE.md "Decisions made" if relevant). A refactor that crosses into a decision re-enters the decision process.
 
 ---
@@ -90,6 +92,8 @@ This repo is largely built with AI agents, and the 2025 empirical record is spec
 2. **One hat per commit.** Agents routinely produce **tangled commits** (structure + behavior mixed) — the single biggest review hazard. Reject them; require pure refactor commits separate from any behavior change.
 3. **Keep diffs small and reviewable.** If you can't review it, you can't trust it. Scope each agent refactor to one transformation.
 4. **Humans/judgment own the design target** (Phase 2). Use agents to execute the *what*, not to decide it. Don't let speculative "future-proofing" abstractions in.
+
+An autonomous loop (`ralph-loop`, Phase 5) doesn't bypass these rules — it *amplifies* the need for them: it's acceptable only with behavior locked first, pure one-hat commits, and small diffs, and never to decide the design target.
 
 ---
 
@@ -120,6 +124,6 @@ Ousterhout is skeptical of strict TDD; Beck/Fowler treat tests as the indispensa
 | 2. Decide target | *(human/judgment — APOSD)* | `improve-codebase-architecture` |
 | 3. Pick strategy | `superpowers:writing-plans` (large) | `Plan` |
 | 4. Isolate | `superpowers:using-git-worktrees` | — |
-| 5. Small steps | `code-simplifier` / `/simplify` | `subagent-driven-development`; `dispatching-parallel-agents`; `systematic-debugging`; `vercel-composition-patterns`; CLAUDE.md skill-loading table |
+| 5. Small steps | `code-simplifier` / `/simplify` | `subagent-driven-development`; `dispatching-parallel-agents`; `systematic-debugging`; `ralph-loop` *(safety-net-green only)*; `vercel-composition-patterns`; CLAUDE.md skill-loading table |
 | 6. Verify preservation | `superpowers:verification-before-completion` | `/verify`; `vercel:verification`; `/run`; `claude-in-chrome` |
-| 7. Review & ship | `code-reviewer`, `migration-guard`, `test-completeness` | `/simplify`; `/code-review`; `requesting-`/`receiving-code-review`; `finishing-a-development-branch` |
+| 7. Review & ship | `code-reviewer`, `migration-guard`, `test-completeness` | `/simplify`; `/code-review`; `security-guidance` *(commit/push review)*; `requesting-`/`receiving-code-review`; `finishing-a-development-branch` |

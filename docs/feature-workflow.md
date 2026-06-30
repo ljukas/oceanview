@@ -51,6 +51,7 @@ Companion: **[refactor-workflow.md](./refactor-workflow.md)** for behavior-prese
 - `superpowers:dispatching-parallel-agents` — for the independent leaves (pure helpers, i18n strings, static registries) that don't sit on the dependency spine.
 - **Testable layers → `superpowers:test-driven-development`.** Services and pure helpers get tests first (ADR-0002 mandates service tests). Every `<Entity>DomainError.code` literal must be exercised.
 - **Un-testable layers (client-only/WebGL/visual UI) → build then verify live** (Phase 6), not TDD.
+- `ralph-loop:ralph-loop` — **optional**, only for a well-scoped layer with an *automatic* success criterion (a TDD'd service whose failing test suite is already written): run an autonomous loop with `--completion-promise` tied to a green suite + `pnpm check`, and **always** set `--max-iterations` as a backstop. Write the tests first; the loop's output is still subject to one-hat-per-commit and small, reviewable diffs. Never for the design/judgment phases (0–2).
 - `superpowers:systematic-debugging` the moment something breaks — never guess-patch.
 - **Domain/library skills as you touch each area** — consult the CLAUDE.md **"Skill loading — when to load which"** router table (it maps task → skill/ADR). High-value ones: `shadcn` / `vercel:shadcn` (UI components), `vercel:react-best-practices` + `vercel-composition-patterns` (component structure), `supabase-postgres-best-practices` / `neon-postgres` (schema, queries, indexes), `better-auth-best-practices` + `better-auth-security-best-practices` (auth), `react-email` + `email-best-practices` (templates), `frontend-design` / `web-design-guidelines` (visual + UX/accessibility).
 
@@ -59,7 +60,7 @@ Companion: **[refactor-workflow.md](./refactor-workflow.md)** for behavior-prese
 - `migration-guard` — run it whenever `drizzle/` or `src/lib/db/schema/` changed (missing `--name=`, timestamptz `USING … AT TIME ZONE`, destructive ops, `betterAuth.ts` hand-edits).
 - `test-completeness` — after any service/effect/`errors.ts` change; enforces ADR-0002's "every domain-error code is tested."
 - `code-reviewer` — the oceanview ADR-aware reviewer (avatar pattern, code-only error mapping, realtime conventions).
-- `/security-review` — for auth, file-access, or anything touching session/permission boundaries.
+- `/security-review` — the on-demand deep pass for auth, file-access, or anything touching session/permission boundaries. The `security-guidance` plugin (enabled in `.claude/settings.json`) now *also* runs **automatically** — pattern warnings on edits, an LLM diff review when a turn ends, and an agentic multi-file review at commit/push — so security feedback appears continuously through Build → Ship; `/security-review` stays the explicit, focused pass for sensitive boundaries.
 **Skills:** `superpowers:requesting-code-review` to frame the request; `superpowers:receiving-code-review` to act on feedback with rigor (verify, don't perform agreement). `feature-dev:code-reviewer` / `/code-review` for general correctness passes.
 
 ### 6. Verify end-to-end
@@ -69,6 +70,7 @@ Companion: **[refactor-workflow.md](./refactor-workflow.md)** for behavior-prese
 ### 7. Ship
 **What:** Integrate the finished, green work.
 **Skill:** `superpowers:finishing-a-development-branch` (merge / PR / cleanup). Conventional Commits per the [Non-negotiables](../CLAUDE.md#non-negotiables).
+**Note:** committing/pushing triggers `security-guidance`'s agentic multi-file review (IDOR, auth-bypass, cross-file SSRF); address or consciously dismiss any findings before opening the PR.
 
 ---
 
@@ -103,7 +105,7 @@ Companion: **[refactor-workflow.md](./refactor-workflow.md)** for behavior-prese
 | 1. Understand seams | `feature-dev:code-explorer` | `Explore`; `dispatching-parallel-agents` |
 | 2. Plan | `superpowers:writing-plans` | `Plan`; `feature-dev:code-architect` (blank-page only) |
 | 3. Isolate | `superpowers:using-git-worktrees` | — |
-| 4. Build | `superpowers:executing-plans` / `subagent-driven-development` | `test-driven-development`; `systematic-debugging`; `dispatching-parallel-agents`; CLAUDE.md skill-loading table (`shadcn`, `vercel:react-best-practices`, `vercel-composition-patterns`, `supabase-postgres-best-practices`, `neon-postgres`, `better-auth-*`, `react-email`, `frontend-design`) |
-| 5. Review | `code-reviewer`, `migration-guard`, `test-completeness` | `requesting-`/`receiving-code-review`; `/code-review`; `/security-review`; `feature-dev:code-reviewer` |
+| 4. Build | `superpowers:executing-plans` / `subagent-driven-development` | `test-driven-development`; `systematic-debugging`; `dispatching-parallel-agents`; `ralph-loop` *(auto-verifiable layers only)*; CLAUDE.md skill-loading table (`shadcn`, `vercel:react-best-practices`, `vercel-composition-patterns`, `supabase-postgres-best-practices`, `neon-postgres`, `better-auth-*`, `react-email`, `frontend-design`) |
+| 5. Review | `code-reviewer`, `migration-guard`, `test-completeness` | `requesting-`/`receiving-code-review`; `/code-review`; `/security-review` + `security-guidance` *(automatic)*; `feature-dev:code-reviewer` |
 | 6. Verify | `superpowers:verification-before-completion` | `/verify`; `vercel:verification`; `/run`; `claude-in-chrome` |
-| 7. Ship | `superpowers:finishing-a-development-branch` | — |
+| 7. Ship | `superpowers:finishing-a-development-branch` | `security-guidance` *(commit/push review)* |
