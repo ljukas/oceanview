@@ -15,10 +15,10 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated/index'
 import { Route as ApiLogRouteImport } from './routes/api/log'
-import { Route as AuthenticatedRecommendationsRouteImport } from './routes/_authenticated/recommendations'
 import { Route as AuthenticatedOwnersRouteImport } from './routes/_authenticated/owners'
 import { Route as AuthenticatedAdminRouteImport } from './routes/_authenticated/admin'
 import { Route as AuthenticatedAccountRouteImport } from './routes/_authenticated/account'
+import { Route as AuthenticatedRecommendationsIndexRouteImport } from './routes/_authenticated/recommendations.index'
 import { Route as AuthenticatedDocumentsIndexRouteImport } from './routes/_authenticated/documents.index'
 import { Route as AuthenticatedAccountIndexRouteImport } from './routes/_authenticated/account/index'
 import { Route as ApiRpcSplatRouteImport } from './routes/api/rpc/$'
@@ -63,12 +63,6 @@ const ApiLogRoute = ApiLogRouteImport.update({
   path: '/api/log',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AuthenticatedRecommendationsRoute =
-  AuthenticatedRecommendationsRouteImport.update({
-    id: '/recommendations',
-    path: '/recommendations',
-    getParentRoute: () => AuthenticatedRoute,
-  } as any)
 const AuthenticatedOwnersRoute = AuthenticatedOwnersRouteImport.update({
   id: '/owners',
   path: '/owners',
@@ -84,6 +78,12 @@ const AuthenticatedAccountRoute = AuthenticatedAccountRouteImport.update({
   path: '/account',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const AuthenticatedRecommendationsIndexRoute =
+  AuthenticatedRecommendationsIndexRouteImport.update({
+    id: '/recommendations/',
+    path: '/recommendations/',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 const AuthenticatedDocumentsIndexRoute =
   AuthenticatedDocumentsIndexRouteImport.update({
     id: '/documents/',
@@ -108,9 +108,9 @@ const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
 } as any)
 const AuthenticatedRecommendationsNewRoute =
   AuthenticatedRecommendationsNewRouteImport.update({
-    id: '/new',
-    path: '/new',
-    getParentRoute: () => AuthenticatedRecommendationsRoute,
+    id: '/recommendations/new',
+    path: '/recommendations/new',
+    getParentRoute: () => AuthenticatedRoute,
   } as any)
 const AuthenticatedDocumentsSplatRoute =
   AuthenticatedDocumentsSplatRouteImport.update({
@@ -148,9 +148,9 @@ const ApiFilesDownloadIdRoute = ApiFilesDownloadIdRouteImport.update({
 } as any)
 const AuthenticatedRecommendationsIdEditRoute =
   AuthenticatedRecommendationsIdEditRouteImport.update({
-    id: '/$id/edit',
-    path: '/$id/edit',
-    getParentRoute: () => AuthenticatedRecommendationsRoute,
+    id: '/recommendations/$id/edit',
+    path: '/recommendations/$id/edit',
+    getParentRoute: () => AuthenticatedRoute,
   } as any)
 const AuthenticatedAdminDocumentsBinRoute =
   AuthenticatedAdminDocumentsBinRouteImport.update({
@@ -173,7 +173,6 @@ export interface FileRoutesByFullPath {
   '/account': typeof AuthenticatedAccountRouteWithChildren
   '/admin': typeof AuthenticatedAdminRouteWithChildren
   '/owners': typeof AuthenticatedOwnersRoute
-  '/recommendations': typeof AuthenticatedRecommendationsRouteWithChildren
   '/api/log': typeof ApiLogRoute
   '/account/profile': typeof AuthenticatedAccountProfileRoute
   '/account/security': typeof AuthenticatedAccountSecurityRoute
@@ -183,6 +182,7 @@ export interface FileRoutesByFullPath {
   '/api/rpc/$': typeof ApiRpcSplatRoute
   '/account/': typeof AuthenticatedAccountIndexRoute
   '/documents/': typeof AuthenticatedDocumentsIndexRoute
+  '/recommendations/': typeof AuthenticatedRecommendationsIndexRoute
   '/admin/documents/bin': typeof AuthenticatedAdminDocumentsBinRoute
   '/recommendations/$id/edit': typeof AuthenticatedRecommendationsIdEditRoute
   '/api/files/download/$id': typeof ApiFilesDownloadIdRoute
@@ -196,7 +196,6 @@ export interface FileRoutesByTo {
   '/signed-in': typeof SignedInRoute
   '/admin': typeof AuthenticatedAdminRouteWithChildren
   '/owners': typeof AuthenticatedOwnersRoute
-  '/recommendations': typeof AuthenticatedRecommendationsRouteWithChildren
   '/api/log': typeof ApiLogRoute
   '/': typeof AuthenticatedIndexRoute
   '/account/profile': typeof AuthenticatedAccountProfileRoute
@@ -207,6 +206,7 @@ export interface FileRoutesByTo {
   '/api/rpc/$': typeof ApiRpcSplatRoute
   '/account': typeof AuthenticatedAccountIndexRoute
   '/documents': typeof AuthenticatedDocumentsIndexRoute
+  '/recommendations': typeof AuthenticatedRecommendationsIndexRoute
   '/admin/documents/bin': typeof AuthenticatedAdminDocumentsBinRoute
   '/recommendations/$id/edit': typeof AuthenticatedRecommendationsIdEditRoute
   '/api/files/download/$id': typeof ApiFilesDownloadIdRoute
@@ -223,7 +223,6 @@ export interface FileRoutesById {
   '/_authenticated/account': typeof AuthenticatedAccountRouteWithChildren
   '/_authenticated/admin': typeof AuthenticatedAdminRouteWithChildren
   '/_authenticated/owners': typeof AuthenticatedOwnersRoute
-  '/_authenticated/recommendations': typeof AuthenticatedRecommendationsRouteWithChildren
   '/api/log': typeof ApiLogRoute
   '/_authenticated/': typeof AuthenticatedIndexRoute
   '/_authenticated/account/profile': typeof AuthenticatedAccountProfileRoute
@@ -234,6 +233,7 @@ export interface FileRoutesById {
   '/api/rpc/$': typeof ApiRpcSplatRoute
   '/_authenticated/account/': typeof AuthenticatedAccountIndexRoute
   '/_authenticated/documents/': typeof AuthenticatedDocumentsIndexRoute
+  '/_authenticated/recommendations/': typeof AuthenticatedRecommendationsIndexRoute
   '/_authenticated/admin/documents/bin': typeof AuthenticatedAdminDocumentsBinRoute
   '/_authenticated/recommendations/$id/edit': typeof AuthenticatedRecommendationsIdEditRoute
   '/api/files/download/$id': typeof ApiFilesDownloadIdRoute
@@ -251,7 +251,6 @@ export interface FileRouteTypes {
     | '/account'
     | '/admin'
     | '/owners'
-    | '/recommendations'
     | '/api/log'
     | '/account/profile'
     | '/account/security'
@@ -261,6 +260,7 @@ export interface FileRouteTypes {
     | '/api/rpc/$'
     | '/account/'
     | '/documents/'
+    | '/recommendations/'
     | '/admin/documents/bin'
     | '/recommendations/$id/edit'
     | '/api/files/download/$id'
@@ -274,7 +274,6 @@ export interface FileRouteTypes {
     | '/signed-in'
     | '/admin'
     | '/owners'
-    | '/recommendations'
     | '/api/log'
     | '/'
     | '/account/profile'
@@ -285,6 +284,7 @@ export interface FileRouteTypes {
     | '/api/rpc/$'
     | '/account'
     | '/documents'
+    | '/recommendations'
     | '/admin/documents/bin'
     | '/recommendations/$id/edit'
     | '/api/files/download/$id'
@@ -300,7 +300,6 @@ export interface FileRouteTypes {
     | '/_authenticated/account'
     | '/_authenticated/admin'
     | '/_authenticated/owners'
-    | '/_authenticated/recommendations'
     | '/api/log'
     | '/_authenticated/'
     | '/_authenticated/account/profile'
@@ -311,6 +310,7 @@ export interface FileRouteTypes {
     | '/api/rpc/$'
     | '/_authenticated/account/'
     | '/_authenticated/documents/'
+    | '/_authenticated/recommendations/'
     | '/_authenticated/admin/documents/bin'
     | '/_authenticated/recommendations/$id/edit'
     | '/api/files/download/$id'
@@ -375,13 +375,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiLogRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/_authenticated/recommendations': {
-      id: '/_authenticated/recommendations'
-      path: '/recommendations'
-      fullPath: '/recommendations'
-      preLoaderRoute: typeof AuthenticatedRecommendationsRouteImport
-      parentRoute: typeof AuthenticatedRoute
-    }
     '/_authenticated/owners': {
       id: '/_authenticated/owners'
       path: '/owners'
@@ -401,6 +394,13 @@ declare module '@tanstack/react-router' {
       path: '/account'
       fullPath: '/account'
       preLoaderRoute: typeof AuthenticatedAccountRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/recommendations/': {
+      id: '/_authenticated/recommendations/'
+      path: '/recommendations'
+      fullPath: '/recommendations/'
+      preLoaderRoute: typeof AuthenticatedRecommendationsIndexRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/documents/': {
@@ -433,10 +433,10 @@ declare module '@tanstack/react-router' {
     }
     '/_authenticated/recommendations/new': {
       id: '/_authenticated/recommendations/new'
-      path: '/new'
+      path: '/recommendations/new'
       fullPath: '/recommendations/new'
       preLoaderRoute: typeof AuthenticatedRecommendationsNewRouteImport
-      parentRoute: typeof AuthenticatedRecommendationsRoute
+      parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/documents/$': {
       id: '/_authenticated/documents/$'
@@ -482,10 +482,10 @@ declare module '@tanstack/react-router' {
     }
     '/_authenticated/recommendations/$id/edit': {
       id: '/_authenticated/recommendations/$id/edit'
-      path: '/$id/edit'
+      path: '/recommendations/$id/edit'
       fullPath: '/recommendations/$id/edit'
       preLoaderRoute: typeof AuthenticatedRecommendationsIdEditRouteImport
-      parentRoute: typeof AuthenticatedRecommendationsRoute
+      parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/admin/documents/bin': {
       id: '/_authenticated/admin/documents/bin'
@@ -535,42 +535,30 @@ const AuthenticatedAdminRouteChildren: AuthenticatedAdminRouteChildren = {
 const AuthenticatedAdminRouteWithChildren =
   AuthenticatedAdminRoute._addFileChildren(AuthenticatedAdminRouteChildren)
 
-interface AuthenticatedRecommendationsRouteChildren {
-  AuthenticatedRecommendationsNewRoute: typeof AuthenticatedRecommendationsNewRoute
-  AuthenticatedRecommendationsIdEditRoute: typeof AuthenticatedRecommendationsIdEditRoute
-}
-
-const AuthenticatedRecommendationsRouteChildren: AuthenticatedRecommendationsRouteChildren =
-  {
-    AuthenticatedRecommendationsNewRoute: AuthenticatedRecommendationsNewRoute,
-    AuthenticatedRecommendationsIdEditRoute:
-      AuthenticatedRecommendationsIdEditRoute,
-  }
-
-const AuthenticatedRecommendationsRouteWithChildren =
-  AuthenticatedRecommendationsRoute._addFileChildren(
-    AuthenticatedRecommendationsRouteChildren,
-  )
-
 interface AuthenticatedRouteChildren {
   AuthenticatedAccountRoute: typeof AuthenticatedAccountRouteWithChildren
   AuthenticatedAdminRoute: typeof AuthenticatedAdminRouteWithChildren
   AuthenticatedOwnersRoute: typeof AuthenticatedOwnersRoute
-  AuthenticatedRecommendationsRoute: typeof AuthenticatedRecommendationsRouteWithChildren
   AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
   AuthenticatedDocumentsSplatRoute: typeof AuthenticatedDocumentsSplatRoute
+  AuthenticatedRecommendationsNewRoute: typeof AuthenticatedRecommendationsNewRoute
   AuthenticatedDocumentsIndexRoute: typeof AuthenticatedDocumentsIndexRoute
+  AuthenticatedRecommendationsIndexRoute: typeof AuthenticatedRecommendationsIndexRoute
+  AuthenticatedRecommendationsIdEditRoute: typeof AuthenticatedRecommendationsIdEditRoute
 }
 
 const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedAccountRoute: AuthenticatedAccountRouteWithChildren,
   AuthenticatedAdminRoute: AuthenticatedAdminRouteWithChildren,
   AuthenticatedOwnersRoute: AuthenticatedOwnersRoute,
-  AuthenticatedRecommendationsRoute:
-    AuthenticatedRecommendationsRouteWithChildren,
   AuthenticatedIndexRoute: AuthenticatedIndexRoute,
   AuthenticatedDocumentsSplatRoute: AuthenticatedDocumentsSplatRoute,
+  AuthenticatedRecommendationsNewRoute: AuthenticatedRecommendationsNewRoute,
   AuthenticatedDocumentsIndexRoute: AuthenticatedDocumentsIndexRoute,
+  AuthenticatedRecommendationsIndexRoute:
+    AuthenticatedRecommendationsIndexRoute,
+  AuthenticatedRecommendationsIdEditRoute:
+    AuthenticatedRecommendationsIdEditRoute,
 }
 
 const AuthenticatedRouteWithChildren = AuthenticatedRoute._addFileChildren(
