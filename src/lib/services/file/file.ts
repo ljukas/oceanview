@@ -13,6 +13,7 @@ export type FileRow = {
   sizeBytes: number
   access: FileAccess
   blurhash: string | null
+  transcodeFailedAt: Date | null
   uploadedAt: Date
   deletedAt: Date | null
 }
@@ -31,6 +32,7 @@ const fileSelection = {
   sizeBytes: file.sizeBytes,
   access: file.access,
   blurhash: file.blurhash,
+  transcodeFailedAt: file.transcodeFailedAt,
   uploadedAt: file.uploadedAt,
   deletedAt: file.deletedAt,
 }
@@ -60,6 +62,36 @@ export async function setBlurhash(input: { fileId: string; blurhash: string }): 
     .update(file)
     .set({ blurhash: input.blurhash })
     .where(and(eq(file.id, input.fileId), isNull(file.deletedAt)))
+}
+
+/**
+ * Repoint a file row at its transcoded JPEG: new pathname + mime + size, after a
+ * background HEIC→JPEG transcode wrote the JPEG and the original was deleted.
+ * Clears any prior transcode-failure flag.
+ */
+export async function replaceTranscoded(input: {
+  fileId: string
+  pathname: string
+  mime: string
+  sizeBytes: number
+}): Promise<void> {
+  await db
+    .update(file)
+    .set({
+      pathname: input.pathname,
+      mime: input.mime,
+      sizeBytes: input.sizeBytes,
+      transcodeFailedAt: null,
+    })
+    .where(and(eq(file.id, input.fileId), isNull(file.deletedAt)))
+}
+
+/** Mark a file's transcode as permanently failed (undecodable bytes / retries exhausted). */
+export async function setTranscodeFailed(fileId: string): Promise<void> {
+  await db
+    .update(file)
+    .set({ transcodeFailedAt: new Date() })
+    .where(and(eq(file.id, fileId), isNull(file.deletedAt)))
 }
 
 /**
