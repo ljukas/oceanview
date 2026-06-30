@@ -469,6 +469,8 @@
   "recommendations_empty_description": "När någon lägger till en plats dyker den upp här på kartan.",
   "recommendation_recommended_by": "Rekommenderad av {name}",
   "recommendation_photo_alt": "Foto från {title}",
+  "recommendation_photo_processing": "Bearbetar bild…",
+  "recommendation_photo_processing_failed": "Kunde inte bearbeta bilden",
   "recommendation_map_loading": "Laddar karta…",
   "meta_recommendation_new_title": "Lägg till plats",
   "meta_recommendation_edit_title": "Redigera plats",

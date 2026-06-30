@@ -469,6 +469,8 @@
   "recommendations_empty_description": "When someone adds a place, it shows up here on the map.",
   "recommendation_recommended_by": "Recommended by {name}",
   "recommendation_photo_alt": "Photo from {title}",
+  "recommendation_photo_processing": "Processing photo…",
+  "recommendation_photo_processing_failed": "Couldn't process this photo",
   "recommendation_map_loading": "Loading map…",
   "meta_recommendation_new_title": "Add place",
   "meta_recommendation_edit_title": "Edit place",
