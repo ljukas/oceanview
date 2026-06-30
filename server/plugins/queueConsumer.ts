@@ -2,6 +2,7 @@ import { definePlugin } from 'nitro'
 import type { QueuePayloadMap } from '~/lib/effects/queue/queue'
 import { handleBlurhashMessage } from '~/lib/queue/handlers/blurhash'
 import { handleEmailUserInvitedMessage } from '~/lib/queue/handlers/emailUserInvited'
+import { handleHeicTranscodeMessage } from '~/lib/queue/handlers/heicTranscode'
 import { handleImageThumbnailMessage } from '~/lib/queue/handlers/imageThumbnail'
 
 /**
@@ -22,6 +23,9 @@ export default definePlugin((nitro) => {
         return
       case 'email_user_invited':
         await handleEmailUserInvitedMessage(message as QueuePayloadMap['email_user_invited'], meta)
+        return
+      case 'heic_transcode':
+        await handleHeicTranscodeMessage(message as QueuePayloadMap['heic_transcode'], meta)
         return
       default:
         return

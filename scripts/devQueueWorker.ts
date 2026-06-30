@@ -5,6 +5,7 @@ import type { QueuePayloadMap, QueueTopic } from '~/lib/effects/queue/queue'
 import { logger } from '~/lib/logger/server'
 import { handleBlurhashMessage } from '~/lib/queue/handlers/blurhash'
 import { handleEmailUserInvitedMessage } from '~/lib/queue/handlers/emailUserInvited'
+import { handleHeicTranscodeMessage } from '~/lib/queue/handlers/heicTranscode'
 import { handleImageThumbnailMessage } from '~/lib/queue/handlers/imageThumbnail'
 
 /**
@@ -47,6 +48,16 @@ const workers = [
     'email_user_invited',
     async (job) => {
       await handleEmailUserInvitedMessage(job.data, {
+        messageId: job.id ?? 'local-unknown',
+        deliveryCount: job.attemptsMade + 1,
+      })
+    },
+    { connection: { url } },
+  ),
+  new Worker<QueuePayloadMap['heic_transcode']>(
+    'heic_transcode',
+    async (job) => {
+      await handleHeicTranscodeMessage(job.data, {
         messageId: job.id ?? 'local-unknown',
         deliveryCount: job.attemptsMade + 1,
       })
