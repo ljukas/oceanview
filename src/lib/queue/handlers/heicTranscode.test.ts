@@ -29,7 +29,7 @@ const {
     replaceTranscoded: vi.fn(),
     setTranscodeFailed: vi.fn(),
   },
-  documentService: { setThumbnailPathname: vi.fn() },
+  documentService: { setThumbnailPathname: vi.fn(), findActiveById: vi.fn() },
   userService: { setImage: vi.fn() },
   recommendationService: { findRecommendationIdByFileId: vi.fn() },
   transcodeHeicToJpeg: vi.fn(),
@@ -69,6 +69,12 @@ function fileRow(overrides: Record<string, unknown> = {}) {
   }
 }
 
+// Shape of `documentService.findActiveById` ({ document, file }); only the
+// document's `thumbnailPathname` matters to the handler's idempotence guard.
+function documentRow(thumbnailPathname: string | null) {
+  return { document: { id: 'd1', thumbnailPathname }, file: fileRow() }
+}
+
 beforeEach(() => {
   vi.clearAllMocks()
   storage.getReadUrl.mockResolvedValue('https://signed.example/x.heic')
@@ -81,6 +87,9 @@ beforeEach(() => {
   )
   transcodeHeicToJpeg.mockResolvedValue(JPEG)
   generateImageThumbnail.mockResolvedValue(WEBP)
+  // Default: document not yet processed (null thumbnail) so the document happy
+  // path proceeds past the idempotence guard. Re-delivery tests override this.
+  documentService.findActiveById.mockResolvedValue(documentRow(null))
 })
 
 test('recommendation: replaces file with JPEG, deletes original, enqueues blurhash, publishes', async () => {
@@ -146,6 +155,26 @@ test('document: writes the sentinel and does not store when thumbnail render fai
   expect(storage.put).not.toHaveBeenCalled()
 })
 
+test('document (idempotent re-delivery): no-op when thumbnailPathname already set', async () => {
+  fileService.findActiveById.mockResolvedValue(
+    fileRow({ access: 'private', pathname: 'documents/photo.heic' }),
+  )
+  // Re-delivery: the document already carries a thumbnail (or the render-failure
+  // sentinel — both are non-null), so the expensive decode/render path is skipped.
+  documentService.findActiveById.mockResolvedValue(documentRow('thumbnails/d1.webp'))
+
+  await handleHeicTranscodeMessage({ fileId: 'f1', kind: 'document', documentId: 'd1' }, META)
+
+  expect(documentService.findActiveById).toHaveBeenCalledWith('d1')
+  // Guard fires before any download/decode/render/put.
+  expect(storage.getReadUrl).not.toHaveBeenCalled()
+  expect(transcodeHeicToJpeg).not.toHaveBeenCalled()
+  expect(generateImageThumbnail).not.toHaveBeenCalled()
+  expect(storage.put).not.toHaveBeenCalled()
+  expect(documentService.setThumbnailPathname).not.toHaveBeenCalled()
+  expect(realtime.publish).not.toHaveBeenCalled()
+})
+
 test('avatar: replaces file, repoints user.image to new url, enqueues blurhash', async () => {
   fileService.findActiveById.mockResolvedValue(fileRow({ pathname: 'avatars/u1/me.heic' }))
   storage.head.mockResolvedValue({
@@ -172,6 +201,22 @@ test('avatar: replaces file, repoints user.image to new url, enqueues blurhash',
   expect(storage.head).toHaveBeenCalledWith('public', 'avatars/u1/me.jpg')
   expect(userService.setImage).toHaveBeenCalledWith('u1', 'https://blob.example/avatars/u1/me.jpg')
   expect(realtime.publish).toHaveBeenCalledWith({ kind: 'user.changed', ids: ['u1'] })
+})
+
+test('replace: skips deleting the original when the jpeg path equals it (suffix absent)', async () => {
+  // Defensive backstop: a pathname without a `.heic`/`.heif` suffix makes
+  // `toJpegPathname` a no-op, so `jpegPath === row.pathname`. The JPEG is still
+  // written, but the delete must be skipped or it would erase the transcode.
+  fileService.findActiveById.mockResolvedValue(fileRow({ pathname: 'recommendations/u1/x' }))
+  recommendationService.findRecommendationIdByFileId.mockResolvedValue('rec1')
+
+  await handleHeicTranscodeMessage({ fileId: 'f1', kind: 'recommendation' }, META)
+
+  expect(storage.put).toHaveBeenCalledWith('public', 'recommendations/u1/x', JPEG, 'image/jpeg')
+  expect(storage.delete).not.toHaveBeenCalled()
+  // Still repoints the row and enqueues blurhash — only the delete is skipped.
+  expect(fileService.replaceTranscoded).toHaveBeenCalled()
+  expect(queue.publish).toHaveBeenCalledWith('blurhash', { fileId: 'f1', kind: 'recommendation' })
 })
 
 test('permanent decode failure: stamps transcodeFailedAt, no throw', async () => {

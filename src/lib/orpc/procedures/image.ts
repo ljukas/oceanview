@@ -66,10 +66,18 @@ export const imageRouter = {
       )
       const isHeic = HEIC_MIME.has(blob.contentType)
       if (isHeic) {
-        // Defer the avatar pointer + blurhash to the transcode worker (it sets
-        // user.image to the JPEG url and enqueues blurhash itself). Until then the
-        // avatar falls back to initials on shared surfaces; the uploader shows its
-        // local EXIF preview. (spec §E)
+        // Clear the avatar pointer now: confirm already deleted the previous
+        // blob (previousPathnames), so leaving user.image pointing at it would
+        // render a broken 404 <img> on shared surfaces during the pending
+        // window. Clearing falls back to initials until the worker repoints it
+        // to the transcoded JPEG (it calls userService.setImage + publishes
+        // user.changed). Safe unconditionally: already-null stays null, a
+        // replacement clears to initials. `image: null` is accepted by Better
+        // Auth (nullable field). Defer blurhash to the worker too. (spec §E)
+        await auth.api.updateUser({
+          body: { image: null },
+          headers: context.headers,
+        })
         await queue
           .publish('heic_transcode', { fileId: newRow.id, kind: 'avatar', userId: context.user.id })
           .catch((error) => {

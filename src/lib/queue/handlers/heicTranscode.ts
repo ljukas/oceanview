@@ -17,6 +17,11 @@ const READ_URL_TTL_SECONDS = 60
 const RENDER_FAILED_SENTINEL = ''
 
 const thumbnailPathname = (documentId: string) => `thumbnails/${documentId}.webp`
+// Swaps a `.heic`/`.heif` suffix for `.jpg`. INVARIANT: the upload producers
+// always mint a `.heic`/`.heif` extension (see imageUpload), so the suffix is
+// present and the result differs from the input. If it ever didn't, the regex
+// no-ops and `jpegPath === row.pathname` — the replace branch guards against
+// that before deleting the original (a delete would erase the just-written JPEG).
 const toJpegPathname = (p: string) => p.replace(/\.(heic|heif)$/i, '.jpg')
 
 export type HeicTranscodeJobMetadata = { messageId: string; deliveryCount: number }
@@ -58,6 +63,20 @@ export async function handleHeicTranscodeMessage(
   if (row.transcodeFailedAt) {
     log.info('heic_transcode: previously failed, skipping')
     return
+  }
+  if (kind === 'document') {
+    // The replace kinds (avatar/recommendation) are caught by the `mime`/
+    // `transcodeFailedAt` guards above on re-delivery, but a document keeps its
+    // HEIC `file` row untouched — its done-marker is the *document's*
+    // `thumbnailPathname` (mirrors `image_thumbnail`). Check it before the
+    // expensive download/decode/render so an at-least-once re-delivery is a
+    // genuine no-op. A real pathname → already rendered; the empty-string
+    // sentinel → render previously failed; both are non-null and both mean done.
+    const doc = await documentService.findActiveById(msg.documentId)
+    if (doc && doc.document.thumbnailPathname !== null) {
+      log.info('heic_transcode: document already processed, skipping')
+      return
+    }
   }
 
   const url = await storage.getReadUrl(row.access, row.pathname, READ_URL_TTL_SECONDS)
@@ -113,12 +132,26 @@ export async function handleHeicTranscodeMessage(
     mime: 'image/jpeg',
     sizeBytes: jpeg.byteLength,
   })
-  // Independent, both already non-throwing — delete the original HEIC and enqueue
-  // the blurhash backstop concurrently rather than back-to-back.
+  // Defensive backstop for the `toJpegPathname` invariant: if the original
+  // pathname lacked a `.heic`/`.heif` suffix the regex no-ops, so `jpegPath`
+  // equals `row.pathname` and the JPEG we just wrote *is* the original key —
+  // deleting it would erase the transcode. Not reachable today (producers
+  // always mint the suffix); warn and skip the delete rather than throw (a
+  // throw would re-enqueue and re-run the whole job). Always enqueue blurhash.
+  const wouldEraseJpeg = jpegPath === row.pathname
+  if (wouldEraseJpeg) {
+    log.warn('heic_transcode: jpeg path equals original, skipping delete', {
+      pathname: row.pathname,
+    })
+  }
+  // Independent, both already non-throwing — delete the original HEIC (unless
+  // doing so would erase the JPEG) and enqueue the blurhash backstop concurrently.
   await Promise.all([
-    storage
-      .delete(row.access, row.pathname)
-      .catch((error) => log.warn('heic_transcode: failed to delete original HEIC', { error })),
+    wouldEraseJpeg
+      ? Promise.resolve()
+      : storage
+          .delete(row.access, row.pathname)
+          .catch((error) => log.warn('heic_transcode: failed to delete original HEIC', { error })),
     queue
       .publish(
         'blurhash',
