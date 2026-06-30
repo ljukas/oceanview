@@ -13,6 +13,7 @@ import { setupDatabase } from '~test/setup'
 import {
   createRecommendation,
   findRecommendation,
+  findRecommendationIdByFileId,
   listRecommendations,
   reorderPhotos,
   softDeleteRecommendation,
@@ -618,4 +619,24 @@ test('updateRecommendation rejects an existing photoId from another place with N
       photos: [{ kind: 'existing', photoId: foreignPhotoId }],
     }),
   ).rejects.toMatchObject({ name: 'RecommendationDomainError', code: 'NOT_FOUND' })
+})
+
+test('findRecommendationIdByFileId returns the owning recommendation id for a photo file', async () => {
+  const authorId = await insertAuthor()
+  const created = await createRecommendation({
+    authorId,
+    title: 'Grytan',
+    lat: 38.7,
+    lng: 20.65,
+    tagIds: [],
+    photos: [photo('a'), photo('b')],
+  })
+
+  for (const fileId of created.photoFileIds) {
+    expect(await findRecommendationIdByFileId(fileId)).toBe(created.id)
+  }
+})
+
+test('findRecommendationIdByFileId returns null for an unknown file id', async () => {
+  expect(await findRecommendationIdByFileId(crypto.randomUUID())).toBeNull()
 })
