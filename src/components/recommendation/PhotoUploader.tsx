@@ -89,7 +89,16 @@ export function PhotoUploader({
       }
 
       // Validate the RAW file — HEIC is now an accepted upload type (task 6).
-      const contentType = raw.type
+      // iOS sometimes reports an empty `file.type` for `.heic`; coerce those to
+      // `image/heic` (extension-aware via `isHeicFile`) so they pass the gate and
+      // mint as HEIC rather than being rejected as "unsupported" (the feature's
+      // whole point is to accept HEIC). Genuinely unsupported files still fall
+      // through to the toast below.
+      const contentType = isDirectMime(raw.type)
+        ? raw.type
+        : isHeicFile(raw)
+          ? 'image/heic'
+          : raw.type
       if (!isDirectMime(contentType)) {
         toast.error(m.recommendation_photo_unsupported())
         continue
