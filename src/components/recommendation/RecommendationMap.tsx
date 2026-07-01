@@ -1,5 +1,6 @@
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { Map as MapGL, type MapRef, Marker, NavigationControl } from '@vis.gl/react-maplibre'
+import { ImageIcon, ImageOffIcon } from 'lucide-react'
 import { memo, useCallback, useEffect, useRef } from 'react'
 import { BlurhashImage } from '~/components/ui/blurhash-image'
 import type { RouterOutputs } from '~/lib/orpc/client'
@@ -33,7 +34,18 @@ const Orb = memo(function Orb({
             height={64}
             className="size-full"
           />
-        ) : null}
+        ) : (
+          // No cover URL yet: the cover transcode is pending or failed. Too small for
+          // text, so a single muted icon — ImageOff for failed, a pulsing Image for
+          // pending. The realtime refetch swaps in the thumbnail once the worker is done.
+          <span className="flex size-full items-center justify-center text-muted-foreground">
+            {place.photos[0]?.failed ? (
+              <ImageOffIcon className="size-5" />
+            ) : (
+              <ImageIcon className="size-5 animate-pulse" />
+            )}
+          </span>
+        )}
       </button>
     </Marker>
   )

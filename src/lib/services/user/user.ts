@@ -287,3 +287,17 @@ export async function setImageBlurhash(userId: string, blurhash: string): Promis
     .returning({ id: user.id })
   return updated.length > 0
 }
+
+/**
+ * Repoint a user's avatar URL directly (worker context — the HEIC transcode job
+ * has no Better Auth session to call `updateUser`). Returns false if the user is
+ * gone. Mirrors {@link setImageBlurhash}.
+ */
+export async function setImage(userId: string, image: string): Promise<boolean> {
+  const updated = await db
+    .update(user)
+    .set({ image })
+    .where(eq(user.id, userId))
+    .returning({ id: user.id })
+  return updated.length > 0
+}

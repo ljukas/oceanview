@@ -4,7 +4,9 @@
 // maps to the procedure shapes via the helpers below. A new photo has no `pathname`
 // until its upload resolves — that's how we know an upload is still in flight.
 export type FormPhoto =
-  | { kind: 'existing'; photoId: string; url: string; blurhash: string | null }
+  // url is null for an existing photo whose transcode is pending/failed (no
+  // displayable URL yet); the editor renders no preview for it until task 11.
+  | { kind: 'existing'; photoId: string; url: string | null; blurhash: string | null }
   | {
       kind: 'new'
       localId: string

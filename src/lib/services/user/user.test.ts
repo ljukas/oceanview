@@ -18,6 +18,7 @@ import {
   listDeleted,
   markInvited,
   restoreAsAdmin,
+  setImage,
   softDeleteAsAdmin,
   updateAsAdmin,
   updateOwnProfile,
@@ -521,6 +522,20 @@ test('restoreAsAdmin is idempotent on active users', async () => {
 
 test('restoreAsAdmin throws NOT_FOUND for unknown id', async () => {
   await expect(restoreAsAdmin(randomUUID())).rejects.toMatchObject({ code: 'NOT_FOUND' })
+})
+
+// ---------- setImage (worker avatar repoint) ----------
+
+test('setImage repoints user.image and returns true', async () => {
+  const id = await insertMember('avatar@test.oceanview.local', 'Avatar User')
+  const ok = await setImage(id, 'https://blob.example/avatars/x.jpg')
+  expect(ok).toBe(true)
+  const [row] = await db.select({ image: user.image }).from(user).where(eq(user.id, id))
+  expect(row.image).toBe('https://blob.example/avatars/x.jpg')
+})
+
+test('setImage returns false when the user is gone', async () => {
+  expect(await setImage(randomUUID(), 'https://blob.example/x.jpg')).toBe(false)
 })
 
 // ---------- error shape ----------

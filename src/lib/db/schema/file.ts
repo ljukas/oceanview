@@ -16,6 +16,9 @@ export const file = pgTable(
     sizeBytes: integer('size_bytes').notNull(),
     access: fileAccessEnum('access').notNull(),
     blurhash: text('blurhash'),
+    // Set when an async HEIC→JPEG transcode fails permanently (corrupt/undecodable
+    // bytes, retries exhausted). null = pending or n/a; non-null = "couldn't process".
+    transcodeFailedAt: timestamp('transcode_failed_at', { withTimezone: true }),
     uploadedAt: timestamp('uploaded_at', { withTimezone: true }).defaultNow().notNull(),
     deletedAt: timestamp('deleted_at', { withTimezone: true }),
   },

@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
-import { PencilIcon, Trash2Icon } from 'lucide-react'
+import { ImageIcon, ImageOffIcon, PencilIcon, Trash2Icon } from 'lucide-react'
 import { toast } from 'sonner'
 import {
   AlertDialog,
@@ -100,14 +100,30 @@ export function RecommendationDetailDialog({
                 {place.photos.map((photo) => (
                   <CarouselItem key={photo.id}>
                     <div className="aspect-video w-full overflow-hidden rounded-lg bg-muted">
-                      <BlurhashImage
-                        src={photo.url}
-                        blurhash={photo.blurhash}
-                        alt={m.recommendation_photo_alt({ title: place.title })}
-                        width={800}
-                        height={450}
-                        className="size-full"
-                      />
+                      {/* Three states (the read path nulls url when not ready): a failed
+                          transcode shows a "couldn't process" placeholder; a pending one
+                          (still HEIC, no url yet) shows a "processing" placeholder; once the
+                          worker finishes, the realtime refetch swaps in the image. */}
+                      {photo.url ? (
+                        <BlurhashImage
+                          src={photo.url}
+                          blurhash={photo.blurhash}
+                          alt={m.recommendation_photo_alt({ title: place.title })}
+                          width={800}
+                          height={450}
+                          className="size-full"
+                        />
+                      ) : photo.failed ? (
+                        <div className="flex size-full flex-col items-center justify-center gap-2 text-muted-foreground">
+                          <ImageOffIcon className="size-8" />
+                          <p className="text-sm">{m.recommendation_photo_processing_failed()}</p>
+                        </div>
+                      ) : (
+                        <div className="flex size-full flex-col items-center justify-center gap-2 text-muted-foreground">
+                          <ImageIcon className="size-8 animate-pulse" />
+                          <p className="text-sm">{m.recommendation_photo_processing()}</p>
+                        </div>
+                      )}
                     </div>
                   </CarouselItem>
                 ))}

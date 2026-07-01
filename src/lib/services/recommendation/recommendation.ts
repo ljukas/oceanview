@@ -85,7 +85,9 @@ export interface RecommendationListItem {
     id: string
     fileId: string
     pathname: string
+    mime: string
     blurhash: string | null
+    transcodeFailedAt: Date | null
     sortOrder: number
   }>
   tagIds: string[]
@@ -113,7 +115,9 @@ async function assemble(
       recommendationId: recommendationPhoto.recommendationId,
       fileId: recommendationPhoto.fileId,
       pathname: file.pathname,
+      mime: file.mime,
       blurhash: file.blurhash,
+      transcodeFailedAt: file.transcodeFailedAt,
       sortOrder: recommendationPhoto.sortOrder,
     })
     .from(recommendationPhoto)
@@ -301,6 +305,21 @@ export async function findRecommendation(id: string): Promise<RecommendationList
   if (rows.length === 0) throw new RecommendationDomainError('NOT_FOUND')
   const [item] = await assemble(rows)
   return item
+}
+
+/**
+ * Resolve the recommendation a photo file belongs to, by the photo's `file_id`.
+ * Used by the `heic_transcode` worker, which only carries `fileId` but must
+ * publish `recommendation.changed` keyed by recommendation id. Returns null when
+ * the photo was removed mid-flight (no join row), so the caller skips the publish.
+ */
+export async function findRecommendationIdByFileId(fileId: string): Promise<string | null> {
+  const [row] = await db
+    .select({ recommendationId: recommendationPhoto.recommendationId })
+    .from(recommendationPhoto)
+    .where(eq(recommendationPhoto.fileId, fileId))
+    .limit(1)
+  return row?.recommendationId ?? null
 }
 
 export async function reorderPhotos(input: {

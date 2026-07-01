@@ -7,7 +7,8 @@ import { Button } from '~/components/ui/button'
 import { Progress } from '~/components/ui/progress'
 import { Spinner } from '~/components/ui/spinner'
 import { runUploadFlow, type UploadProgress } from '~/lib/effects/storage/clientUpload'
-import { isHeicCandidate, transcodeHeicToJpeg } from '~/lib/image/heic'
+import { readImageMetaFromFile } from '~/lib/files/exif'
+import { isHeicFile } from '~/lib/image/heicMime'
 import { orpc } from '~/lib/orpc/client'
 import { cn, initials } from '~/lib/utils'
 import { m } from '~/paraglide/messages'
@@ -28,10 +29,10 @@ function isDirectUploadMime(t: string): t is DirectUploadMime {
 }
 
 type Props = {
-  // Optional: notified whenever the upload flow (HEIC transcode → mint → PUT →
-  // confirm) starts or stops, so a parent (e.g. the onboarding avatar step) can
-  // block navigation that would drop an in-flight image. Existing callers omit
-  // it and are unaffected.
+  // Optional: notified whenever the upload flow (mint → PUT → confirm) starts or
+  // stops, so a parent (e.g. the onboarding avatar step) can block navigation
+  // that would drop an in-flight image. Existing callers omit it and are
+  // unaffected.
   onUploadingChange?: (uploading: boolean) => void
   // Presentation. `default` (avatar + Change button + progress/hint) is the
   // stand-alone layout used by onboarding. `row` is a compact clickable avatar
@@ -43,57 +44,72 @@ export function AvatarUpload({ onUploadingChange, variant = 'default' }: Props =
   const queryClient = useQueryClient()
   const inputRef = useRef<HTMLInputElement>(null)
   const [progress, setProgress] = useState<UploadProgress | null>(null)
-  const [transcoding, setTranscoding] = useState(false)
+  // Best-effort local preview during the upload window: the EXIF-embedded JPEG
+  // thumbnail (object URL) when the file carries one. Native iPhone HEICs usually
+  // DON'T (their preview is an HEVC `thmb` item), so this is normally null and we
+  // simply keep showing the current avatar / initials until the server transcode
+  // lands and `user.changed` realtime invalidation swaps in the new image.
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null)
 
   const { data: me } = useSuspenseQuery(orpc.user.me.queryOptions())
 
   const mintMutation = useMutation(orpc.image.mintAvatarUpload.mutationOptions())
   const confirmMutation = useMutation(orpc.image.confirmAvatarUpload.mutationOptions())
 
+  // Revoke any outstanding preview object URL on unmount.
+  useEffect(() => {
+    return () => {
+      if (previewUrl) URL.revokeObjectURL(previewUrl)
+    }
+  }, [previewUrl])
+
   async function handleFile(rawFile: File) {
+    let localPreview: string | null = null
     try {
       if (rawFile.size > MAX_BYTES) {
         toast.error(m.avatar_error_too_large())
         return
       }
 
-      let file = rawFile
-      if (isHeicCandidate(rawFile)) {
-        setTranscoding(true)
-        try {
-          file = await transcodeHeicToJpeg(rawFile)
-        } catch {
-          toast.error(m.avatar_error_heic_failed())
-          return
-        } finally {
-          setTranscoding(false)
-        }
-        if (file.size > MAX_BYTES) {
-          toast.error(m.avatar_error_too_large_after_conversion())
-          return
-        }
-      } else if (!isDirectUploadMime(rawFile.type)) {
+      // No client transcode anymore — HEIC bytes upload as-is and the server
+      // `heic_transcode` worker derives the displayable JPEG. iOS sometimes
+      // reports an empty `file.type` for `.heic`; coerce those to `image/heic`
+      // (extension-aware via `isHeicFile`) so they pass the gate and mint as
+      // HEIC rather than being rejected. Genuinely unsupported files still fall
+      // through to the toast below.
+      const contentType = isDirectUploadMime(rawFile.type)
+        ? rawFile.type
+        : isHeicFile(rawFile)
+          ? 'image/heic'
+          : rawFile.type
+      if (!isDirectUploadMime(contentType)) {
         toast.error(m.avatar_error_unsupported_format())
         return
       }
 
-      const contentType = file.type
-      if (!isDirectUploadMime(contentType)) {
-        toast.error(m.avatar_error_unknown_format())
-        return
+      // Best-effort local preview from the embedded EXIF JPEG thumbnail (if any).
+      // Usually null for native iPhone HEICs — see the `previewUrl` state note.
+      const { thumbnail } = await readImageMetaFromFile(rawFile)
+      if (thumbnail) {
+        localPreview = URL.createObjectURL(thumbnail)
+        setPreviewUrl(localPreview)
       }
 
-      setProgress({ loaded: 0, total: file.size, percentage: 0 })
-      await runUploadFlow(file, {
+      setProgress({ loaded: 0, total: rawFile.size, percentage: 0 })
+      await runUploadFlow(rawFile, {
         access: 'public',
         contentType,
         mint: () =>
-          mintMutation.mutateAsync({ contentType, sizeBytes: file.size, name: file.name }),
+          mintMutation.mutateAsync({
+            contentType,
+            sizeBytes: rawFile.size,
+            name: rawFile.name,
+          }),
         confirm: (mint) =>
           confirmMutation.mutateAsync({
             pathname: mint.pathname,
-            name: file.name,
-            sizeBytes: file.size,
+            name: rawFile.name,
+            sizeBytes: rawFile.size,
           }),
         onProgress: (e) => setProgress(e),
       })
@@ -108,17 +124,27 @@ export function AvatarUpload({ onUploadingChange, variant = 'default' }: Props =
       toast.error(err instanceof Error ? err.message : m.avatar_upload_error())
     } finally {
       setProgress(null)
+      // Drop the local preview now that the real image (or initials fallback) is
+      // authoritative; revoke the object URL to free it.
+      if (localPreview) {
+        URL.revokeObjectURL(localPreview)
+        setPreviewUrl((cur) => (cur === localPreview ? null : cur))
+      }
       if (inputRef.current) inputRef.current.value = ''
     }
   }
 
-  const busy = transcoding || progress !== null
+  const busy = progress !== null
 
   // Report upload-in-progress to an opt-in parent. The effect (not an inline
   // call) keeps the notification out of render and fires only when `busy` flips.
   useEffect(() => {
     onUploadingChange?.(busy)
   }, [busy, onUploadingChange])
+
+  // During the upload window prefer the local EXIF preview (when present);
+  // otherwise the current avatar. Falls back to initials when neither exists.
+  const displaySrc = previewUrl ?? me.image
 
   const fileInput = (
     <input
@@ -148,13 +174,13 @@ export function AvatarUpload({ onUploadingChange, variant = 'default' }: Props =
           className="group relative w-fit rounded-full outline-none focus-visible:ring-2 focus-visible:ring-brand disabled:pointer-events-none"
         >
           <Avatar className="size-14 shadow-sm">
-            {me.image ? (
+            {displaySrc ? (
               <AvatarImage
-                src={me.image}
+                src={displaySrc}
                 alt={me.name}
                 width={56}
                 height={56}
-                blurhash={me.imageBlurhash}
+                blurhash={previewUrl ? undefined : me.imageBlurhash}
               />
             ) : null}
             <AvatarFallback className="font-medium">{initials(me.name)}</AvatarFallback>
@@ -177,13 +203,13 @@ export function AvatarUpload({ onUploadingChange, variant = 'default' }: Props =
   return (
     <div className="flex items-center gap-4">
       <Avatar className="size-20 shadow-sm">
-        {me.image ? (
+        {displaySrc ? (
           <AvatarImage
-            src={me.image}
+            src={displaySrc}
             alt={me.name}
             width={80}
             height={80}
-            blurhash={me.imageBlurhash}
+            blurhash={previewUrl ? undefined : me.imageBlurhash}
           />
         ) : null}
         <AvatarFallback className="font-medium text-lg">{initials(me.name)}</AvatarFallback>
@@ -199,9 +225,7 @@ export function AvatarUpload({ onUploadingChange, variant = 'default' }: Props =
           {busy ? <Spinner data-icon="inline-start" /> : <ImageUpIcon />}
           {me.image ? m.avatar_change_button() : m.avatar_add_button()}
         </Button>
-        {transcoding ? (
-          <p className="text-muted-foreground text-xs">{m.avatar_transcoding()}</p>
-        ) : progress !== null ? (
+        {progress !== null ? (
           <div className="flex w-56 flex-col gap-1">
             <Progress value={progress.percentage} aria-label={m.avatar_uploading_label()} />
             <div className="flex justify-between text-muted-foreground text-xs tabular-nums">
