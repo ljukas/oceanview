@@ -45,7 +45,16 @@ export const Route = createFileRoute('/_authenticated/recommendations/')({
 function Recommendations() {
   const navigate = Route.useNavigate()
   const place = Route.useSearch({ select: (s) => s.place })
-  const { data: places } = useSuspenseQuery(orpc.recommendation.list.queryOptions())
+  const { data: places } = useSuspenseQuery({
+    ...orpc.recommendation.list.queryOptions(),
+    // Poll while any cover is still transcoding (HEIC pending) so the orb swaps in
+    // the real image without a reload. The transcode worker runs in a separate
+    // process, so its `recommendation.changed` realtime event can't reach this tab's
+    // in-process SSE subscriber (ADR-0004); polling is the cross-process bridge.
+    // Self-terminating — stops once every cover is ready (or terminally failed).
+    refetchInterval: (q) =>
+      q.state.data?.some((p) => p.photos.some((ph) => ph.pending)) ? 3000 : false,
+  })
   // Accessible name for the map's loading state (a bare skeleton has none).
   // Built at render so the locale is resolved per request, not at module load.
   const mapFallback = <Skeleton className="size-full" aria-label={m.recommendation_map_loading()} />

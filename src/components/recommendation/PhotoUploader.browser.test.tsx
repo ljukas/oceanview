@@ -44,6 +44,12 @@ test('adding a non-HEIC file renders an instant tile with a preview and upload p
   const input = screen.container.querySelector<HTMLInputElement>('input[type="file"]')
   if (!input) throw new Error('file input not found')
 
+  // The input gets its `accept` from the platform-aware `imageAccept` helper. In
+  // this (non-iOS) Chromium env it must default to the HEIC-inclusive list so
+  // HEIC stays selectable and the server worker transcodes (iOS omits heic and
+  // relies on the native Photos-picker conversion instead).
+  expect(input.getAttribute('accept') ?? '').toContain('image/heic')
+
   // Drive the hidden <input type=file> the way a real selection does: stage the
   // File via a DataTransfer, then dispatch the `change` event the component reads
   // (`e.target.files`). Runs in real Chromium, so the DOM file APIs are present.

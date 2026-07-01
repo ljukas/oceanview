@@ -172,7 +172,17 @@ export async function handleHeicTranscodeMessage(
   log.info('heic_transcode: replaced with JPEG', { jpegPath })
 }
 
-/** Publish `recommendation.changed` for the recommendation owning this photo file. */
+/**
+ * Publish `recommendation.changed` for the recommendation owning this photo file.
+ *
+ * NOTE: realtime pub/sub is an in-process `MemoryPublisher` (ADR-0004), and this
+ * worker runs in a SEPARATE process from the web server holding the SSE
+ * subscribers — dev: `scripts/devQueueWorker.ts`; prod: a distinct Vercel Queue
+ * function invocation. So this event does NOT reach connected browsers; it's a
+ * near no-op kept for intent (and any same-process subscriber). The client picks
+ * up the finished transcode by polling the recommendation queries while a photo is
+ * `pending` (see recommendations.index.tsx + RecommendationDetailDialog.tsx).
+ */
 async function publishRecommendation(fileId: string): Promise<void> {
   const id = await recommendationService.findRecommendationIdByFileId(fileId)
   if (id) await realtime.publish({ kind: 'recommendation.changed', ids: [id] })

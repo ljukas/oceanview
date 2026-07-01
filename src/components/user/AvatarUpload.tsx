@@ -6,14 +6,14 @@ import { Avatar, AvatarFallback, AvatarImage } from '~/components/ui/avatar'
 import { Button } from '~/components/ui/button'
 import { Progress } from '~/components/ui/progress'
 import { Spinner } from '~/components/ui/spinner'
+import { useIsIOS } from '~/hooks/useIsIOS'
 import { runUploadFlow, type UploadProgress } from '~/lib/effects/storage/clientUpload'
 import { readImageMetaFromFile } from '~/lib/files/exif'
-import { isHeicFile } from '~/lib/image/heicMime'
+import { imageAccept, isHeicFile } from '~/lib/image/heicMime'
 import { orpc } from '~/lib/orpc/client'
 import { cn, initials } from '~/lib/utils'
 import { m } from '~/paraglide/messages'
 
-const ACCEPT = 'image/jpeg,image/png,image/webp,image/avif,image/heic,image/heif,.heic,.heif'
 const DIRECT_UPLOAD_MIME = ['image/jpeg', 'image/png', 'image/webp', 'image/avif'] as const
 type DirectUploadMime = (typeof DIRECT_UPLOAD_MIME)[number]
 const MAX_BYTES = 5_000_000
@@ -43,6 +43,9 @@ type Props = {
 export function AvatarUpload({ onUploadingChange, variant = 'default' }: Props = {}) {
   const queryClient = useQueryClient()
   const inputRef = useRef<HTMLInputElement>(null)
+  // iOS Photos picker converts HEIC→JPEG when `accept` omits heic; elsewhere we
+  // keep heic selectable and the server worker transcodes (see `imageAccept`).
+  const accept = imageAccept(useIsIOS())
   const [progress, setProgress] = useState<UploadProgress | null>(null)
   // Best-effort local preview during the upload window: the EXIF-embedded JPEG
   // thumbnail (object URL) when the file carries one. Native iPhone HEICs usually
@@ -150,7 +153,7 @@ export function AvatarUpload({ onUploadingChange, variant = 'default' }: Props =
     <input
       ref={inputRef}
       type="file"
-      accept={ACCEPT}
+      accept={accept}
       className="sr-only"
       onChange={(e) => {
         const f = e.target.files?.[0]

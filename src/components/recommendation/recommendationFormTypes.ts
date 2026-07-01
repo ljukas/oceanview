@@ -13,6 +13,10 @@ export type FormPhoto =
       pathname?: string
       sizeBytes: number
       previewUrl: string
+      // True while a server-side HEIC preview transcode is in flight (iPhone HEICs
+      // have no embedded JPEG to preview locally). Drives the tile's "processing"
+      // look instead of the neutral add-photo placeholder.
+      previewLoading?: boolean
       status: 'uploading' | 'done' | 'error'
     }
 

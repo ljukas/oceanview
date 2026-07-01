@@ -53,6 +53,19 @@ test('shows the email read-only with the immutability hint', async () => {
     .toBeVisible()
 })
 
+test('the avatar file input uses the HEIC-inclusive accept on non-iOS', async () => {
+  const { screen } = await renderWithProviders(<ProfileCard />, { queryClient: seededClient() })
+
+  // ProfileCard embeds <AvatarUpload variant="row">, whose file input gets its
+  // `accept` from `imageAccept(useIsIOS())`. In this (non-iOS) Chromium env it must
+  // keep HEIC selectable so desktop uploads aren't broken — iOS instead omits heic
+  // and relies on the native Photos-picker HEIC→JPEG conversion. Guards the wiring
+  // independently of PhotoUploader's identical path.
+  const input = screen.container.querySelector<HTMLInputElement>('input[type="file"]')
+  expect(input).not.toBeNull()
+  expect(input?.getAttribute('accept') ?? '').toContain('image/heic')
+})
+
 test('blocks submit and shows the required error when the name is cleared', async () => {
   const { screen } = await renderWithProviders(<ProfileCard />, { queryClient: seededClient() })
 
