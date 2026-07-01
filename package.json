@@ -4,11 +4,11 @@
   "sideEffects": false,
   "type": "module",
   "scripts": {
-    "dev": "vite dev",
+    "dev": "node scripts/dev.mjs",
     "i18n:compile": "paraglide-js compile --project ./project.inlang --outdir ./src/paraglide",
     "prepare": "pnpm i18n:compile",
     "pretest": "pnpm i18n:compile",
-    "dev:log": "rm -f /tmp/oceanview-dev.log && vite dev 2>&1 | tee /tmp/oceanview-dev.log",
+    "dev:log": "rm -f /tmp/oceanview-dev.log && node scripts/dev.mjs 2>&1 | tee /tmp/oceanview-dev.log",
     "build": "vite build && tsc --noEmit",
     "vercel-build": "drizzle-kit migrate && vite build && tsc --noEmit",
     "preview": "vite preview",

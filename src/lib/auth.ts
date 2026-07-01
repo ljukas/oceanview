@@ -11,6 +11,7 @@ import { isAllowlistedAdmin, normalizeEmail } from './adminAllowlist'
 import { rememberUser } from './browserSession'
 import { db } from './db'
 import * as schema from './db/schema'
+import { devBaseUrl, devTrustedOrigins } from './devHost'
 import { email as emailEffect, queue as queueEffect } from './effects'
 import { logger } from './logger/server'
 import * as userService from './services/user'
@@ -26,7 +27,9 @@ const resolveBaseURL = () => {
     if (process.env.VERCEL_BRANCH_URL) return `https://${process.env.VERCEL_BRANCH_URL}`
     if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`
   }
-  return process.env.BETTER_AUTH_URL
+  // `pnpm dev --host`: use the LAN IP so magic links + the origin check work
+  // from a phone (dev-only; null otherwise). See devHost.ts.
+  return devBaseUrl() ?? process.env.BETTER_AUTH_URL
 }
 
 // VERCEL_BRANCH_URL is the stable branch alias; VERCEL_URL is the unique
@@ -41,6 +44,9 @@ const resolveTrustedOrigins = () => {
   if (process.env.VERCEL_URL) {
     origins.push(`https://${process.env.VERCEL_URL}`)
   }
+  // `pnpm dev --host`: trust localhost AND the LAN IP so the app works from both
+  // the dev machine and a phone at once (dev-only; empty otherwise).
+  origins.push(...devTrustedOrigins())
   return origins
 }
 
