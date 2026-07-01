@@ -13,6 +13,7 @@ import { setupDatabase } from '~test/setup'
 import {
   createRecommendation,
   findRecommendation,
+  findRecommendationIdByFileId,
   listRecommendations,
   reorderPhotos,
   softDeleteRecommendation,
@@ -131,6 +132,26 @@ test('listRecommendations returns active places with ordered photos and tagIds',
   expect(item.authorName).toBeTypeOf('string')
   expect(item.photos.map((p) => p.sortOrder)).toEqual([0, 1])
   expect(item.tagIds).toEqual([restaurant])
+})
+
+test('assemble surfaces each photo mime and transcodeFailedAt on the read path', async () => {
+  const authorId = await insertAuthor('mime@test.oceanview.local')
+  const { id } = await createRecommendation({
+    authorId,
+    title: 'HEIC Place',
+    lat: 38.7,
+    lng: 20.65,
+    tagIds: [],
+    photos: [
+      { pathname: 'recommendations/x/heic.heic', mime: 'image/heic', sizeBytes: 100 },
+      photo('jpg'),
+    ],
+  })
+  const item = await findRecommendation(id)
+  const [heic, jpg] = item.photos
+  expect(heic.mime).toBe('image/heic')
+  expect(heic.transcodeFailedAt).toBeNull()
+  expect(jpg.mime).toBe('image/jpeg')
 })
 
 test('findRecommendation throws NOT_FOUND for an unknown id', async () => {
@@ -618,4 +639,24 @@ test('updateRecommendation rejects an existing photoId from another place with N
       photos: [{ kind: 'existing', photoId: foreignPhotoId }],
     }),
   ).rejects.toMatchObject({ name: 'RecommendationDomainError', code: 'NOT_FOUND' })
+})
+
+test('findRecommendationIdByFileId returns the owning recommendation id for a photo file', async () => {
+  const authorId = await insertAuthor()
+  const created = await createRecommendation({
+    authorId,
+    title: 'Grytan',
+    lat: 38.7,
+    lng: 20.65,
+    tagIds: [],
+    photos: [photo('a'), photo('b')],
+  })
+
+  for (const fileId of created.photoFileIds) {
+    expect(await findRecommendationIdByFileId(fileId)).toBe(created.id)
+  }
+})
+
+test('findRecommendationIdByFileId returns null for an unknown file id', async () => {
+  expect(await findRecommendationIdByFileId(crypto.randomUUID())).toBeNull()
 })

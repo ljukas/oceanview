@@ -8,7 +8,9 @@ import {
   findActiveById,
   findById,
   replaceAvatarForUser,
+  replaceTranscoded,
   setBlurhash,
+  setTranscodeFailed,
   softDelete,
   updatePathname,
 } from './file'
@@ -107,4 +109,31 @@ test('setBlurhash leaves soft-deleted rows untouched', async () => {
   await setBlurhash({ fileId: row.id, blurhash: 'LKO2?U%2Tw=w]~RBVZRi};RPxuwH' })
   const after = await findById(row.id)
   expect(after?.blurhash).toBeNull()
+})
+
+test('replaceTranscoded repoints pathname, mime, sizeBytes', async () => {
+  const ownerId = await insertMember('anna@test.oceanview.local', 'Anna')
+  const [row] = await db
+    .insert(file)
+    .values({ ownerId, pathname: 'p/x.heic', mime: 'image/heic', sizeBytes: 100, access: 'public' })
+    .returning({ id: file.id })
+  await replaceTranscoded({
+    fileId: row.id,
+    pathname: 'p/x.jpg',
+    mime: 'image/jpeg',
+    sizeBytes: 80,
+  })
+  const after = await findById(row.id)
+  expect(after).toMatchObject({ pathname: 'p/x.jpg', mime: 'image/jpeg', sizeBytes: 80 })
+})
+
+test('setTranscodeFailed stamps transcodeFailedAt', async () => {
+  const ownerId = await insertMember('anna@test.oceanview.local', 'Anna')
+  const [row] = await db
+    .insert(file)
+    .values({ ownerId, pathname: 'p/y.heic', mime: 'image/heic', sizeBytes: 100, access: 'public' })
+    .returning({ id: file.id })
+  await setTranscodeFailed(row.id)
+  const after = await findById(row.id)
+  expect(after?.transcodeFailedAt).toBeInstanceOf(Date)
 })

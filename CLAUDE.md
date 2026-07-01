@@ -191,7 +191,7 @@ Five architectural rules (full rationale in each ADR — read it before adjustin
 | `pnpm mail:{up,down}` | Mailpit SMTP :14522 + UI :14502 |
 | `pnpm email:dev` | React Email preview server on :14501 |
 | `pnpm i18n:compile` | Compile `messages/{sv,en}.json` → `src/paraglide/` (auto via `prepare`/`pretest`/vite) |
-| `pnpm dev:worker` | Local BullMQ worker (consumes `blurhash` + `image_thumbnail` + `email_user_invited` topics) |
+| `pnpm dev:worker` | Local BullMQ worker (consumes `blurhash` + `image_thumbnail` + `email_user_invited` + `heic_transcode` topics) |
 | `pnpm test` / `test:watch` | Vitest, **both projects**: `node` (per-test schema CREATE/migrate/DROP) + `browser` (Chromium component tests) |
 | `pnpm test:components` | Watch only the `browser` project (Vitest Browser Mode + Chromium); the component-TDD loop. See `test/browser/README.md` |
 | `pnpm test:node` | Run only the `node`/DB project (services, effects, logic, email-string tests) |

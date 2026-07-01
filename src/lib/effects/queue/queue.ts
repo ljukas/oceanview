@@ -16,7 +16,12 @@ import { lazy } from '../lazy'
 // icon for now; the renderer (pdfjs + native canvas) is deferred until its
 // serverless dep story is proven. No producer publishes it and no consumer
 // handles it yet — see ADR-0010.
-export type QueueTopic = 'blurhash' | 'image_thumbnail' | 'pdf_thumbnail' | 'email_user_invited'
+export type QueueTopic =
+  | 'blurhash'
+  | 'image_thumbnail'
+  | 'pdf_thumbnail'
+  | 'email_user_invited'
+  | 'heic_transcode'
 
 /**
  * Per-topic payload shape. The blurhash payload is a discriminated union
@@ -39,6 +44,13 @@ export type QueuePayloadMap = {
   // `sendVerificationEmail` hook (src/lib/auth.ts), which enqueues this so the
   // SMTP/Resend send happens off the admin's request with retry/backoff.
   email_user_invited: { to: string; inviteUrl: string; locale: Locale }
+  // HEIC→JPEG transcode. avatar/recommendation REPLACE the file with a JPEG;
+  // document keeps the original and produces a WebP thumbnail. `userId` carries
+  // the avatar's user so the worker can repoint user.image without a session.
+  heic_transcode:
+    | { fileId: string; kind: 'avatar'; userId: string }
+    | { fileId: string; kind: 'recommendation' }
+    | { fileId: string; kind: 'document'; documentId: string }
 }
 
 export interface QueueEffects {

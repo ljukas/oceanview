@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { queue, realtime, storage } from '~/lib/effects'
 import { stripEnvPrefix } from '~/lib/effects/storage'
 import { SHARP_DECODABLE_MIME_SET } from '~/lib/image/blurhash'
+import { HEIC_MIME } from '~/lib/image/heicMime'
 import { UPLOAD_IMAGE_EXT, UPLOAD_IMAGE_MIME } from '~/lib/orpc/imageUpload'
 import {
   createRecommendation,
@@ -34,6 +35,48 @@ const photoInput = z.object({
   pathname: z.string().min(1).max(512),
   sizeBytes: z.number().int().positive().max(MAX_PHOTO_BYTES),
 })
+
+// A recommendation photo whose displayable asset isn't ready yet: still HEIC
+// (server transcode pending) or whose transcode permanently failed. The single
+// definition of this worker↔read-path contract, consumed by `list`/`get` so the
+// map orb, detail dialog, and editor placeholders never drift. `pending` and
+// `failed` are mutually exclusive; either means there's no public URL to resolve.
+function photoTranscodeState(photo: { mime: string; transcodeFailedAt: Date | null }): {
+  pending: boolean
+  failed: boolean
+} {
+  return {
+    pending: HEIC_MIME.has(photo.mime) && !photo.transcodeFailedAt,
+    failed: !!photo.transcodeFailedAt,
+  }
+}
+
+// After a recommendation create/update commits, enqueue the background job that
+// derives each new photo's displayable asset: HEIC photos go to the transcode
+// worker (its blurhash backstop runs post-re-encode), sharp-decodable photos go
+// straight to blurhash, and anything else is a no-op (the explicit
+// `Promise.resolve()` keeps the `Promise.all` well-typed). Enqueue failures are
+// logged and swallowed (fire-and-forget, ADR-0001) — the row is already saved.
+function enqueuePhotoDerivations(
+  photos: Array<{ fileId: string; mime: string }>,
+  log: { warn: (msg: string, meta?: Record<string, unknown>) => void },
+): Promise<void[]> {
+  return Promise.all(
+    photos.map(({ fileId, mime }) => {
+      if (HEIC_MIME.has(mime)) {
+        return queue
+          .publish('heic_transcode', { fileId, kind: 'recommendation' })
+          .catch((e) => log.warn('heic_transcode enqueue failed', { error: e }))
+      }
+      if (SHARP_DECODABLE_MIME_SET.has(mime)) {
+        return queue
+          .publish('blurhash', { fileId, kind: 'recommendation' })
+          .catch((e) => log.warn('blurhash enqueue failed', { error: e }))
+      }
+      return Promise.resolve()
+    }),
+  )
+}
 
 const updatePhotoInput = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('existing'), photoId: z.string().uuid() }),
@@ -142,14 +185,9 @@ export const recommendationRouter = {
         throw err
       }
 
-      await Promise.all(
-        result.photoFileIds
-          .filter((_, i) => SHARP_DECODABLE_MIME_SET.has(verified[i].mime))
-          .map((fileId) =>
-            queue
-              .publish('blurhash', { fileId, kind: 'recommendation' })
-              .catch((e) => context.log.warn('blurhash enqueue failed', { error: e })),
-          ),
+      await enqueuePhotoDerivations(
+        result.photoFileIds.map((fileId, i) => ({ fileId, mime: verified[i].mime })),
+        context.log,
       )
       await realtime.publish(
         { kind: 'recommendation.changed', ids: [result.id] },
@@ -162,11 +200,20 @@ export const recommendationRouter = {
     const items = await listRecommendations()
     // Only the cover (lowest sort_order = photos[0], already ordered) shows on the
     // map/list, so enrich just that one per place to keep storage heads bounded.
+    // A cover that's still HEIC (transcode pending) or whose transcode failed has no
+    // displayable URL yet, so null coverUrl; per-photo pending/failed flags drive the
+    // editor placeholders (task 11).
     return Promise.all(
-      items.map(async (item) => ({
-        ...item,
-        coverUrl: item.photos[0] ? await publicPhotoUrl(item.photos[0].pathname) : null,
-      })),
+      items.map(async (item) => {
+        const cover = item.photos[0]
+        const coverState = cover ? photoTranscodeState(cover) : null
+        const coverReady = !!coverState && !coverState.pending && !coverState.failed
+        return {
+          ...item,
+          photos: item.photos.map((p) => ({ ...p, ...photoTranscodeState(p) })),
+          coverUrl: cover && coverReady ? await publicPhotoUrl(cover.pathname) : null,
+        }
+      }),
     )
   }),
 
@@ -181,9 +228,18 @@ export const recommendationRouter = {
         if (err instanceof RecommendationDomainError) throw errors[err.code]()
         throw err
       }
-      // The detail carousel shows every photo, so enrich all with public URLs.
+      // The detail carousel shows every photo, so enrich all with public URLs —
+      // except photos still HEIC (transcode pending) or whose transcode failed, which
+      // have no displayable URL yet (url: null, plus pending/failed flags for the UI).
       const photos = await Promise.all(
-        item.photos.map(async (p) => ({ ...p, url: await publicPhotoUrl(p.pathname) })),
+        item.photos.map(async (p) => {
+          const state = photoTranscodeState(p)
+          return {
+            ...p,
+            ...state,
+            url: state.pending || state.failed ? null : await publicPhotoUrl(p.pathname),
+          }
+        }),
       )
       return { ...item, photos }
     }),
@@ -256,15 +312,10 @@ export const recommendationRouter = {
       }
 
       // newPhotoFileIds align with verifiedNew order (service filters kind:'new' in
-      // input order, same subset the procedure built) — gate blurhash by real mime.
-      await Promise.all(
-        result.newPhotoFileIds
-          .filter((_, i) => SHARP_DECODABLE_MIME_SET.has(verifiedNew[i].mime))
-          .map((fileId) =>
-            queue
-              .publish('blurhash', { fileId, kind: 'recommendation' })
-              .catch((e) => context.log.warn('blurhash enqueue failed', { error: e })),
-          ),
+      // input order, same subset the procedure built), so pair them by index.
+      await enqueuePhotoDerivations(
+        result.newPhotoFileIds.map((fileId, i) => ({ fileId, mime: verifiedNew[i].mime })),
+        context.log,
       )
       await realtime.publish(
         { kind: 'recommendation.changed', ids: [result.id] },

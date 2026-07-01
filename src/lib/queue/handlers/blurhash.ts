@@ -53,8 +53,8 @@ export async function handleBlurhashMessage(
   if (!SHARP_DECODABLE_MIME_SET.has(row.mime)) {
     // Skip without throwing so the queue acks the message instead of
     // retrying. Producers gate on the same set; landing here means a mime
-    // arrived that the prebuilt sharp binary can't decode (e.g. raw HEIC
-    // if `heic-to` client conversion was bypassed).
+    // arrived that the prebuilt sharp binary can't decode (e.g. raw HEIC,
+    // which the `heic_transcode` worker handles instead).
     log.info('blurhash: unsupported mime, skipping', { mime: row.mime })
     return
   }

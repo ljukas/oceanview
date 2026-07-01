@@ -58,6 +58,7 @@ const fileColumns = {
   sizeBytes: file.sizeBytes,
   access: file.access,
   blurhash: file.blurhash,
+  transcodeFailedAt: file.transcodeFailedAt,
   uploadedAt: file.uploadedAt,
   deletedAt: file.deletedAt,
 }

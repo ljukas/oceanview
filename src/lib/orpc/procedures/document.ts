@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { queue, realtime, storage } from '~/lib/effects'
 import { isRemoteOriginPathname, stripEnvPrefix } from '~/lib/effects/storage'
 import { SHARP_DECODABLE_MIME_SET } from '~/lib/image/blurhash'
+import { HEIC_MIME } from '~/lib/image/heicMime'
 import { adminProcedure, protectedProcedure } from '~/lib/orpc/context'
 import * as documentService from '~/lib/services/document'
 import { DocumentDomainError, type DocumentDomainErrorCode } from '~/lib/services/document'
@@ -98,7 +99,19 @@ export const documentRouter = {
         fileId: inserted.file.id,
         pathname: input.pathname,
       })
-      if (SHARP_DECODABLE_MIME_SET.has(inserted.file.mime)) {
+      if (HEIC_MIME.has(inserted.file.mime)) {
+        // HEIC can't be decoded by the prebuilt sharp binary, so it gets neither
+        // a blurhash nor an inline thumbnail above. The worker transcodes a WebP
+        // preview off-process; the stored original HEIC file is kept untouched
+        // (ADR-0010 — documents preserve the user's original bytes).
+        await queue
+          .publish('heic_transcode', {
+            fileId: inserted.file.id,
+            kind: 'document',
+            documentId: inserted.document.id,
+          })
+          .catch((error) => context.log.warn('heic_transcode enqueue failed', { error }))
+      } else if (SHARP_DECODABLE_MIME_SET.has(inserted.file.mime)) {
         await queue
           .publish('blurhash', { fileId: inserted.file.id, kind: 'document' })
           .catch((error) => {
