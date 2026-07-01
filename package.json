@@ -79,6 +79,7 @@
     "@vis.gl/react-maplibre": "^8.1.1",
     "better-auth": "^1.6.16",
     "blurhash": "^2.0.5",
+    "bowser": "^2.14.1",
     "bullmq": "^5.78.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",

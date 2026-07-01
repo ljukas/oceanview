@@ -52,6 +52,11 @@ export function RecommendationDetailDialog({
   } = useQuery({
     ...orpc.recommendation.get.queryOptions({ input: { id: placeId ?? '' } }),
     enabled: open && placeId !== undefined,
+    // Poll while a photo is still transcoding so the carousel swaps in the image
+    // without a reload. The worker's `recommendation.changed` event can't cross the
+    // process boundary to this tab (ADR-0004); polling is the bridge. Self-terminating
+    // — stops once every photo is ready (or terminally failed). Mirrors the orb poll.
+    refetchInterval: (q) => (q.state.data?.photos.some((ph) => ph.pending) ? 3000 : false),
   })
   const { data: tags } = useQuery(orpc.tag.list.queryOptions())
 
