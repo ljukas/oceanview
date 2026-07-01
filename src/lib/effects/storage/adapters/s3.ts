@@ -7,6 +7,7 @@ import {
   S3Client,
 } from '@aws-sdk/client-s3'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
+import { devS3Endpoint } from '~/lib/devHost'
 import { contentDispositionAttachment } from '~/utils/filename'
 import type { StorageEffects } from '../storage'
 
@@ -28,7 +29,10 @@ function envOrThrow(name: string): string {
   return v
 }
 
-const ENDPOINT = envOrThrow('S3_ENDPOINT')
+// `pnpm dev --host` points this at the LAN IP so both the presigned PUT URL and
+// the public read URL are reachable from a phone (dev-only; see devHost.ts).
+// Falls back to the configured S3_ENDPOINT for normal localhost dev.
+const ENDPOINT = devS3Endpoint() ?? envOrThrow('S3_ENDPOINT')
 const REGION = process.env.S3_REGION ?? 'eu-north-1'
 const PUBLIC_BUCKET = envOrThrow('S3_BUCKET_PUBLIC')
 const PRIVATE_BUCKET = envOrThrow('S3_BUCKET_PRIVATE')

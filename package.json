@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite dev",
+    "dev:host": "DEV_HOST=$(node scripts/printLanIp.mjs) vite dev --host",
     "i18n:compile": "paraglide-js compile --project ./project.inlang --outdir ./src/paraglide",
     "prepare": "pnpm i18n:compile",
     "pretest": "pnpm i18n:compile",
