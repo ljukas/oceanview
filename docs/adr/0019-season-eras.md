@@ -87,10 +87,11 @@ The season *structure* stays a code-level physical truth per ADR-0018: 10 shares
 
 ### Migrations
 
-Two appended, named migrations (history `0000`–`0018` untouched):
+Three appended, named migrations (history `0000`–`0018` untouched; create and drop are split so `drizzle-kit generate` never sees a removed *and* an added table in one run — that combination triggers an interactive rename prompt):
 
-- `--name=season_eras` — CREATE `season_era`, DROP `season`. **Destructive by design**; safe because prod's `season` table is empty (pre-launch posture per ADR-0018).
+- `--name=add_season_era` — CREATE `season_era`.
 - `--custom --name=seed_season_era_anchor` — `INSERT INTO season_era (from_year, start_week, start_share) VALUES (2024, 21, 'J')`. Test setup runs all migrations per-test, so every test DB has the anchor era automatically.
+- `--name=drop_season_table` — DROP `season`. **Destructive by design**; safe because prod's `season` table is empty (pre-launch posture per ADR-0018).
 
 ---
 
@@ -119,7 +120,7 @@ When the group decides on a new start week or re-anchors the rotation:
 ## Files
 
 - `src/lib/db/schema/ownership.ts` — `season_era` replaces `season`
-- `drizzle/0019_season_eras.sql`, `drizzle/0020_seed_season_era_anchor.sql`
+- `drizzle/0019_add_season_era.sql`, `drizzle/0020_seed_season_era_anchor.sql`, `drizzle/0021_drop_season_table.sql`
 - `src/lib/services/season/{season,logic}.ts` + tests — `listEras` + pure era math; `errors.ts` deleted
 - `src/lib/orpc/procedures/season.ts` — `listSchedules` only; `src/lib/orpc/seasonErrorMessage.ts` deleted
 - `src/lib/orpc/router.ts`, `src/lib/effects/realtime/types.ts`, `src/hooks/useRealtimeSync.ts` — pruned
