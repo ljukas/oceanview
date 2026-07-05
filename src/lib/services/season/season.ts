@@ -1,4 +1,3 @@
-import { addDays, getMonth, parseISO } from 'date-fns'
 import { asc, eq, isNull } from 'drizzle-orm'
 import { db } from '~/lib/db'
 import { ownershipAssignment, season } from '~/lib/db/schema'
@@ -6,13 +5,11 @@ import {
   ANCHOR_START_SHARE,
   DEFAULT_YEAR_ROTATION,
   rotateShare,
-  SHARE_CODES,
   type ShareCode,
-  shareIndexOf,
   WEEKS_PER_SEASON,
-  WEEKS_PER_SHARE,
 } from '~/lib/shares/codes'
 import { SeasonDomainError } from './errors'
+import { shareForWeek } from './logic'
 
 // The co-ownership group's fixed convention: every season starts on ISO
 // week 21. Soft rule per ADR-0009 Rule 2 — defaulted here and treated as a
@@ -76,40 +73,6 @@ export async function defaultStartShareFor(year: number): Promise<ShareCode> {
   return rotateShare(prev.startShare, DEFAULT_YEAR_ROTATION)
 }
 
-// Pure: 0-indexed calendar month of the given ISO week, per the ISO 8601
-// rule (the month containing the Thursday of that week). 4 = Maj, 9 = Okt.
-export function monthForISOWeek(isoYear: number, isoWeek: number): number {
-  const monday = parseISO(`${isoYear}-W${String(isoWeek).padStart(2, '0')}-1`)
-  const thursday = addDays(monday, 3)
-  return getMonth(thursday)
-}
-
-export type MonthBand = {
-  month: number
-  firstWeek: number
-  lastWeek: number
-  span: number
-}
-
-// Pure: collapses the 20 season weeks into contiguous same-month bands.
-// Each band carries its calendar month (0-indexed), the inclusive week
-// range, and the span (so callers can drive `<td colSpan>` directly).
-export function monthBandsForSeason(input: { year: number; startWeek: number }): Array<MonthBand> {
-  const bands: Array<MonthBand> = []
-  for (let i = 0; i < WEEKS_PER_SEASON; i++) {
-    const week = input.startWeek + i
-    const month = monthForISOWeek(input.year, week)
-    const last = bands[bands.length - 1]
-    if (last && last.month === month) {
-      last.lastWeek = week
-      last.span += 1
-    } else {
-      bands.push({ month, firstWeek: week, lastWeek: week, span: 1 })
-    }
-  }
-  return bands
-}
-
 export type UpdateSeasonInput = Partial<{
   startWeek: number
   startShare: ShareCode
@@ -127,22 +90,6 @@ export async function updateSeason(year: number, patch: UpdateSeasonInput): Prom
 
 export async function deleteSeason(year: number): Promise<void> {
   await db.delete(season).where(eq(season.year, year))
-}
-
-// Pure: returns the share occupying `isoWeek` within the season, or null if
-// the week sits outside the 20-week window. Weeks map to shares in blocks of
-// WEEKS_PER_SHARE consecutive weeks, advancing from startShare and wrapping
-// mod 10.
-export function shareForWeek(
-  input: { startWeek: number; startShare: ShareCode },
-  isoWeek: number,
-): ShareCode | null {
-  const offset = isoWeek - input.startWeek
-  if (offset < 0 || offset >= WEEKS_PER_SEASON) return null
-
-  const shareOffset = Math.floor(offset / WEEKS_PER_SHARE)
-  const shareIndex = (shareIndexOf(input.startShare) + shareOffset) % SHARE_CODES.length
-  return SHARE_CODES[shareIndex]
 }
 
 export type ScheduleEntry = {
