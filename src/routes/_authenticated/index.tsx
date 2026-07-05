@@ -53,9 +53,9 @@ function Calendar() {
   })
 
   const { data: schedules } = useSuspenseQuery(orpc.season.listSchedules.queryOptions())
-  const { data: ownedParts } = useSuspenseQuery(orpc.share.listMine.queryOptions())
+  const { data: ownedShares } = useSuspenseQuery(orpc.share.listMine.queryOptions())
 
-  const ownedPartIds = new Set(ownedParts.map((p) => p.id))
+  const ownedShareCodes = new Set(ownedShares)
 
   const isAdmin = currentUser.role === 'admin'
   const isCreateSeason = isAdmin && isOpen('createSeason')
@@ -87,7 +87,7 @@ function Calendar() {
       )}
       <DisponeringslistaTable
         schedules={schedules}
-        ownedPartIds={ownedPartIds}
+        ownedShareCodes={ownedShareCodes}
         onEditSeason={isAdmin ? handleEdit : undefined}
         onDeleteSeason={isAdmin ? handleDelete : undefined}
       />

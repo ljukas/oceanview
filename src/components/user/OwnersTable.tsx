@@ -39,15 +39,14 @@ import {
   TableRow,
 } from '~/components/ui/table'
 import { formatDate, formatDistanceShort } from '~/lib/i18n/format'
-import type { SharePartRow } from '~/lib/services/share'
 import type { UserRow } from '~/lib/services/user'
-import { collapseShares, type ShareBadgeKind } from '~/lib/shares/collapse'
+import type { ShareCode } from '~/lib/shares/codes'
 import { shareBackgroundClass } from '~/lib/shares/colors'
 import { cn, initials } from '~/lib/utils'
 import { m } from '~/paraglide/messages'
 
 export type OwnerRow = UserRow & {
-  shares: Array<SharePartRow>
+  shares: Array<ShareCode>
   // When the current invite link expires (lastInvitedAt + 7d), or null when the
   // user was never invited. Drives the "Inbjuden — går ut om …" countdown.
   inviteExpiresAt: Date | null
@@ -79,20 +78,10 @@ function roleLabel(role: string | null): string {
   return role === 'admin' ? m.user_role_admin() : m.user_role_sailor()
 }
 
-// Owner's shares, sorted by (code, part). Used for display and for the primary
-// share that drives the Andelar sort.
-function sortedShares(shares: Array<SharePartRow>): Array<SharePartRow> {
-  return [...shares].sort(
-    (a, b) => a.shareCode.localeCompare(b.shareCode) || a.partNumber - b.partNumber,
-  )
-}
-
-// Sort key for the Andelar column: the primary share code+part (e.g. "A1").
+// Sort key for the Andelar column: the primary (alphabetically first) share.
 // Owners with no shares get "~" so they sort last in ascending order.
-function primaryShareKey(shares: Array<SharePartRow>): string {
-  if (shares.length === 0) return '~'
-  const p = sortedShares(shares)[0]
-  return `${p.shareCode}${p.partNumber}`
+function primaryShareKey(shares: Array<ShareCode>): string {
+  return shares.length === 0 ? '~' : [...shares].sort()[0]
 }
 
 // Only the sortable data columns live in the table model (it drives sort state
@@ -226,8 +215,7 @@ function OwnerTableRow({
 }) {
   const formattedPhone = owner.phone ? formatPhoneNumberIntl(owner.phone) || owner.phone : null
   const deletedAt = owner.deletedAt ? formatDate(owner.deletedAt) : '—'
-  // Collapse held pairs (A1 + A2 → "A"); lone halves stay "A1"/"A2".
-  const shares = collapseShares(owner.shares)
+  const shares = owner.shares
   // Pending = invited but never signed in. Only meaningful in the active view.
   const isPending = !showDeleted && !owner.emailVerified
 
@@ -279,8 +267,8 @@ function OwnerTableRow({
               <RoleLabel role={owner.role} />
               {showDeleted ? null : shares.length > 0 ? (
                 <div className="flex flex-wrap gap-1">
-                  {shares.map((s) => (
-                    <ShareBadge key={shareBadgeKey(s)} badge={s} />
+                  {shares.map((code) => (
+                    <ShareBadge key={code} code={code} />
                   ))}
                 </div>
               ) : null}
@@ -342,8 +330,8 @@ function OwnerTableRow({
         <TableCell className={SHARES_CELL}>
           {shares.length > 0 ? (
             <div className="flex flex-wrap gap-1">
-              {shares.map((s) => (
-                <ShareBadge key={shareBadgeKey(s)} badge={s} />
+              {shares.map((code) => (
+                <ShareBadge key={code} code={code} />
               ))}
             </div>
           ) : (
@@ -459,18 +447,13 @@ function RoleLabel({ role }: { role: string | null }) {
   )
 }
 
-function shareBadgeKey(badge: ShareBadgeKind): string {
-  return badge.kind === 'whole' ? badge.shareCode : `${badge.shareCode}${badge.partNumber}`
-}
-
-function ShareBadge({ badge }: { badge: ShareBadgeKind }) {
+function ShareBadge({ code }: { code: ShareCode }) {
   return (
     <Badge
       variant="outline"
-      className={cn('border-transparent text-foreground', shareBackgroundClass[badge.shareCode])}
+      className={cn('border-transparent text-foreground', shareBackgroundClass[code])}
     >
-      {badge.shareCode}
-      {badge.kind === 'part' ? badge.partNumber : null}
+      {code}
     </Badge>
   )
 }

@@ -15,7 +15,6 @@ export type MonthBand = {
 export type Cell = {
   week: number
   shareCode: ShareCode
-  partId: string
   month: number
 }
 
@@ -28,7 +27,7 @@ export type YearSchedule = {
 
 type Props = {
   schedules: Array<YearSchedule>
-  ownedPartIds: ReadonlySet<string>
+  ownedShareCodes: ReadonlySet<ShareCode>
   // Admin callbacks. Render the edit + delete icon buttons only when both are
   // provided; the table stays purely presentational for non-admin viewers.
   onEditSeason?: (year: number) => void
@@ -63,7 +62,7 @@ const OWNED_RING = 'ring-2 ring-inset ring-foreground'
 
 export function DisponeringslistaTable({
   schedules,
-  ownedPartIds,
+  ownedShareCodes,
   onEditSeason,
   onDeleteSeason,
 }: Props) {
@@ -80,14 +79,14 @@ export function DisponeringslistaTable({
       </h2>
       <WideLayout
         schedules={schedules}
-        ownedPartIds={ownedPartIds}
+        ownedShareCodes={ownedShareCodes}
         currentYear={currentYear}
         onEditSeason={onEditSeason}
         onDeleteSeason={onDeleteSeason}
       />
       <MobileLayout
         schedules={schedules}
-        ownedPartIds={ownedPartIds}
+        ownedShareCodes={ownedShareCodes}
         currentYear={currentYear}
         onEditSeason={onEditSeason}
         onDeleteSeason={onDeleteSeason}
@@ -100,7 +99,7 @@ type LayoutProps = Props & { currentYear: number }
 
 function WideLayout({
   schedules,
-  ownedPartIds,
+  ownedShareCodes,
   currentYear,
   onEditSeason,
   onDeleteSeason,
@@ -122,7 +121,7 @@ function WideLayout({
                 isCurrent={isCurrent}
                 isFirstYear={isFirstYear}
                 monthEndWeeks={monthEndWeeks}
-                ownedPartIds={ownedPartIds}
+                ownedShareCodes={ownedShareCodes}
                 onEditSeason={onEditSeason}
                 onDeleteSeason={onDeleteSeason}
               />
@@ -139,7 +138,7 @@ type YearBlockProps = {
   isCurrent: boolean
   isFirstYear: boolean
   monthEndWeeks: Set<number>
-  ownedPartIds: ReadonlySet<string>
+  ownedShareCodes: ReadonlySet<ShareCode>
   onEditSeason?: (year: number) => void
   onDeleteSeason?: (year: number) => void
 }
@@ -149,7 +148,7 @@ function YearBlock({
   isCurrent,
   isFirstYear,
   monthEndWeeks,
-  ownedPartIds,
+  ownedShareCodes,
   onEditSeason,
   onDeleteSeason,
 }: YearBlockProps) {
@@ -223,7 +222,7 @@ function YearBlock({
       </tr>
       <tr>
         {s.cells.map((cell) => {
-          const isMine = ownedPartIds.has(cell.partId)
+          const isMine = ownedShareCodes.has(cell.shareCode)
           return (
             <td
               key={cell.week}
@@ -248,7 +247,7 @@ function YearBlock({
 
 function MobileLayout({
   schedules,
-  ownedPartIds,
+  ownedShareCodes,
   currentYear,
   onEditSeason,
   onDeleteSeason,
@@ -260,7 +259,7 @@ function MobileLayout({
           key={s.year}
           schedule={s}
           isCurrent={s.year === currentYear}
-          ownedPartIds={ownedPartIds}
+          ownedShareCodes={ownedShareCodes}
           onEditSeason={onEditSeason}
           onDeleteSeason={onDeleteSeason}
         />
@@ -272,7 +271,7 @@ function MobileLayout({
 type YearCardProps = {
   schedule: YearSchedule
   isCurrent: boolean
-  ownedPartIds: ReadonlySet<string>
+  ownedShareCodes: ReadonlySet<ShareCode>
   onEditSeason?: (year: number) => void
   onDeleteSeason?: (year: number) => void
 }
@@ -280,7 +279,7 @@ type YearCardProps = {
 function YearCard({
   schedule,
   isCurrent,
-  ownedPartIds,
+  ownedShareCodes,
   onEditSeason,
   onDeleteSeason,
 }: YearCardProps) {
@@ -329,7 +328,7 @@ function YearCard({
               band={band}
               cells={cells}
               isCurrent={isCurrent}
-              ownedPartIds={ownedPartIds}
+              ownedShareCodes={ownedShareCodes}
             />
           )
         })}
@@ -342,10 +341,10 @@ type MonthSectionProps = {
   band: { month: number; firstWeek: number; lastWeek: number; span: number }
   cells: Array<Cell>
   isCurrent: boolean
-  ownedPartIds: ReadonlySet<string>
+  ownedShareCodes: ReadonlySet<ShareCode>
 }
 
-function MonthSection({ band, cells, isCurrent, ownedPartIds }: MonthSectionProps) {
+function MonthSection({ band, cells, isCurrent, ownedShareCodes }: MonthSectionProps) {
   // Months with an odd number of weeks (e.g. 1-week Okt, 5-week Jul/Sep)
   // would leave the last grid row half-empty, breaking the continuous
   // vertical and horizontal dividers. Render an aria-hidden placeholder in
@@ -358,7 +357,7 @@ function MonthSection({ band, cells, isCurrent, ownedPartIds }: MonthSectionProp
       </h3>
       <div className="grid grid-cols-2">
         {cells.map((cell, i) => {
-          const isMine = ownedPartIds.has(cell.partId)
+          const isMine = ownedShareCodes.has(cell.shareCode)
           return (
             <div
               key={cell.week}
