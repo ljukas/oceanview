@@ -90,9 +90,18 @@ Each entry uses this shape:
 - **Consequence — degenerate split**: `kind: 'split'` with `part1UserId === part2UserId` is accepted and behaves as a whole assignment; history derives `kind` from the event's children, so it records as `whole`.
 - **Consequence — not retroactive**: existing data is not re-validated on every mutation; only the affected users are checked. If a user already holds only halves (only reachable via the low-level helpers), they stay that way until the next admin mutation touches them.
 
-### Rule 2: Every season starts on ISO week 21 (2026-05-29)
+### Rule 2: Every season starts on ISO week 21 (2026-05-29) — SUPERSEDED
 
-- **Last updated**: 2026-06-10
+> **Superseded 2026-07-05 — [ADR-0019](./0019-season-eras.md).** The start week is
+> no longer a soft default — it is **structural**. Per-year `season` rows are gone;
+> the append-only `season_era` table (seeded `(2024, 21, 'J')`) fixes the week per
+> era, and no `start_week` input or override path exists anywhere in the app.
+> `SEASON_START_WEEK`, the `createSeason` fallback, and the "Ny säsong" dialog were
+> deleted with it. Changing the convention is a data migration appending a new era
+> row (see ADR-0019's runbook), which cannot affect past seasons. The original
+> soft-default rule text stays below for historical context.
+
+- **Last updated**: 2026-07-05
 - **Statement**: Every season's `startWeek` defaults to ISO week 21 — the canonical Disponeringslista anchor agreed by the co-ownership group.
 - **Allowed**:
   - The default path: `createSeason({ year, startShare })` (no `startWeek`) → row stored with `startWeek = 21`.
