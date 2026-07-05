@@ -1,7 +1,7 @@
 import { expect, test } from 'vitest'
 import { db } from '~/lib/db'
 import { user } from '~/lib/db/schema'
-import { assignPart } from '~/lib/services/share'
+import { assignShareAsAdmin } from '~/lib/services/share'
 import type { ShareCode } from '~/lib/shares/codes'
 import { setupDatabase } from '~test/setup'
 import {
@@ -116,18 +116,20 @@ test('scheduleForYear joins each weekly slot with the current owner', async () =
       { name: 'Bob', email: 'bob@test.oceanview.local' },
     ])
     .returning({ id: user.id })
-  await assignPart({ partId: 'D1', userId: aliceId, from: new Date('2020-01-01') })
-  await assignPart({ partId: 'A1', userId: bobId, from: new Date('2020-01-01') })
+  await assignShareAsAdmin({ shareCode: 'D', userId: aliceId, from: new Date('2020-01-01') })
+  await assignShareAsAdmin({ shareCode: 'A', userId: bobId, from: new Date('2020-01-01') })
 
   const schedule = await scheduleForYear(2026)
   if (!schedule) throw new Error('expected schedule for year 2026')
   expect(schedule).toHaveLength(20)
 
   const byWeek = new Map(schedule.map((e) => [e.week, e]))
-  expect(byWeek.get(21)).toMatchObject({ partId: 'D1', userId: aliceId })
-  expect(byWeek.get(22)).toMatchObject({ partId: 'D2', userId: null })
-  expect(byWeek.get(35)).toMatchObject({ partId: 'A1', userId: bobId })
-  expect(byWeek.get(40)).toMatchObject({ partId: 'C2', userId: null })
+  // Owning a share means owning BOTH of its weeks (ADR-0018).
+  expect(byWeek.get(21)).toMatchObject({ shareCode: 'D', userId: aliceId })
+  expect(byWeek.get(22)).toMatchObject({ shareCode: 'D', userId: aliceId })
+  expect(byWeek.get(35)).toMatchObject({ shareCode: 'A', userId: bobId })
+  expect(byWeek.get(36)).toMatchObject({ shareCode: 'A', userId: bobId })
+  expect(byWeek.get(40)).toMatchObject({ shareCode: 'C', userId: null })
 })
 
 test('scheduleForYear returns null when no season is configured for that year', async () => {
@@ -142,8 +144,6 @@ test('each initial year produces a schedule that starts at the expected share', 
     expect(schedule[0]).toMatchObject({
       week: seed.startWeek,
       shareCode: seed.startShare,
-      partNumber: 1,
-      partId: `${seed.startShare}1`,
     })
   }
 })

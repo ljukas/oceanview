@@ -1,42 +1,56 @@
 import { expect, test } from 'vitest'
-import { monthBandsForSeason, monthForISOWeek, partForWeek } from './season'
+import { DEFAULT_YEAR_ROTATION, rotateShare } from '~/lib/shares/codes'
+import { monthBandsForSeason, monthForISOWeek, shareForWeek } from './season'
 
-test('partForWeek reproduces the 2026 row from the Disponeringslista', () => {
+test('shareForWeek reproduces the 2026 row from the Disponeringslista', () => {
   const s = { startWeek: 21, startShare: 'D' as const }
   const expected: Array<readonly [number, string]> = [
-    [21, 'D1'],
-    [22, 'D2'],
-    [23, 'E1'],
-    [24, 'E2'],
-    [25, 'F1'],
-    [26, 'F2'],
-    [27, 'G1'],
-    [28, 'G2'],
-    [29, 'H1'],
-    [30, 'H2'],
-    [31, 'I1'],
-    [32, 'I2'],
-    [33, 'J1'],
-    [34, 'J2'],
-    [35, 'A1'],
-    [36, 'A2'],
-    [37, 'B1'],
-    [38, 'B2'],
-    [39, 'C1'],
-    [40, 'C2'],
+    [21, 'D'],
+    [22, 'D'],
+    [23, 'E'],
+    [24, 'E'],
+    [25, 'F'],
+    [26, 'F'],
+    [27, 'G'],
+    [28, 'G'],
+    [29, 'H'],
+    [30, 'H'],
+    [31, 'I'],
+    [32, 'I'],
+    [33, 'J'],
+    [34, 'J'],
+    [35, 'A'],
+    [36, 'A'],
+    [37, 'B'],
+    [38, 'B'],
+    [39, 'C'],
+    [40, 'C'],
   ]
-  for (const [week, partId] of expected) {
-    expect(partForWeek(s, week)?.partId).toBe(partId)
+  for (const [week, shareCode] of expected) {
+    expect(shareForWeek(s, week)).toBe(shareCode)
   }
 })
 
-test('partForWeek returns null for weeks outside the 20-week window', () => {
+test('shareForWeek returns null for weeks outside the 20-week window', () => {
   const s = { startWeek: 21, startShare: 'D' as const }
-  expect(partForWeek(s, 20)).toBeNull()
-  expect(partForWeek(s, 41)).toBeNull()
+  expect(shareForWeek(s, 20)).toBeNull()
+  expect(shareForWeek(s, 41)).toBeNull()
   // First and last in-window weeks are still valid.
-  expect(partForWeek(s, 21)?.partId).toBe('D1')
-  expect(partForWeek(s, 40)?.partId).toBe('C2')
+  expect(shareForWeek(s, 21)).toBe('D')
+  expect(shareForWeek(s, 40)).toBe('C')
+})
+
+test('default year rotation slips every share 6 weeks (ADR-0018)', () => {
+  // Year 1: startShare A → share A owns weeks 21/22.
+  const y1 = { startWeek: 21, startShare: 'A' as const }
+  expect(shareForWeek(y1, 21)).toBe('A')
+  expect(shareForWeek(y1, 22)).toBe('A')
+
+  // Year 2 via the default rotation: A slips to weeks 27/28.
+  const y2 = { startWeek: 21, startShare: rotateShare('A', DEFAULT_YEAR_ROTATION) }
+  expect(y2.startShare).toBe('H')
+  expect(shareForWeek(y2, 27)).toBe('A')
+  expect(shareForWeek(y2, 28)).toBe('A')
 })
 
 test('monthForISOWeek follows the ISO Thursday-month rule', () => {

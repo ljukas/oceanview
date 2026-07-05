@@ -1,15 +1,13 @@
 import { useSuspenseQuery } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
-import { useMemo } from 'react'
 import { z } from 'zod'
 import { PageContainer } from '~/components/layout/PageContainer'
 import { AssignmentHistorySheet } from '~/components/share/AssignmentHistorySheet'
-import { SharePartCard } from '~/components/share/SharePartCard'
+import { ShareCard } from '~/components/share/ShareCard'
 import { UnassignShareDialog } from '~/components/share/UnassignShareDialog'
 import { useUrlDialog } from '~/hooks/useUrlDialog'
 import { orpc } from '~/lib/orpc/client'
-import type { AdminPartRow } from '~/lib/orpc/procedures/share'
-import { SHARE_CODES, type ShareCode } from '~/lib/shares/codes'
+import { SHARE_CODES } from '~/lib/shares/codes'
 import { m } from '~/paraglide/messages'
 import { seo } from '~/utils/seo'
 
@@ -53,7 +51,7 @@ export const Route = createFileRoute('/_authenticated/admin/shares/')({
 })
 
 function AdminShares() {
-  const { data: parts } = useSuspenseQuery(orpc.share.listAll.queryOptions())
+  const { data: shares } = useSuspenseQuery(orpc.share.listAll.queryOptions())
   const navigate = Route.useNavigate()
   const dialogShareCode = Route.useSearch({ select: (s) => s.shareCode })
   const dialog = Route.useSearch({ select: (s) => s.dialog })
@@ -63,22 +61,11 @@ function AdminShares() {
     clearKeys: ['shareCode'],
   })
 
-  // Group parts by shareCode so each card receives its pair.
-  const byCode = useMemo(() => {
-    const map = new Map<ShareCode, { part1: AdminPartRow; part2: AdminPartRow }>()
-    for (const p of parts) {
-      const code = p.shareCode
-      const slot = map.get(code) ?? ({} as { part1: AdminPartRow; part2: AdminPartRow })
-      if (p.partNumber === 1) slot.part1 = p
-      else if (p.partNumber === 2) slot.part2 = p
-      map.set(code, slot)
-    }
-    return map
-  }, [parts])
-
   const isUnassign = isOpen('unassign')
   const isHistory = isOpen('history')
-  const activeSlot = dialogShareCode ? byCode.get(dialogShareCode) : undefined
+  const activeShare = dialogShareCode
+    ? shares.find((s) => s.shareCode === dialogShareCode)
+    : undefined
 
   return (
     <PageContainer>
@@ -93,33 +80,28 @@ function AdminShares() {
       </header>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-        {SHARE_CODES.map((code) => {
-          const slot = byCode.get(code)
-          if (!slot) return null
-          return (
-            <SharePartCard
-              key={code}
-              shareCode={code}
-              part1={slot.part1}
-              part2={slot.part2}
-              onAssign={() =>
-                navigate({ to: '/admin/shares/assign/$shareCode', params: { shareCode: code } })
-              }
-              onUnassign={() => open('unassign', { shareCode: code })}
-              onHistory={() => open('history', { shareCode: code })}
-            />
-          )
-        })}
+        {shares.map((share) => (
+          <ShareCard
+            key={share.shareCode}
+            share={share}
+            onAssign={() =>
+              navigate({
+                to: '/admin/shares/assign/$shareCode',
+                params: { shareCode: share.shareCode },
+              })
+            }
+            onUnassign={() => open('unassign', { shareCode: share.shareCode })}
+            onHistory={() => open('history', { shareCode: share.shareCode })}
+          />
+        ))}
       </div>
 
       <UnassignShareDialog
-        open={isUnassign && !!activeSlot}
+        open={isUnassign && !!activeShare}
         onOpenChange={(o) => {
           if (!o) close()
         }}
-        shareCode={dialogShareCode}
-        part1={activeSlot?.part1}
-        part2={activeSlot?.part2}
+        share={activeShare}
       />
 
       <AssignmentHistorySheet

@@ -1,4 +1,4 @@
-import { desc, relations, sql } from 'drizzle-orm'
+import { relations, sql } from 'drizzle-orm'
 import {
   check,
   date,
@@ -6,7 +6,6 @@ import {
   integer,
   pgEnum,
   pgTable,
-  text,
   timestamp,
   uniqueIndex,
   uuid,
@@ -26,22 +25,6 @@ export const shareCodeEnum = pgEnum('share_code', [
   'J',
 ])
 
-export const sharePart = pgTable(
-  'share_part',
-  {
-    // Literal codes 'A1' .. 'J2'. Stable, human-readable, and small enough
-    // that we can use them directly as foreign-key targets.
-    id: text('id').primaryKey(),
-    shareCode: shareCodeEnum('share_code').notNull(),
-    partNumber: integer('part_number').notNull(),
-    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-  },
-  (table) => [
-    uniqueIndex('share_part_share_code_part_number_idx').on(table.shareCode, table.partNumber),
-    check('share_part_part_number_check', sql`${table.partNumber} IN (1, 2)`),
-  ],
-)
-
 export const season = pgTable(
   'season',
   {
@@ -57,37 +40,22 @@ export const season = pgTable(
   (table) => [check('season_start_week_check', sql`${table.startWeek} BETWEEN 1 AND 53`)],
 )
 
-// One row per admin decision that creates ownership assignments. Children
-// rows in `ownership_assignment` share an `event_id` so the history view can
-// render whole-share decisions as one entry (and split decisions as one entry
-// with two halves). Wholeness vs. split is computed from the children at read
-// time — no `kind` column here, by design, so the parent can never drift.
-export const ownershipAssignmentEvent = pgTable(
-  'ownership_assignment_event',
-  {
-    id: uuid('id').primaryKey().defaultRandom(),
-    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-    // Nullable so admin-deletion (set null cascade) doesn't fail; also lets
-    // future system-generated events (e.g. seeding) record no actor.
-    actorUserId: uuid('actor_user_id').references(() => user.id, { onDelete: 'set null' }),
-    note: text('note'),
-  },
-  (table) => [index('ownership_assignment_event_created_at_idx').on(desc(table.createdAt))],
-)
-
+// One row per ownership stint: `userId` owned `shareCode` from `assignedFrom`
+// (inclusive) until `assignedTo` (exclusive); NULL assignedTo = active. Rows
+// are only ever closed, never deleted — this table IS the per-share history.
+// Shares are indivisible (ADR-0018): the share_code enum is the share (no
+// share table), and each row is one whole admin decision, so `actorUserId`
+// lives here directly (nullable so admin deletion doesn't fail, and so
+// system-generated rows can record no actor).
 export const ownershipAssignment = pgTable(
   'ownership_assignment',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    eventId: uuid('event_id')
-      .notNull()
-      .references(() => ownershipAssignmentEvent.id, { onDelete: 'restrict' }),
-    partId: text('part_id')
-      .notNull()
-      .references(() => sharePart.id, { onDelete: 'cascade' }),
+    shareCode: shareCodeEnum('share_code').notNull(),
     userId: uuid('user_id')
       .notNull()
       .references(() => user.id, { onDelete: 'cascade' }),
+    actorUserId: uuid('actor_user_id').references(() => user.id, { onDelete: 'set null' }),
     // Half-open: owner from `assignedFrom` (inclusive) until `assignedTo`
     // (exclusive). `assignedTo IS NULL` means the assignment is still active.
     assignedFrom: date('assigned_from', { mode: 'date' }).notNull(),
@@ -95,11 +63,10 @@ export const ownershipAssignment = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => [
-    index('ownership_assignment_part_id_idx').on(table.partId),
+    index('ownership_assignment_share_code_idx').on(table.shareCode),
     index('ownership_assignment_user_id_idx').on(table.userId),
-    index('ownership_assignment_event_id_idx').on(table.eventId),
-    uniqueIndex('ownership_assignment_one_current_per_part_idx')
-      .on(table.partId)
+    uniqueIndex('ownership_assignment_one_current_per_share_idx')
+      .on(table.shareCode)
       .where(sql`${table.assignedTo} IS NULL`),
     check(
       'ownership_assignment_range_check',
@@ -108,32 +75,13 @@ export const ownershipAssignment = pgTable(
   ],
 )
 
-export const sharePartRelations = relations(sharePart, ({ many }) => ({
-  assignments: many(ownershipAssignment),
-}))
-
-export const ownershipAssignmentEventRelations = relations(
-  ownershipAssignmentEvent,
-  ({ many, one }) => ({
-    assignments: many(ownershipAssignment),
-    actor: one(user, {
-      fields: [ownershipAssignmentEvent.actorUserId],
-      references: [user.id],
-    }),
-  }),
-)
-
 export const ownershipAssignmentRelations = relations(ownershipAssignment, ({ one }) => ({
-  event: one(ownershipAssignmentEvent, {
-    fields: [ownershipAssignment.eventId],
-    references: [ownershipAssignmentEvent.id],
-  }),
-  part: one(sharePart, {
-    fields: [ownershipAssignment.partId],
-    references: [sharePart.id],
-  }),
   user: one(user, {
     fields: [ownershipAssignment.userId],
+    references: [user.id],
+  }),
+  actor: one(user, {
+    fields: [ownershipAssignment.actorUserId],
     references: [user.id],
   }),
 }))

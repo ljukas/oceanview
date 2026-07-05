@@ -4,10 +4,10 @@ import { realtime } from '~/lib/effects'
 import { adminProcedure, protectedProcedure } from '~/lib/orpc/context'
 import { inviteInputSchema } from '~/lib/orpc/userInviteSchema'
 import { nameField, phoneField, selfProfileSchema } from '~/lib/orpc/userProfileSchema'
-import type { SharePartRow } from '~/lib/services/share'
 import * as shareService from '~/lib/services/share'
 import * as userService from '~/lib/services/user'
 import { UserDomainError, type UserDomainErrorCode } from '~/lib/services/user'
+import type { ShareCode } from '~/lib/shares/codes'
 
 function surnameKey(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean)
@@ -113,17 +113,19 @@ export const userRouter = {
 
   listContacts: protectedProcedure.handler(async ({ context }) => {
     const isAdmin = context.user.role === 'admin'
-    const [users, partsWithOwner] = await Promise.all([
+    const [users, sharesWithOwner] = await Promise.all([
       userService.listAll(),
-      shareService.listPartsWithCurrentOwner(),
+      shareService.listSharesWithCurrentOwner(),
     ])
 
-    const byUser = new Map<string, Array<SharePartRow>>()
-    for (const p of partsWithOwner) {
-      if (!p.currentUserId) continue
-      const list = byUser.get(p.currentUserId) ?? []
-      list.push({ id: p.id, shareCode: p.shareCode, partNumber: p.partNumber })
-      byUser.set(p.currentUserId, list)
+    // listSharesWithCurrentOwner is A→J ordered, so per-user lists come out
+    // sorted without an extra sort.
+    const byUser = new Map<string, Array<ShareCode>>()
+    for (const s of sharesWithOwner) {
+      if (!s.currentUserId) continue
+      const list = byUser.get(s.currentUserId) ?? []
+      list.push(s.shareCode)
+      byUser.set(s.currentUserId, list)
     }
 
     return (
