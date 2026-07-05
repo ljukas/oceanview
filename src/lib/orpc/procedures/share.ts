@@ -22,6 +22,7 @@ function rethrowAsORPC(err: unknown): never {
         message: m.share_error_already_owner(),
       })
     case 'FROM_DATE_NOT_AFTER_CURRENT':
+    case 'DATE_NOT_AFTER_CURRENT':
       throw new ORPCError('CONFLICT', {
         message: m.share_error_date_not_after_current(),
       })
@@ -29,132 +30,80 @@ function rethrowAsORPC(err: unknown): never {
       throw new ORPCError('CONFLICT', {
         message: m.share_error_not_assigned(),
       })
-    case 'DATE_NOT_AFTER_CURRENT':
-      throw new ORPCError('CONFLICT', {
-        message: m.share_error_date_not_after_current(),
-      })
-    case 'LEAVES_USER_WITH_ONLY_HALVES':
-      throw new ORPCError('CONFLICT', {
-        message: m.share_error_only_halves(),
-      })
   }
 }
 
-export type AdminPartRow = {
-  id: string
-  shareCode: ShareCode
-  partNumber: number
-  currentOwner: {
-    id: string
-    name: string
-    image: string | null
-    imageBlurhash: string | null
-  } | null
-}
-
-type HistoryUser = {
+type OwnerSummary = {
   id: string
   name: string
   image: string | null
   imageBlurhash: string | null
 }
 
-type HistoryChild = {
-  partId: string
-  user: HistoryUser | null
+export type AdminShareRow = {
+  shareCode: ShareCode
+  currentOwner: OwnerSummary | null
 }
 
-export type AdminHistoryEvent = {
-  eventId: string
-  // assignedFrom across an event's children is always the same (the service
-  // and form write them together). assignedTo is `null` if any child is still
-  // active; otherwise the latest close date among children.
+export type AdminHistoryEntry = {
+  id: string
   assignedFrom: Date
   assignedTo: Date | null
   isActive: boolean
-  // 'whole' = both children, same user. 'split' = both children, different
-  // users. 'partial' = single-half event (mid-stream change to one half).
-  kind: 'whole' | 'split' | 'partial'
-  shareCode: ShareCode
-  children: Array<HistoryChild>
+  user: OwnerSummary | null
+}
+
+function toOwnerSummary(u: {
+  id: string
+  name: string
+  image: string | null
+  imageBlurhash: string | null
+}): OwnerSummary {
+  return { id: u.id, name: u.name, image: u.image, imageBlurhash: u.imageBlurhash }
 }
 
 export const shareRouter = {
-  // Current user's owned share parts. The same assignment set is applied to
+  // Current user's owned shares, sorted A→J. The same set is applied to
   // every visible year on the client — ownership changes mid-season are rare.
-  listMine: protectedProcedure.handler(({ context }) =>
-    shareService.listCurrentPartsForUser(context.user.id),
+  listMine: protectedProcedure.handler(
+    ({ context }): Promise<Array<ShareCode>> =>
+      shareService.listCurrentSharesForUser(context.user.id),
   ),
 
-  // Admin grid view: every part with its current owner decorated.
-  listAll: adminProcedure.handler(async (): Promise<Array<AdminPartRow>> => {
-    const [parts, users] = await Promise.all([
-      shareService.listPartsWithCurrentOwner(),
+  // Admin grid view: every share with its current owner decorated.
+  listAll: adminProcedure.handler(async (): Promise<Array<AdminShareRow>> => {
+    const [shares, users] = await Promise.all([
+      shareService.listSharesWithCurrentOwner(),
       userService.listAll(),
     ])
     const byId = new Map(users.map((u) => [u.id, u]))
-    return parts.map((p) => {
-      const owner = p.currentUserId ? byId.get(p.currentUserId) : null
+    return shares.map((s) => {
+      const owner = s.currentUserId ? byId.get(s.currentUserId) : null
       return {
-        id: p.id,
-        shareCode: p.shareCode,
-        partNumber: p.partNumber,
-        currentOwner: owner
-          ? {
-              id: owner.id,
-              name: owner.name,
-              image: owner.image,
-              imageBlurhash: owner.imageBlurhash,
-            }
-          : null,
+        shareCode: s.shareCode,
+        currentOwner: owner ? toOwnerSummary(owner) : null,
       }
     })
   }),
 
-  // Per-share history Sheet payload. One entry per assignment event, with the
-  // wholeness `kind` derived from the event's children at read time so the
-  // parent table can never disagree with current ownership.
+  // Per-share history Sheet payload: one entry per ownership stint, newest
+  // first (shares are indivisible per ADR-0018 — no event grouping needed).
   listHistory: adminProcedure
     .input(z.object({ shareCode: shareCodeSchema }))
-    .handler(async ({ input }): Promise<Array<AdminHistoryEvent>> => {
-      const [events, users] = await Promise.all([
-        shareService.listShareEvents(input.shareCode),
+    .handler(async ({ input }): Promise<Array<AdminHistoryEntry>> => {
+      const [rows, users] = await Promise.all([
+        shareService.listShareHistory(input.shareCode),
         userService.listAll(),
       ])
       const byId = new Map(users.map((u) => [u.id, u]))
-
-      return events.map((evt): AdminHistoryEvent => {
-        const children: Array<HistoryChild> = evt.children.map((c) => {
-          const u = byId.get(c.userId)
-          return {
-            partId: c.partId,
-            user: u
-              ? { id: u.id, name: u.name, image: u.image, imageBlurhash: u.imageBlurhash }
-              : null,
-          }
-        })
-
-        const distinctUsers = new Set(evt.children.map((c) => c.userId))
-        const kind: AdminHistoryEvent['kind'] =
-          evt.children.length === 1 ? 'partial' : distinctUsers.size === 1 ? 'whole' : 'split'
-
-        // All children of an event share the same `assignedFrom` (created in
-        // one transaction). `assignedTo` is null while any child is open;
-        // otherwise the latest close date among children.
-        const assignedFrom = evt.children[0].assignedFrom
-        const isActive = evt.children.some((c) => c.assignedTo === null)
-        const assignedTo = isActive
-          ? null
-          : new Date(Math.max(...evt.children.map((c) => c.assignedTo?.getTime() ?? 0)))
-
+      return rows.map((r) => {
+        const u = byId.get(r.userId)
         return {
-          eventId: evt.eventId,
-          assignedFrom,
-          assignedTo,
-          isActive,
-          kind,
-          shareCode: input.shareCode,
-          children,
+          id: r.id,
+          assignedFrom: r.assignedFrom,
+          assignedTo: r.assignedTo,
+          isActive: r.assignedTo === null,
+          user: u ? toOwnerSummary(u) : null,
         }
       })
     }),
@@ -163,15 +112,8 @@ export const shareRouter = {
     .input(
       z.object({
         shareCode: shareCodeSchema,
+        userId: z.uuid(),
         from: z.date(),
-        assignment: z.discriminatedUnion('kind', [
-          z.object({ kind: z.literal('whole'), userId: z.uuid() }),
-          z.object({
-            kind: z.literal('split'),
-            part1UserId: z.uuid(),
-            part2UserId: z.uuid(),
-          }),
-        ]),
       }),
     )
     .handler(async ({ input, context }) => {
@@ -180,10 +122,7 @@ export const shareRouter = {
       } catch (err) {
         rethrowAsORPC(err)
       }
-      context.log.info('admin assigned share', {
-        shareCode: input.shareCode,
-        kind: input.assignment.kind,
-      })
+      context.log.info('admin assigned share', { shareCode: input.shareCode })
       await realtime.publish(
         { kind: 'share.changed', ids: [input.shareCode] },
         { source: context.user.id },
@@ -191,23 +130,14 @@ export const shareRouter = {
     }),
 
   unassign: adminProcedure
-    .input(
-      z.object({
-        shareCode: shareCodeSchema,
-        on: z.date(),
-        parts: z.enum(['both', '1', '2']),
-      }),
-    )
+    .input(z.object({ shareCode: shareCodeSchema, on: z.date() }))
     .handler(async ({ input, context }) => {
       try {
         await shareService.unassignShareAsAdmin(input)
       } catch (err) {
         rethrowAsORPC(err)
       }
-      context.log.info('admin unassigned share', {
-        shareCode: input.shareCode,
-        parts: input.parts,
-      })
+      context.log.info('admin unassigned share', { shareCode: input.shareCode })
       await realtime.publish(
         { kind: 'share.changed', ids: [input.shareCode] },
         { source: context.user.id },
