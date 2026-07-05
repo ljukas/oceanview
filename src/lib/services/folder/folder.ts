@@ -587,7 +587,7 @@ export async function listBin(): Promise<Array<BinEntry>> {
 
   // The correlation id of the batch that binned an entity lives only on its
   // soft_delete event. Fetch newest-first and take first-per-entity in the
-  // maps below — DISTINCT ON in JS, matching share.ts:listShareEvents. (inArray
+  // maps below — DISTINCT ON in JS (newest row per entity). (inArray
   // over a single bound uuid[] param; raw ANY(${ids}) doesn't round-trip.)
   const folderEventRows = folderIds.length
     ? await db
