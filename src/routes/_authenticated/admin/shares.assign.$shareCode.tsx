@@ -20,8 +20,7 @@ export const Route = createFileRoute('/_authenticated/admin/shares/assign/$share
     meta: seo({ title: m.meta_shares_title(), description: m.meta_shares_description() }),
   }),
   loader: async ({ context: { queryClient }, params }) => {
-    // Guard an invalid code before fetching; parts existence is checked in the
-    // component (every valid share is a fixed A1/A2 pair, so this never trips).
+    // Guard an invalid code before fetching; listAll always returns all 10 shares.
     if (!isShareCode(params.shareCode)) throw redirect({ to: '/admin/shares' })
     await Promise.all([
       queryClient.ensureQueryData(orpc.share.listAll.queryOptions()),
@@ -35,7 +34,7 @@ function AssignSharePage() {
   const { shareCode } = Route.useParams()
   const goBack = useGoBack('/admin/shares')
 
-  const { data: parts } = useSuspenseQuery(orpc.share.listAll.queryOptions())
+  const { data: shares } = useSuspenseQuery(orpc.share.listAll.queryOptions())
   const { data: users } = useSuspenseQuery(
     orpc.user.list.queryOptions({ input: { filter: 'active' } }),
   )
@@ -45,11 +44,10 @@ function AssignSharePage() {
     [users],
   )
 
-  // `shareCode` is validated in the loader; narrow it for the form's typed prop.
+  // `shareCode` is validated in the loader; narrow it for the typed lookup.
   const code = shareCode as ShareCode
-  const part1 = parts.find((p) => p.shareCode === code && p.partNumber === 1)
-  const part2 = parts.find((p) => p.shareCode === code && p.partNumber === 2)
-  if (!part1 || !part2) return <Navigate to="/admin/shares" replace />
+  const share = shares.find((s) => s.shareCode === code)
+  if (!share) return <Navigate to="/admin/shares" replace />
 
   return (
     <PageContainer width="prose">
@@ -66,13 +64,7 @@ function AssignSharePage() {
       </header>
 
       <div className="max-w-md">
-        <ShareAssignForm
-          shareCode={code}
-          part1={part1}
-          part2={part2}
-          users={userOptions}
-          onDone={goBack}
-        />
+        <ShareAssignForm share={share} users={userOptions} onDone={goBack} />
       </div>
     </PageContainer>
   )

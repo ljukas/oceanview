@@ -11,16 +11,13 @@ import {
 } from '~/components/ui/responsive-dialog'
 import { useAppForm } from '~/hooks/form'
 import { orpc } from '~/lib/orpc/client'
-import type { AdminPartRow } from '~/lib/orpc/procedures/share'
-import type { ShareCode } from '~/lib/shares/codes'
+import type { AdminShareRow } from '~/lib/orpc/procedures/share'
 import { m } from '~/paraglide/messages'
 
 type Props = {
   open: boolean
   onOpenChange: (open: boolean) => void
-  shareCode: ShareCode | undefined
-  part1: AdminPartRow | undefined
-  part2: AdminPartRow | undefined
+  share: AdminShareRow | undefined
 }
 
 function todayUtc(): Date {
@@ -30,19 +27,16 @@ function todayUtc(): Date {
 
 const schema = z.object({
   on: z.date(),
-  parts: z.enum(['both', '1', '2']),
 })
 
-export function UnassignShareDialog({ open, onOpenChange, shareCode, part1, part2 }: Props) {
-  if (!shareCode || !part1 || !part2) return null
+export function UnassignShareDialog({ open, onOpenChange, share }: Props) {
+  if (!share) return null
   return (
     <UnassignShareDialogBody
-      key={shareCode}
+      key={share.shareCode}
       open={open}
       onOpenChange={onOpenChange}
-      shareCode={shareCode}
-      part1={part1}
-      part2={part2}
+      share={share}
     />
   )
 }
@@ -50,20 +44,13 @@ export function UnassignShareDialog({ open, onOpenChange, shareCode, part1, part
 function UnassignShareDialogBody({
   open,
   onOpenChange,
-  shareCode,
-  part1,
-  part2,
+  share,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
-  shareCode: ShareCode
-  part1: AdminPartRow
-  part2: AdminPartRow
+  share: AdminShareRow
 }) {
   const queryClient = useQueryClient()
-  const has1 = !!part1.currentOwner
-  const has2 = !!part2.currentOwner
-  const defaultParts: 'both' | '1' | '2' = has1 && has2 ? 'both' : has1 ? '1' : '2'
 
   const unassignMutation = useMutation(
     orpc.share.unassign.mutationOptions({
@@ -82,29 +69,22 @@ function UnassignShareDialogBody({
   )
 
   const form = useAppForm({
-    defaultValues: { on: todayUtc(), parts: defaultParts },
+    defaultValues: { on: todayUtc() },
     validators: { onSubmit: schema },
     onSubmit: async ({ value }) => {
       await unassignMutation.mutateAsync({
-        shareCode,
+        shareCode: share.shareCode,
         on: value.on,
-        parts: value.parts,
       })
     },
   })
-
-  const partsOptions = [
-    ...(has1 && has2 ? [{ value: 'both', label: m.share_unassign_both() }] : []),
-    ...(has1 ? [{ value: '1', label: `${shareCode}1` }] : []),
-    ...(has2 ? [{ value: '2', label: `${shareCode}2` }] : []),
-  ]
 
   return (
     <ResponsiveDialog open={open} onOpenChange={onOpenChange}>
       <ResponsiveDialogContent className="sm:max-w-md">
         <ResponsiveDialogHeader>
           <ResponsiveDialogTitle>
-            {m.share_unassign_title({ code: shareCode })}
+            {m.share_unassign_title({ code: share.shareCode })}
           </ResponsiveDialogTitle>
           <ResponsiveDialogDescription>
             {m.share_unassign_description()}
@@ -117,12 +97,6 @@ function UnassignShareDialogBody({
           }}
           className="flex flex-col gap-4"
         >
-          <form.AppField
-            name="parts"
-            children={(field) => (
-              <field.ToggleField label={m.share_unassign_parts_label()} options={partsOptions} />
-            )}
-          />
           <form.AppField
             name="on"
             children={(field) => <field.DateField label={m.share_field_from()} />}
