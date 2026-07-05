@@ -39,6 +39,7 @@ Load on demand, not eagerly. The `pnpm dlx @tanstack/intent` block at the bottom
 | Logging | `docs/adr/0003-logging-architecture.md` |
 | File storage (avatars, documents) | `docs/adr/0006-file-storage.md` |
 | Organization rules (social invariants the schema can't express) | `docs/adr/0009-organization-rules.md` |
+| Shares & ownership (indivisible shares, assignment history) | docs/adr/0018-indivisible-shares.md |
 | User invitations + invitee onboarding wizard (invite/accept, resend, expiry countdown, 3-step `/onboarding`) | `docs/adr/0017-user-invitation-flow.md` |
 | Reviewing React components | `vercel:react-best-practices` |
 | React component tests (browser-mode, render helpers, cache-seeding) | `test/browser/README.md` |
@@ -297,8 +298,8 @@ One line each. Reasoning in `git log CLAUDE.md` and in the linked ADR.
 - **Email**: Resend (prod) / Mailpit SMTP (dev) / devLog (test); magic-link is tier-1 sync; React Email templates. See ADR-0008.
 - **All timestamps `timestamptz`** (2026-05-26). Migration `0006_use_timestamptz.sql`; Better Auth patched via `pnpm auth:schema`.
 - **DB-enforced invariants via CHECK constraints** (2026-05-26). Physical truths only (sizes, week numbers, part numbers, range bounds); domain rules still in services.
-- **Admin assigns ownership in whole-share pairs by default; split via toggle** (2026-05-26). 10-card grid at `/admin/shares`; `assignShareAsAdmin`/`unassignShareAsAdmin` wrap both halves in one tx; `src/lib/shares/collapse.ts` collapses full pairs to `A`, lone halves to `A1`/`A2`; mutations publish `share.changed`.
-- **Assignment events are first-class** (2026-05-27). `ownership_assignment_event` parent table groups sibling per-part rows so history collapses to one entry per admin decision; no `kind` column on the parent (computed from children — drift-free). See ADR-0002 patterns; see also ADR-0009 for the new whole-share rule enforced alongside.
+- **Shares are indivisible** (2026-07-05). One owner per share (or unassigned); the split path, `share_part`, and `src/lib/shares/collapse.ts` are gone; assignments reference the `share_code` enum directly and carry `actor_user_id`; per-share history is the flat assignment rows; ADR-0009 Rule 1 retired. Migration `0018` is destructive by design (pre-launch). See ADR-0018.
+- **Assignment events are first-class** (2026-05-27, superseded 2026-07-05 by ADR-0018): with indivisible shares each admin decision is exactly one assignment row, so the `ownership_assignment_event` parent table was dropped — the row itself is the decision record.
 - **Organization rules live in ADR-0009** (2026-05-27). Social rules the schema can't express (e.g. "every owner holds at least one whole share") are documented there and enforced as typed `<Entity>DomainError` raised pre-commit by services. New rules append to that ADR.
 - **Document management per ADR-0010** (2026-06-04, amended 2026-06-10). 1:1 `document`/`file` split; folders as adjacency list + denormalized path; sibling event tables with `correlation_id`; pg_trgm one-input search (deliberate seq scan at this scale); sequential Pacer upload queue; bin under `/admin/documents/bin`; thumbnails as separate public-store WebP assets.
 - **Domain invariants are check-first** (2026-06-10). Explicit read → `<Entity>DomainError` inside the guarded op's tx; never SQLSTATE/message parsing; DB constraints stay as silent backstops; check-then-write races accepted at this scale. See ADR-0002 "Check first".

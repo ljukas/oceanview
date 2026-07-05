@@ -62,7 +62,14 @@ Each entry uses this shape:
 
 ## Rules
 
-### Rule 1: Every owner holds at least one whole share (2026-05-27)
+### Rule 1: Every owner holds at least one whole share (2026-05-27) — RETIRED
+
+> **Retired 2026-07-05 — [ADR-0018](./0018-indivisible-shares.md).** Shares are
+> indivisible: `share_part` is gone and every assignment covers a whole share, so
+> the states this rule disallowed are no longer representable ("defined out of
+> existence"). `assertEveryAffectedUserHasWhole` and
+> `ShareDomainError('LEAVES_USER_WITH_ONLY_HALVES')` were deleted with it. The
+> original rule text stays below for historical context.
 
 - **Last updated**: 2026-06-10
 - **Statement**: Every user with active share assignments must own at least one **whole share** (both halves of some share A–J).
