@@ -1,21 +1,17 @@
 import { asc } from 'drizzle-orm'
 import { db } from '~/lib/db'
-import { season } from '~/lib/db/schema'
-import type { ShareCode } from '~/lib/shares/codes'
+import { seasonEra } from '~/lib/db/schema'
+import type { SeasonEra } from './logic'
 
-export type SeasonRow = {
-  year: number
-  startWeek: number
-  startShare: ShareCode
-}
-
-export async function listSeasons(): Promise<Array<SeasonRow>> {
+// The append-only era rows (ADR-0019), oldest first. Never written from app
+// code — convention changes are data migrations (see the ADR runbook).
+export async function listEras(): Promise<Array<SeasonEra>> {
   return db
     .select({
-      year: season.year,
-      startWeek: season.startWeek,
-      startShare: season.startShare,
+      fromYear: seasonEra.fromYear,
+      startWeek: seasonEra.startWeek,
+      startShare: seasonEra.startShare,
     })
-    .from(season)
-    .orderBy(asc(season.year))
+    .from(seasonEra)
+    .orderBy(asc(seasonEra.fromYear))
 }

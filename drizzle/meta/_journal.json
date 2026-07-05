@@ -134,6 +134,27 @@
       "when": 1783246750371,
       "tag": "0018_indivisible_shares",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1783275438443,
+      "tag": "0019_add_season_era",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1783275449285,
+      "tag": "0020_seed_season_era_anchor",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1783275530049,
+      "tag": "0021_drop_season_table",
+      "breakpoints": true
     }
   ]
 }

@@ -1,37 +1,12 @@
 import { protectedProcedure } from '~/lib/orpc/context'
 import * as seasonService from '~/lib/services/season'
-import { WEEKS_PER_SEASON } from '~/lib/shares/codes'
 
 export const seasonRouter = {
-  // Returns every configured season together with its 20-week share mapping,
-  // shaped for the read-only Disponeringslista grid. Skips ownership data on
-  // purpose — the grid only needs the share letter per cell. Includes the
-  // per-year month bands (computed from each year's actual calendar) so the
-  // client can group cells under Maj/Jun/Jul/Aug/Sep/Okt without re-doing
-  // the date math.
+  // The Disponeringslista read (ADR-0019): every season is computed from its
+  // governing era — no per-year rows, no mutations, no errors. Skips
+  // ownership data on purpose; the grid only needs the share letter per cell.
   listSchedules: protectedProcedure.handler(async () => {
-    const seasons = await seasonService.listSeasons()
-    return seasons.map((s) => {
-      const cells = Array.from({ length: WEEKS_PER_SEASON }, (_, i) => {
-        const week = s.startWeek + i
-        const shareCode = seasonService.shareForWeek(s, week)
-        // Within [startWeek, startWeek + WEEKS_PER_SEASON) shareForWeek always
-        // resolves; this guard exists so a future change to WEEKS_PER_SEASON
-        // can't silently produce nulls.
-        if (!shareCode) {
-          throw new Error(`shareForWeek returned null for ${s.year} week ${week}`)
-        }
-        return {
-          week,
-          shareCode,
-          month: seasonService.monthForISOWeek(s.year, week),
-        }
-      })
-      const monthBands = seasonService.monthBandsForSeason({
-        year: s.year,
-        startWeek: s.startWeek,
-      })
-      return { year: s.year, cells, monthBands }
-    })
+    const eras = await seasonService.listEras()
+    return seasonService.buildSchedules(eras, new Date().getFullYear())
   }),
 }
