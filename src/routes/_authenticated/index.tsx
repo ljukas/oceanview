@@ -1,71 +1,25 @@
 import { useSuspenseQuery } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
-import { PlusIcon } from 'lucide-react'
-import { z } from 'zod'
 import { PageContainer } from '~/components/layout/PageContainer'
 import { PasskeySetupPrompt } from '~/components/passkey/PasskeySetupPrompt'
-import { CreateSeasonDialog } from '~/components/season/CreateSeasonDialog'
-import { DeleteSeasonDialog } from '~/components/season/DeleteSeasonDialog'
 import { DisponeringslistaTable } from '~/components/season/DisponeringslistaTable'
-import { EditSeasonDialog } from '~/components/season/EditSeasonDialog'
-import { Button } from '~/components/ui/button'
 import { usePasskeySetupPrompt } from '~/hooks/usePasskeys'
-import { useUrlDialog } from '~/hooks/useUrlDialog'
 import { orpc } from '~/lib/orpc/client'
 import { m } from '~/paraglide/messages'
 
-const indexSearchSchema = z.object({
-  dialog: z.enum(['createSeason', 'editSeason', 'deleteSeason']).optional(),
-  seasonYear: z.coerce.number().int().optional(),
-})
-
-type IndexSearch = z.infer<typeof indexSearchSchema>
-type IndexDialog = NonNullable<IndexSearch['dialog']>
-
 export const Route = createFileRoute('/_authenticated/')({
-  validateSearch: indexSearchSchema,
-  loaderDeps: ({ search }) => ({ dialog: search.dialog, seasonYear: search.seasonYear }),
-  loader: async ({ context: { queryClient, user }, deps }) => {
+  loader: async ({ context: { queryClient } }) => {
     await queryClient.ensureQueryData(orpc.season.listSchedules.queryOptions())
     await queryClient.ensureQueryData(orpc.share.listMine.queryOptions())
-    if (user.role !== 'admin') return
-    if (deps.dialog === 'createSeason') {
-      await queryClient.ensureQueryData(orpc.season.suggestedNext.queryOptions())
-    }
-    if (deps.dialog === 'editSeason' && deps.seasonYear !== undefined) {
-      await queryClient.ensureQueryData(
-        orpc.season.getByYear.queryOptions({ input: { year: deps.seasonYear } }),
-      )
-    }
   },
   component: Calendar,
 })
 
 function Calendar() {
-  const { user: currentUser } = Route.useRouteContext()
-  const seasonYear = Route.useSearch({ select: (s) => s.seasonYear })
-  const dialog = Route.useSearch({ select: (s) => s.dialog })
-  const navigate = Route.useNavigate()
-  const { isOpen, open, close } = useUrlDialog<IndexDialog, IndexSearch>({
-    current: dialog,
-    navigate,
-    clearKeys: ['seasonYear'],
-  })
-
   const { data: schedules } = useSuspenseQuery(orpc.season.listSchedules.queryOptions())
   const { data: ownedShares } = useSuspenseQuery(orpc.share.listMine.queryOptions())
 
   const ownedShareCodes = new Set(ownedShares)
-
-  const isAdmin = currentUser.role === 'admin'
-  const isCreateSeason = isAdmin && isOpen('createSeason')
-  const isEditSeason = isAdmin && isOpen('editSeason')
-  const isDeleteSeason = isAdmin && isOpen('deleteSeason')
-  const editYear = isEditSeason ? seasonYear : undefined
-  const deleteYear = isDeleteSeason ? seasonYear : undefined
-
-  const handleEdit = (year: number) => void open('editSeason', { seasonYear: year })
-  const handleDelete = (year: number) => void open('deleteSeason', { seasonYear: year })
 
   // Periodic passkey nudge: self-gates on zero passkeys + the per-device snooze window
   // (see usePasskeySetupPrompt), so it re-appears "sometimes" for anyone without a passkey
@@ -77,40 +31,7 @@ function Calendar() {
       <h1 className="font-bold text-2xl tracking-tight text-balance md:text-3xl">
         {m.nav_calendar()}
       </h1>
-      {isAdmin && (
-        <div className="flex justify-end">
-          <Button onClick={() => open('createSeason')}>
-            <PlusIcon />
-            {m.season_create_title()}
-          </Button>
-        </div>
-      )}
-      <DisponeringslistaTable
-        schedules={schedules}
-        ownedShareCodes={ownedShareCodes}
-        onEditSeason={isAdmin ? handleEdit : undefined}
-        onDeleteSeason={isAdmin ? handleDelete : undefined}
-      />
-      <CreateSeasonDialog
-        open={isCreateSeason}
-        onOpenChange={(open) => {
-          if (!open) close()
-        }}
-      />
-      <EditSeasonDialog
-        open={isEditSeason && editYear !== undefined}
-        year={editYear}
-        onOpenChange={(open) => {
-          if (!open) close()
-        }}
-      />
-      <DeleteSeasonDialog
-        open={isDeleteSeason && deleteYear !== undefined}
-        year={deleteYear}
-        onOpenChange={(open) => {
-          if (!open) close()
-        }}
-      />
+      <DisponeringslistaTable schedules={schedules} ownedShareCodes={ownedShareCodes} />
       <PasskeySetupPrompt
         open={passkeyPrompt.open}
         pending={passkeyPrompt.pending}
