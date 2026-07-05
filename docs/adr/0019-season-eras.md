@@ -123,7 +123,7 @@ When the group decides on a new start week or re-anchors the rotation:
 - `drizzle/0019_add_season_era.sql`, `drizzle/0020_seed_season_era_anchor.sql`, `drizzle/0021_drop_season_table.sql`
 - `src/lib/services/season/{season,logic}.ts` + tests — `listEras` + pure era math; `errors.ts` deleted
 - `src/lib/orpc/procedures/season.ts` — `listSchedules` only; `src/lib/orpc/seasonErrorMessage.ts` deleted
-- `src/lib/orpc/router.ts`, `src/lib/effects/realtime/types.ts`, `src/hooks/useRealtimeSync.ts` — pruned
+- `src/lib/effects/realtime/types.ts`, `src/hooks/useRealtimeSync.ts` — pruned (`src/lib/orpc/router.ts` keeps its unchanged `season` registration)
 - `src/lib/shares/codes.ts` — `ANCHOR_START_SHARE` removed
 - `src/components/season/{Create,Edit,Delete}SeasonDialog.tsx` — deleted
 - `src/components/season/DisponeringslistaTable.tsx`, `src/routes/_authenticated/index.tsx` — simplified

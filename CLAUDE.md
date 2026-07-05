@@ -40,7 +40,7 @@ Load on demand, not eagerly. The `pnpm dlx @tanstack/intent` block at the bottom
 | File storage (avatars, documents) | `docs/adr/0006-file-storage.md` |
 | Organization rules (social invariants the schema can't express) | `docs/adr/0009-organization-rules.md` |
 | Shares & ownership (indivisible shares, assignment history) | `docs/adr/0018-indivisible-shares.md` |
-| Seasons & Disponeringslista (era table, computed schedules) | docs/adr/0019-season-eras.md |
+| Seasons & Disponeringslista (era table, computed schedules) | `docs/adr/0019-season-eras.md` |
 | User invitations + invitee onboarding wizard (invite/accept, resend, expiry countdown, 3-step `/onboarding`) | `docs/adr/0017-user-invitation-flow.md` |
 | Reviewing React components | `vercel:react-best-practices` |
 | React component tests (browser-mode, render helpers, cache-seeding) | `test/browser/README.md` |
