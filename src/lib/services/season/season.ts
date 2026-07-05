@@ -1,17 +1,16 @@
 import { addDays, getMonth, parseISO } from 'date-fns'
-import { and, asc, eq, isNull } from 'drizzle-orm'
+import { asc, eq, isNull } from 'drizzle-orm'
 import { db } from '~/lib/db'
-import { ownershipAssignment, season, sharePart } from '~/lib/db/schema'
+import { ownershipAssignment, season } from '~/lib/db/schema'
 import {
   ANCHOR_START_SHARE,
   DEFAULT_YEAR_ROTATION,
-  PARTS_PER_SHARE,
   rotateShare,
   SHARE_CODES,
   type ShareCode,
   shareIndexOf,
-  sharePartId,
   WEEKS_PER_SEASON,
+  WEEKS_PER_SHARE,
 } from '~/lib/shares/codes'
 import { SeasonDomainError } from './errors'
 
@@ -130,68 +129,46 @@ export async function deleteSeason(year: number): Promise<void> {
   await db.delete(season).where(eq(season.year, year))
 }
 
-export type WeekSlot = {
-  shareCode: ShareCode
-  partNumber: 1 | 2
-  partId: string
-}
-
-// Pure: returns the slot occupied at `isoWeek` within `season`, or null if
-// the week sits outside the 20-week season window.
-//
-// Math: weeks 0..19 from startWeek map to share parts in stride 2, where
-// odd offsets map to part 1 (the first week of a share) and even offsets
-// map to part 2. The share itself advances by ⌊offset / 2⌋ positions from
-// startShare, wrapping mod 10.
-export function partForWeek(
+// Pure: returns the share occupying `isoWeek` within the season, or null if
+// the week sits outside the 20-week window. Weeks map to shares in blocks of
+// WEEKS_PER_SHARE consecutive weeks, advancing from startShare and wrapping
+// mod 10.
+export function shareForWeek(
   input: { startWeek: number; startShare: ShareCode },
   isoWeek: number,
-): WeekSlot | null {
+): ShareCode | null {
   const offset = isoWeek - input.startWeek
   if (offset < 0 || offset >= WEEKS_PER_SEASON) return null
 
-  const partNumber = ((offset % PARTS_PER_SHARE) + 1) as 1 | 2
-  const shareOffset = Math.floor(offset / PARTS_PER_SHARE)
+  const shareOffset = Math.floor(offset / WEEKS_PER_SHARE)
   const shareIndex = (shareIndexOf(input.startShare) + shareOffset) % SHARE_CODES.length
-  const shareCode = SHARE_CODES[shareIndex]
-  return { shareCode, partNumber, partId: sharePartId(shareCode, partNumber) }
+  return SHARE_CODES[shareIndex]
 }
 
 export type ScheduleEntry = {
   week: number
   shareCode: ShareCode
-  partNumber: 1 | 2
-  partId: string
   userId: string | null
 }
 
 // Returns the 20-week schedule for a given year with the current owner of
-// each part left-joined in. Useful for the admin "Disponeringslista" grid.
+// each share left-joined in. Useful for the admin "Disponeringslista" grid.
 export async function scheduleForYear(year: number): Promise<Array<ScheduleEntry> | null> {
   const s = await findSeason(year)
   if (!s) return null
 
   const owners = await db
-    .select({ partId: sharePart.id, userId: ownershipAssignment.userId })
-    .from(sharePart)
-    .leftJoin(
-      ownershipAssignment,
-      and(eq(ownershipAssignment.partId, sharePart.id), isNull(ownershipAssignment.assignedTo)),
-    )
-  const ownerByPart = new Map(owners.map((r) => [r.partId, r.userId]))
+    .select({ shareCode: ownershipAssignment.shareCode, userId: ownershipAssignment.userId })
+    .from(ownershipAssignment)
+    .where(isNull(ownershipAssignment.assignedTo))
+  const ownerByShare = new Map(owners.map((r) => [r.shareCode, r.userId]))
 
   const entries: Array<ScheduleEntry> = []
   for (let i = 0; i < WEEKS_PER_SEASON; i++) {
     const week = s.startWeek + i
-    const slot = partForWeek(s, week)
-    if (!slot) continue
-    entries.push({
-      week,
-      shareCode: slot.shareCode,
-      partNumber: slot.partNumber,
-      partId: slot.partId,
-      userId: ownerByPart.get(slot.partId) ?? null,
-    })
+    const shareCode = shareForWeek(s, week)
+    if (!shareCode) continue
+    entries.push({ week, shareCode, userId: ownerByShare.get(shareCode) ?? null })
   }
   return entries
 }
