@@ -17,9 +17,17 @@ export type Cell = {
   month: number
 }
 
+export type ShareBlock = {
+  firstWeek: number
+  lastWeek: number
+  shareCode: ShareCode
+  span: number
+}
+
 export type YearSchedule = {
   year: number
   cells: Array<Cell>
+  blocks: Array<ShareBlock>
   monthBands: Array<MonthBand>
 }
 
@@ -161,22 +169,27 @@ function YearBlock({
         ))}
       </tr>
       <tr>
-        {s.cells.map((cell) => {
-          const isMine = ownedShareCodes.has(cell.shareCode)
+        {s.blocks.map((block) => {
+          const isMine = ownedShareCodes.has(block.shareCode)
           return (
             <td
-              key={cell.week}
-              aria-label={isMine ? m.season_my_week({ week: cell.week }) : undefined}
+              key={block.firstWeek}
+              colSpan={block.span}
+              aria-label={
+                isMine
+                  ? m.season_my_weeks({ from: block.firstWeek, to: block.lastWeek })
+                  : undefined
+              }
               className={cn(
                 'relative px-1 py-2 text-center font-medium',
-                monthEndWeeks.has(cell.week) && 'border-r',
+                monthEndWeeks.has(block.lastWeek) && 'border-r',
                 isCurrent
-                  ? cn(shareBackgroundClass[cell.shareCode], 'font-bold text-foreground')
+                  ? cn(shareBackgroundClass[block.shareCode], 'font-bold text-foreground')
                   : 'text-muted-foreground',
                 isMine && OWNED_RING,
               )}
             >
-              {cell.shareCode}
+              {block.shareCode}
             </td>
           )
         })}
