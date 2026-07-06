@@ -223,7 +223,12 @@ function YearCard({ schedule, isCurrent, ownedShareCodes }: YearCardProps) {
   return (
     <article
       className={cn(
-        'overflow-hidden rounded-lg border bg-surface-raised',
+        // shrink-0 is load-bearing: overflow-hidden (rounded-corner clipping)
+        // disables the flexbox automatic minimum size, so inside the
+        // height-bounded PageContainer-fill column the cards would otherwise
+        // squish to fit instead of overflowing — leaving MobileLayout's
+        // overflow-auto with nothing to scroll.
+        'shrink-0 overflow-hidden rounded-lg border bg-surface-raised',
         isCurrent && 'ring-1 ring-primary/30',
       )}
     >
