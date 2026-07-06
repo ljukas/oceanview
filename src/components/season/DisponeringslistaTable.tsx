@@ -1,27 +1,9 @@
 import { StarIcon } from 'lucide-react'
-import type { ShareCode } from '~/lib/shares/codes'
+import type { MonthBand, ShareBlock, YearSchedule } from '~/lib/services/season/logic'
+import { type ShareCode, WEEKS_PER_SHARE } from '~/lib/shares/codes'
 import { shareBackgroundClass } from '~/lib/shares/colors'
 import { cn } from '~/lib/utils'
 import { m } from '~/paraglide/messages'
-
-export type MonthBand = {
-  month: number
-  firstWeek: number
-  lastWeek: number
-  span: number
-}
-
-export type Cell = {
-  week: number
-  shareCode: ShareCode
-  month: number
-}
-
-export type YearSchedule = {
-  year: number
-  cells: Array<Cell>
-  monthBands: Array<MonthBand>
-}
 
 type Props = {
   schedules: Array<YearSchedule>
@@ -58,7 +40,7 @@ export function DisponeringslistaTable({ schedules, ownedShareCodes }: Props) {
   const currentYear = new Date().getFullYear()
 
   return (
-    <section className="flex min-h-0 flex-1 flex-col gap-3">
+    <section className="flex flex-col gap-3 lg:min-h-0 lg:flex-1">
       <h2 className="text-center font-heading font-semibold text-lg tracking-tight">
         {m.season_disponeringslista_title()}
       </h2>
@@ -161,22 +143,27 @@ function YearBlock({
         ))}
       </tr>
       <tr>
-        {s.cells.map((cell) => {
-          const isMine = ownedShareCodes.has(cell.shareCode)
+        {s.blocks.map((block) => {
+          const isMine = ownedShareCodes.has(block.shareCode)
           return (
             <td
-              key={cell.week}
-              aria-label={isMine ? m.season_my_week({ week: cell.week }) : undefined}
+              key={block.firstWeek}
+              colSpan={WEEKS_PER_SHARE}
+              aria-label={
+                isMine
+                  ? m.season_my_weeks({ from: block.firstWeek, to: block.lastWeek })
+                  : undefined
+              }
               className={cn(
                 'relative px-1 py-2 text-center font-medium',
-                monthEndWeeks.has(cell.week) && 'border-r',
+                monthEndWeeks.has(block.lastWeek) && 'border-r',
                 isCurrent
-                  ? cn(shareBackgroundClass[cell.shareCode], 'font-bold text-foreground')
+                  ? cn(shareBackgroundClass[block.shareCode], 'font-bold text-foreground')
                   : 'text-muted-foreground',
                 isMine && OWNED_RING,
               )}
             >
-              {cell.shareCode}
+              {block.shareCode}
             </td>
           )
         })}
@@ -186,8 +173,10 @@ function YearBlock({
 }
 
 function MobileLayout({ schedules, ownedShareCodes, currentYear }: LayoutProps) {
+  // No inner scroll: below lg the PAGE scrolls (PageContainer fill="lg"), so
+  // the scrollbar sits at the panel edge instead of beside the cards.
   return (
-    <div className="flex min-h-0 flex-col gap-4 overflow-auto lg:hidden">
+    <div className="flex flex-col gap-4 lg:hidden">
       {schedules.map((s) => (
         <YearCard
           key={s.year}
@@ -207,27 +196,29 @@ type YearCardProps = {
 }
 
 function YearCard({ schedule, isCurrent, ownedShareCodes }: YearCardProps) {
+  // No ring on the current card: the star + colored rows already mark it,
+  // and a translucent ring stacked outside the hairline border rendered as
+  // a smudged double edge.
   return (
-    <article
-      className={cn(
-        'overflow-hidden rounded-lg border bg-surface-raised',
-        isCurrent && 'ring-1 ring-primary/30',
-      )}
-    >
+    <article className="overflow-hidden rounded-lg border bg-surface-raised">
       <header className="flex items-center gap-2 border-b bg-muted px-4 py-2">
         {isCurrent && <StarIcon className="size-4 text-primary" aria-hidden />}
         <span className="font-semibold tabular-nums">{schedule.year}</span>
       </header>
       <div className="flex flex-col">
         {schedule.monthBands.map((band) => {
-          const cells = schedule.cells.filter(
-            (c) => c.week >= band.firstWeek && c.week <= band.lastWeek,
+          const blocks = schedule.blocks.filter(
+            (b) => b.firstWeek >= band.firstWeek && b.firstWeek <= band.lastWeek,
           )
+          // A band holding only the tail week of a block (e.g. a 1-week Okt
+          // band after the 39–40 block) gets no section — the block's row
+          // already sits under its starting month.
+          if (blocks.length === 0) return null
           return (
             <MonthSection
               key={band.firstWeek}
               band={band}
-              cells={cells}
+              blocks={blocks}
               isCurrent={isCurrent}
               ownedShareCodes={ownedShareCodes}
             />
@@ -239,48 +230,39 @@ function YearCard({ schedule, isCurrent, ownedShareCodes }: YearCardProps) {
 }
 
 type MonthSectionProps = {
-  band: { month: number; firstWeek: number; lastWeek: number; span: number }
-  cells: Array<Cell>
+  band: MonthBand
+  blocks: Array<ShareBlock>
   isCurrent: boolean
   ownedShareCodes: ReadonlySet<ShareCode>
 }
 
-function MonthSection({ band, cells, isCurrent, ownedShareCodes }: MonthSectionProps) {
-  // Months with an odd number of weeks (e.g. 1-week Okt, 5-week Jul/Sep)
-  // would leave the last grid row half-empty, breaking the continuous
-  // vertical and horizontal dividers. Render an aria-hidden placeholder in
-  // that empty slot so the inner border lines run unbroken across the grid.
-  const needsPlaceholder = cells.length % 2 === 1
+function MonthSection({ band, blocks, isCurrent, ownedShareCodes }: MonthSectionProps) {
   return (
     <section className="border-b last:border-b-0">
       <h3 className="bg-muted/50 px-4 py-1 font-semibold text-muted-foreground text-xs uppercase tracking-wider">
         {MONTH_LABELS[band.month]?.()}
       </h3>
-      <div className="grid grid-cols-2">
-        {cells.map((cell, i) => {
-          const isMine = ownedShareCodes.has(cell.shareCode)
+      <div className="flex flex-col">
+        {blocks.map((block, i) => {
+          const isMine = ownedShareCodes.has(block.shareCode)
           return (
             <div
-              key={cell.week}
+              key={block.firstWeek}
               className={cn(
                 'flex items-center justify-between gap-2 px-4 py-2',
-                // Inner cell separators — every left-column cell carries the
-                // vertical divider to the right; rows past the first carry the
-                // horizontal divider on top.
-                i % 2 === 0 && 'border-r',
-                i >= 2 && 'border-t',
-                isCurrent && shareBackgroundClass[cell.shareCode],
+                i > 0 && 'border-t',
+                isCurrent && shareBackgroundClass[block.shareCode],
                 isMine && OWNED_RING,
               )}
             >
-              {isMine && <span className="sr-only">{m.season_my_week_prefix()} </span>}
+              {isMine && <span className="sr-only">{m.season_my_weeks_prefix()} </span>}
               <span
                 className={cn(
                   'tabular-nums',
                   isCurrent ? 'text-foreground/80' : 'text-muted-foreground',
                 )}
               >
-                {cell.week}
+                {block.firstWeek}–{block.lastWeek}
               </span>
               <span
                 className={cn(
@@ -288,12 +270,11 @@ function MonthSection({ band, cells, isCurrent, ownedShareCodes }: MonthSectionP
                   isCurrent ? 'font-bold text-foreground' : 'text-muted-foreground',
                 )}
               >
-                {cell.shareCode}
+                {block.shareCode}
               </span>
             </div>
           )
         })}
-        {needsPlaceholder && <div className={cn(cells.length >= 3 && 'border-t')} aria-hidden />}
       </div>
     </section>
   )
