@@ -1,35 +1,9 @@
 import { StarIcon } from 'lucide-react'
-import type { ShareCode } from '~/lib/shares/codes'
+import type { MonthBand, ShareBlock, YearSchedule } from '~/lib/services/season/logic'
+import { type ShareCode, WEEKS_PER_SHARE } from '~/lib/shares/codes'
 import { shareBackgroundClass } from '~/lib/shares/colors'
 import { cn } from '~/lib/utils'
 import { m } from '~/paraglide/messages'
-
-export type MonthBand = {
-  month: number
-  firstWeek: number
-  lastWeek: number
-  span: number
-}
-
-export type Cell = {
-  week: number
-  shareCode: ShareCode
-  month: number
-}
-
-export type ShareBlock = {
-  firstWeek: number
-  lastWeek: number
-  shareCode: ShareCode
-  span: number
-}
-
-export type YearSchedule = {
-  year: number
-  cells: Array<Cell>
-  blocks: Array<ShareBlock>
-  monthBands: Array<MonthBand>
-}
 
 type Props = {
   schedules: Array<YearSchedule>
@@ -174,7 +148,7 @@ function YearBlock({
           return (
             <td
               key={block.firstWeek}
-              colSpan={block.span}
+              colSpan={WEEKS_PER_SHARE}
               aria-label={
                 isMine
                   ? m.season_my_weeks({ from: block.firstWeek, to: block.lastWeek })
@@ -220,18 +194,15 @@ type YearCardProps = {
 }
 
 function YearCard({ schedule, isCurrent, ownedShareCodes }: YearCardProps) {
+  // shrink-0 is load-bearing: overflow-hidden (rounded-corner clipping)
+  // disables the flexbox automatic minimum size, so inside the height-bounded
+  // PageContainer-fill column the cards would otherwise squish to fit instead
+  // of overflowing — leaving MobileLayout's overflow-auto with nothing to
+  // scroll. No ring on the current card: the star + colored rows already mark
+  // it, and a translucent ring stacked outside the hairline border rendered
+  // as a smudged double edge.
   return (
-    <article
-      className={cn(
-        // shrink-0 is load-bearing: overflow-hidden (rounded-corner clipping)
-        // disables the flexbox automatic minimum size, so inside the
-        // height-bounded PageContainer-fill column the cards would otherwise
-        // squish to fit instead of overflowing — leaving MobileLayout's
-        // overflow-auto with nothing to scroll.
-        'shrink-0 overflow-hidden rounded-lg border bg-surface-raised',
-        isCurrent && 'ring-1 ring-primary/30',
-      )}
-    >
+    <article className="shrink-0 overflow-hidden rounded-lg border bg-surface-raised">
       <header className="flex items-center gap-2 border-b bg-muted px-4 py-2">
         {isCurrent && <StarIcon className="size-4 text-primary" aria-hidden />}
         <span className="font-semibold tabular-nums">{schedule.year}</span>
