@@ -146,7 +146,9 @@ export function monthBandsForSeason(input: { year: number; startWeek: number }):
 }
 
 // One YearSchedule per year from min(fromYear) through currentYear + 1 —
-// full history plus next season for planning (ADR-0019).
+// full history plus next season for planning (ADR-0019). Newest first:
+// the seasons owners actually check (current + next) sit at the top of the
+// Disponeringslista, history below.
 export function buildSchedules(
   eras: ReadonlyArray<SeasonEra>,
   currentYear: number,
@@ -156,7 +158,7 @@ export function buildSchedules(
   const lastYear = currentYear + 1
 
   const schedules: Array<YearSchedule> = []
-  for (let year = firstYear; year <= lastYear; year++) {
+  for (let year = lastYear; year >= firstYear; year--) {
     const season = seasonForYear(eras, year)
     // Unreachable within [firstYear, lastYear] — firstYear is an era's
     // fromYear — but keeps the loop total if the range logic ever changes.

@@ -138,9 +138,9 @@ test('seasonForYear resolves week + rotated share across an era boundary', () =>
   expect(seasonForYear(eras, 2023)).toBeNull()
 })
 
-test('buildSchedules spans min(fromYear) .. currentYear + 1', () => {
+test('buildSchedules spans min(fromYear) .. currentYear + 1, newest first', () => {
   const schedules = buildSchedules([ANCHOR_ERA], 2026)
-  expect(schedules.map((s) => s.year)).toEqual([2024, 2025, 2026, 2027])
+  expect(schedules.map((s) => s.year)).toEqual([2027, 2026, 2025, 2024])
   for (const s of schedules) {
     expect(s.cells).toHaveLength(20)
     expect(s.cells[0]?.week).toBe(21)
@@ -164,7 +164,7 @@ test('buildSchedules ignores eras that only govern years beyond the range', () =
     [ANCHOR_ERA, { fromYear: 2028, startWeek: 22, startShare: 'D' as const }],
     2025,
   )
-  expect(schedules.map((s) => s.year)).toEqual([2024, 2025, 2026])
+  expect(schedules.map((s) => s.year)).toEqual([2026, 2025, 2024])
   expect(schedules.every((s) => s.cells[0]?.week === 21)).toBe(true)
 })
 
