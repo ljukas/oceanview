@@ -1,6 +1,15 @@
 import { expect, test } from 'vitest'
 import { DEFAULT_YEAR_ROTATION, rotateShare } from '~/lib/shares/codes'
-import { monthBandsForSeason, monthForISOWeek, shareForWeek } from './season'
+import {
+  buildSchedules,
+  eraForYear,
+  monthBandsForSeason,
+  monthForISOWeek,
+  type SeasonEra,
+  seasonForYear,
+  shareForWeek,
+  startShareForYear,
+} from './logic'
 
 test('shareForWeek reproduces the 2026 row from the Disponeringslista', () => {
   const s = { startWeek: 21, startShare: 'D' as const }
@@ -81,9 +90,7 @@ test('monthBandsForSeason produces the 2026 split 2/4/5/4/4/1 across Maj..Okt', 
 })
 
 test('monthBandsForSeason for 2027 (startWeek=20) covers Maj..Sep with no October overflow', () => {
-  // Logic check for the rare override case: when a season starts at W20
-  // instead of the canonical W21 (ADR-0009 Rule 2 is a soft default), the
-  // 20-week window ends at W39 and stays inside September.
+  // Logic check: a non-21 era start week (weeks 20..39) stays inside September.
   const bands = monthBandsForSeason({ year: 2027, startWeek: 20 })
   expect(bands).toEqual([
     { month: 4, firstWeek: 20, lastWeek: 21, span: 2 },
@@ -92,4 +99,65 @@ test('monthBandsForSeason for 2027 (startWeek=20) covers Maj..Sep with no Octobe
     { month: 7, firstWeek: 31, lastWeek: 34, span: 4 },
     { month: 8, firstWeek: 35, lastWeek: 39, span: 5 },
   ])
+})
+
+const ANCHOR_ERA: SeasonEra = { fromYear: 2024, startWeek: 21, startShare: 'J' }
+
+test('eraForYear picks the era with the greatest fromYear <= year', () => {
+  const later: SeasonEra = { fromYear: 2028, startWeek: 22, startShare: 'D' }
+  const eras = [ANCHOR_ERA, later]
+  expect(eraForYear(eras, 2023)).toBeNull()
+  expect(eraForYear(eras, 2024)).toBe(ANCHOR_ERA)
+  expect(eraForYear(eras, 2027)).toBe(ANCHOR_ERA)
+  expect(eraForYear(eras, 2028)).toBe(later)
+  expect(eraForYear(eras, 2031)).toBe(later)
+  // Order-independent: same answers with the array reversed.
+  expect(eraForYear([later, ANCHOR_ERA], 2027)).toBe(ANCHOR_ERA)
+})
+
+test('startShareForYear rotates -3 per year from the era anchor', () => {
+  expect(startShareForYear(ANCHOR_ERA, 2024)).toBe('J')
+  expect(startShareForYear(ANCHOR_ERA, 2025)).toBe('G')
+  expect(startShareForYear(ANCHOR_ERA, 2026)).toBe('D')
+  expect(startShareForYear(ANCHOR_ERA, 2027)).toBe('A')
+  // Wraps around the 10-share ring: 2024 + 10 years = J again.
+  expect(startShareForYear(ANCHOR_ERA, 2034)).toBe('J')
+})
+
+test('seasonForYear resolves week + rotated share across an era boundary', () => {
+  const eras = [ANCHOR_ERA, { fromYear: 2028, startWeek: 22, startShare: 'D' as const }]
+  expect(seasonForYear(eras, 2027)).toEqual({ startWeek: 21, startShare: 'A' })
+  expect(seasonForYear(eras, 2028)).toEqual({ startWeek: 22, startShare: 'D' })
+  expect(seasonForYear(eras, 2029)).toEqual({ startWeek: 22, startShare: 'A' })
+  expect(seasonForYear(eras, 2023)).toBeNull()
+})
+
+test('buildSchedules spans min(fromYear) .. currentYear + 1', () => {
+  const schedules = buildSchedules([ANCHOR_ERA], 2026)
+  expect(schedules.map((s) => s.year)).toEqual([2024, 2025, 2026, 2027])
+  for (const s of schedules) {
+    expect(s.cells).toHaveLength(20)
+    expect(s.cells[0]?.week).toBe(21)
+    expect(s.cells[19]?.week).toBe(40)
+  }
+  // 2026 starts at D (J rotated -3 twice) — first two weeks belong to D.
+  const y2026 = schedules.find((s) => s.year === 2026)
+  expect(y2026?.cells[0]).toMatchObject({ week: 21, shareCode: 'D' })
+  expect(y2026?.cells[1]).toMatchObject({ week: 22, shareCode: 'D' })
+  // Month bands come from each year's real calendar.
+  expect(y2026?.monthBands[0]).toEqual({ month: 4, firstWeek: 21, lastWeek: 22, span: 2 })
+})
+
+test('buildSchedules returns [] when no eras exist', () => {
+  expect(buildSchedules([], 2026)).toEqual([])
+})
+
+test('buildSchedules ignores eras that only govern years beyond the range', () => {
+  // currentYear 2025 → range 2024..2026; the 2028 era exists but governs nothing yet.
+  const schedules = buildSchedules(
+    [ANCHOR_ERA, { fromYear: 2028, startWeek: 22, startShare: 'D' as const }],
+    2025,
+  )
+  expect(schedules.map((s) => s.year)).toEqual([2024, 2025, 2026])
+  expect(schedules.every((s) => s.cells[0]?.week === 21)).toBe(true)
 })

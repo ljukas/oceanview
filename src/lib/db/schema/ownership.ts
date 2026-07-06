@@ -25,19 +25,21 @@ export const shareCodeEnum = pgEnum('share_code', [
   'J',
 ])
 
-export const season = pgTable(
-  'season',
+// The group's schedule convention, effective-dated (ADR-0019). Append-only:
+// season year Y is governed by the row with the greatest from_year <= Y;
+// start_share anchors the -3/year rotation at from_year. Rows are only ever
+// inserted — via data migration, never from app code (see the ADR runbook).
+// A season is 20 consecutive weeks, so week 33 is the last start that keeps
+// the whole season inside one ISO year (33 + 19 = 52) — hence the CHECK.
+export const seasonEra = pgTable(
+  'season_era',
   {
-    year: integer('year').primaryKey(),
+    fromYear: integer('from_year').primaryKey(),
     startWeek: integer('start_week').notNull(),
     startShare: shareCodeEnum('start_share').notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-    updatedAt: timestamp('updated_at', { withTimezone: true })
-      .defaultNow()
-      .$onUpdate(() => /* @__PURE__ */ new Date())
-      .notNull(),
   },
-  (table) => [check('season_start_week_check', sql`${table.startWeek} BETWEEN 1 AND 53`)],
+  (table) => [check('season_era_start_week_check', sql`${table.startWeek} BETWEEN 1 AND 33`)],
 )
 
 // One row per ownership stint: `userId` owned `shareCode` from `assignedFrom`

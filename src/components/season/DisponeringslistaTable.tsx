@@ -1,5 +1,4 @@
-import { PencilIcon, StarIcon, Trash2Icon } from 'lucide-react'
-import { Button } from '~/components/ui/button'
+import { StarIcon } from 'lucide-react'
 import type { ShareCode } from '~/lib/shares/codes'
 import { shareBackgroundClass } from '~/lib/shares/colors'
 import { cn } from '~/lib/utils'
@@ -20,7 +19,6 @@ export type Cell = {
 
 export type YearSchedule = {
   year: number
-  startWeek: number
   cells: Array<Cell>
   monthBands: Array<MonthBand>
 }
@@ -28,10 +26,6 @@ export type YearSchedule = {
 type Props = {
   schedules: Array<YearSchedule>
   ownedShareCodes: ReadonlySet<ShareCode>
-  // Admin callbacks. Render the edit + delete icon buttons only when both are
-  // provided; the table stays purely presentational for non-admin viewers.
-  onEditSeason?: (year: number) => void
-  onDeleteSeason?: (year: number) => void
 }
 
 // Short month labels indexed 0..11 (Jan..Dec). The season only touches
@@ -60,16 +54,7 @@ const MONTH_LABELS = [
 // (current-year cells) and the card background (other-year cells).
 const OWNED_RING = 'ring-2 ring-inset ring-foreground'
 
-export function DisponeringslistaTable({
-  schedules,
-  ownedShareCodes,
-  onEditSeason,
-  onDeleteSeason,
-}: Props) {
-  if (schedules.length === 0) {
-    return <p className="text-muted-foreground text-sm">{m.season_disponeringslista_empty()}</p>
-  }
-
+export function DisponeringslistaTable({ schedules, ownedShareCodes }: Props) {
   const currentYear = new Date().getFullYear()
 
   return (
@@ -81,15 +66,11 @@ export function DisponeringslistaTable({
         schedules={schedules}
         ownedShareCodes={ownedShareCodes}
         currentYear={currentYear}
-        onEditSeason={onEditSeason}
-        onDeleteSeason={onDeleteSeason}
       />
       <MobileLayout
         schedules={schedules}
         ownedShareCodes={ownedShareCodes}
         currentYear={currentYear}
-        onEditSeason={onEditSeason}
-        onDeleteSeason={onDeleteSeason}
       />
     </section>
   )
@@ -97,13 +78,7 @@ export function DisponeringslistaTable({
 
 type LayoutProps = Props & { currentYear: number }
 
-function WideLayout({
-  schedules,
-  ownedShareCodes,
-  currentYear,
-  onEditSeason,
-  onDeleteSeason,
-}: LayoutProps) {
+function WideLayout({ schedules, ownedShareCodes, currentYear }: LayoutProps) {
   return (
     <div className="hidden min-h-0 overflow-auto rounded-lg border bg-surface-raised lg:-mx-4 lg:block">
       <table className="w-full text-sm">
@@ -122,8 +97,6 @@ function WideLayout({
                 isFirstYear={isFirstYear}
                 monthEndWeeks={monthEndWeeks}
                 ownedShareCodes={ownedShareCodes}
-                onEditSeason={onEditSeason}
-                onDeleteSeason={onDeleteSeason}
               />
             )
           })}
@@ -139,8 +112,6 @@ type YearBlockProps = {
   isFirstYear: boolean
   monthEndWeeks: Set<number>
   ownedShareCodes: ReadonlySet<ShareCode>
-  onEditSeason?: (year: number) => void
-  onDeleteSeason?: (year: number) => void
 }
 
 function YearBlock({
@@ -149,14 +120,11 @@ function YearBlock({
   isFirstYear,
   monthEndWeeks,
   ownedShareCodes,
-  onEditSeason,
-  onDeleteSeason,
 }: YearBlockProps) {
   const lastBandIdx = s.monthBands.length - 1
   // First row of every year (except the very first) gets the heavy top border
   // that separates one year-block from the next.
   const yearTop = isFirstYear ? '' : 'border-t-2 border-border'
-  const showAdminActions = !!onEditSeason && !!onDeleteSeason
 
   return (
     <>
@@ -178,11 +146,6 @@ function YearBlock({
             {MONTH_LABELS[band.month]?.()}
           </th>
         ))}
-        {showAdminActions && (
-          <th className="w-[1%] whitespace-nowrap border-l bg-muted px-3 py-1 text-center font-semibold">
-            {m.common_actions()}
-          </th>
-        )}
       </tr>
       <tr className="text-muted-foreground text-xs">
         {s.cells.map((cell) => (
@@ -196,29 +159,6 @@ function YearBlock({
             {cell.week}
           </td>
         ))}
-        {showAdminActions && (
-          <td rowSpan={2} className="border-l px-2 align-middle">
-            <div className="flex justify-center gap-1">
-              <Button
-                variant="outline"
-                size="icon-sm"
-                aria-label={m.common_edit()}
-                onClick={() => onEditSeason(s.year)}
-              >
-                <PencilIcon />
-              </Button>
-              <Button
-                variant="outline"
-                size="icon-sm"
-                aria-label={m.common_delete()}
-                className="text-destructive hover:text-destructive"
-                onClick={() => onDeleteSeason(s.year)}
-              >
-                <Trash2Icon />
-              </Button>
-            </div>
-          </td>
-        )}
       </tr>
       <tr>
         {s.cells.map((cell) => {
@@ -245,13 +185,7 @@ function YearBlock({
   )
 }
 
-function MobileLayout({
-  schedules,
-  ownedShareCodes,
-  currentYear,
-  onEditSeason,
-  onDeleteSeason,
-}: LayoutProps) {
+function MobileLayout({ schedules, ownedShareCodes, currentYear }: LayoutProps) {
   return (
     <div className="flex min-h-0 flex-col gap-4 overflow-auto lg:hidden">
       {schedules.map((s) => (
@@ -260,8 +194,6 @@ function MobileLayout({
           schedule={s}
           isCurrent={s.year === currentYear}
           ownedShareCodes={ownedShareCodes}
-          onEditSeason={onEditSeason}
-          onDeleteSeason={onDeleteSeason}
         />
       ))}
     </div>
@@ -272,19 +204,9 @@ type YearCardProps = {
   schedule: YearSchedule
   isCurrent: boolean
   ownedShareCodes: ReadonlySet<ShareCode>
-  onEditSeason?: (year: number) => void
-  onDeleteSeason?: (year: number) => void
 }
 
-function YearCard({
-  schedule,
-  isCurrent,
-  ownedShareCodes,
-  onEditSeason,
-  onDeleteSeason,
-}: YearCardProps) {
-  const showAdminActions = !!onEditSeason && !!onDeleteSeason
-
+function YearCard({ schedule, isCurrent, ownedShareCodes }: YearCardProps) {
   return (
     <article
       className={cn(
@@ -295,27 +217,6 @@ function YearCard({
       <header className="flex items-center gap-2 border-b bg-muted px-4 py-2">
         {isCurrent && <StarIcon className="size-4 text-primary" aria-hidden />}
         <span className="font-semibold tabular-nums">{schedule.year}</span>
-        {showAdminActions && (
-          <div className="ml-auto flex gap-1">
-            <Button
-              variant="outline"
-              size="icon-sm"
-              aria-label={m.common_edit()}
-              onClick={() => onEditSeason(schedule.year)}
-            >
-              <PencilIcon />
-            </Button>
-            <Button
-              variant="outline"
-              size="icon-sm"
-              aria-label={m.common_delete()}
-              className="text-destructive hover:text-destructive"
-              onClick={() => onDeleteSeason(schedule.year)}
-            >
-              <Trash2Icon />
-            </Button>
-          </div>
-        )}
       </header>
       <div className="flex flex-col">
         {schedule.monthBands.map((band) => {

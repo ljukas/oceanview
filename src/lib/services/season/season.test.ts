@@ -1,162 +1,16 @@
 import { expect, test } from 'vitest'
 import { db } from '~/lib/db'
-import { user } from '~/lib/db/schema'
-import { assignShareAsAdmin } from '~/lib/services/share'
-import type { ShareCode } from '~/lib/shares/codes'
+import { seasonEra } from '~/lib/db/schema'
 import { setupDatabase } from '~test/setup'
-import {
-  createSeason,
-  defaultStartShareFor,
-  deleteSeason,
-  findSeason,
-  listSeasons,
-  SEASON_START_WEEK,
-  scheduleForYear,
-  updateSeason,
-} from './season'
+import { listEras } from './season'
 
 setupDatabase()
 
-const INITIAL_SEASONS: ReadonlyArray<{
-  year: number
-  startWeek: number
-  startShare: ShareCode
-}> = [
-  { year: 2026, startWeek: 21, startShare: 'D' },
-  { year: 2027, startWeek: 20, startShare: 'A' },
-  { year: 2028, startWeek: 20, startShare: 'H' },
-  { year: 2029, startWeek: 21, startShare: 'E' },
-]
-
-async function seedInitialSeasons() {
-  for (const s of INITIAL_SEASONS) {
-    await createSeason(s)
-  }
-}
-
-test('createSeason without startShare uses the anchor when no prior year exists', async () => {
-  const s = await createSeason({ year: 2024, startWeek: 21 })
-  expect(s).toMatchObject({ year: 2024, startWeek: 21, startShare: 'J' })
+test('listEras returns the seeded anchor era', async () => {
+  expect(await listEras()).toEqual([{ fromYear: 2024, startWeek: 21, startShare: 'J' }])
 })
 
-test('createSeason derives startShare from the prior year using the −3 rule', async () => {
-  // Chain forward from 2029 = E. Each subsequent year rotates by −3:
-  // E (4) → B (1) → I (8) → F (5).
-  await createSeason({ year: 2029, startWeek: 21, startShare: 'E' })
-
-  const y2030 = await createSeason({ year: 2030, startWeek: 21 })
-  expect(y2030.startShare).toBe('B')
-
-  const y2031 = await createSeason({ year: 2031, startWeek: 21 })
-  expect(y2031.startShare).toBe('I')
-
-  const y2032 = await createSeason({ year: 2032, startWeek: 21 })
-  expect(y2032.startShare).toBe('F')
-})
-
-test('createSeason accepts an explicit startShare override', async () => {
-  const s = await createSeason({ year: 2035, startWeek: 22, startShare: 'B' })
-  expect(s.startShare).toBe('B')
-})
-
-test('defaultStartShareFor returns anchor for the very first year', async () => {
-  expect(await defaultStartShareFor(2024)).toBe('J')
-})
-
-test('defaultStartShareFor rotates −3 from the prior year', async () => {
-  await createSeason({ year: 2029, startWeek: 21, startShare: 'E' })
-  expect(await defaultStartShareFor(2030)).toBe('B')
-})
-
-test('updateSeason patches the provided fields and leaves others alone', async () => {
-  await createSeason({ year: 2026, startWeek: 21, startShare: 'D' })
-
-  const updated = await updateSeason(2026, { startWeek: 22 })
-  expect(updated).toMatchObject({ year: 2026, startWeek: 22, startShare: 'D' })
-
-  const repointed = await updateSeason(2026, { startShare: 'E' })
-  expect(repointed.startShare).toBe('E')
-})
-
-test('createSeason throws ALREADY_EXISTS when the year is taken', async () => {
-  await createSeason({ year: 2026, startWeek: 21, startShare: 'D' })
-  await expect(createSeason({ year: 2026, startWeek: 22, startShare: 'A' })).rejects.toMatchObject({
-    name: 'SeasonDomainError',
-    code: 'ALREADY_EXISTS',
-  })
-})
-
-test('updateSeason throws NOT_FOUND for a year with no season', async () => {
-  await expect(updateSeason(2099, { startWeek: 22 })).rejects.toMatchObject({
-    name: 'SeasonDomainError',
-    code: 'NOT_FOUND',
-  })
-})
-
-test('deleteSeason removes the row', async () => {
-  await createSeason({ year: 2027, startWeek: 20, startShare: 'A' })
-  await deleteSeason(2027)
-  expect(await findSeason(2027)).toBeNull()
-})
-
-test('listSeasons returns rows ordered by year ascending', async () => {
-  await seedInitialSeasons()
-  await createSeason({ year: 2024, startWeek: 21, startShare: 'J' })
-  await createSeason({ year: 2030, startWeek: 21, startShare: 'B' })
-
-  expect((await listSeasons()).map((r) => r.year)).toEqual([2024, 2026, 2027, 2028, 2029, 2030])
-})
-
-test('scheduleForYear joins each weekly slot with the current owner', async () => {
-  await createSeason({ year: 2026, startWeek: 21, startShare: 'D' })
-  const [{ id: aliceId }, { id: bobId }] = await db
-    .insert(user)
-    .values([
-      { name: 'Alice', email: 'alice@test.oceanview.local' },
-      { name: 'Bob', email: 'bob@test.oceanview.local' },
-    ])
-    .returning({ id: user.id })
-  await assignShareAsAdmin({ shareCode: 'D', userId: aliceId, from: new Date('2020-01-01') })
-  await assignShareAsAdmin({ shareCode: 'A', userId: bobId, from: new Date('2020-01-01') })
-
-  const schedule = await scheduleForYear(2026)
-  if (!schedule) throw new Error('expected schedule for year 2026')
-  expect(schedule).toHaveLength(20)
-
-  const byWeek = new Map(schedule.map((e) => [e.week, e]))
-  // Owning a share means owning BOTH of its weeks (ADR-0018).
-  expect(byWeek.get(21)).toMatchObject({ shareCode: 'D', userId: aliceId })
-  expect(byWeek.get(22)).toMatchObject({ shareCode: 'D', userId: aliceId })
-  expect(byWeek.get(35)).toMatchObject({ shareCode: 'A', userId: bobId })
-  expect(byWeek.get(36)).toMatchObject({ shareCode: 'A', userId: bobId })
-  expect(byWeek.get(40)).toMatchObject({ shareCode: 'C', userId: null })
-})
-
-test('scheduleForYear returns null when no season is configured for that year', async () => {
-  expect(await scheduleForYear(2099)).toBeNull()
-})
-
-test('each initial year produces a schedule that starts at the expected share', async () => {
-  await seedInitialSeasons()
-  for (const seed of INITIAL_SEASONS) {
-    const schedule = await scheduleForYear(seed.year)
-    if (!schedule) throw new Error(`expected schedule for year ${seed.year}`)
-    expect(schedule[0]).toMatchObject({
-      week: seed.startWeek,
-      shareCode: seed.startShare,
-    })
-  }
-})
-
-test('createSeason without startWeek defaults to SEASON_START_WEEK (ADR-0009 Rule 2)', async () => {
-  const s = await createSeason({ year: 2033, startShare: 'A' })
-  expect(s.startWeek).toBe(SEASON_START_WEEK)
-  expect(s.startWeek).toBe(21)
-})
-
-test('createSeason accepts an explicit startWeek override (soft rule)', async () => {
-  // The week-21 convention is a soft default per ADR-0009 Rule 2 — admins
-  // can still pass a different value through the service.
-  const s = await createSeason({ year: 2034, startWeek: 20, startShare: 'A' })
-  expect(s.startWeek).toBe(20)
+test('listEras returns eras ordered by fromYear ascending', async () => {
+  await db.insert(seasonEra).values({ fromYear: 2030, startWeek: 22, startShare: 'D' })
+  expect((await listEras()).map((e) => e.fromYear)).toEqual([2024, 2030])
 })

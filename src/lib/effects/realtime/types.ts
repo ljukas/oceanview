@@ -6,7 +6,6 @@ import { z } from 'zod'
 // invalidation ignores it.
 export const realtimeEventSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('user.changed'), ids: z.array(z.string()).optional() }),
-  z.object({ kind: z.literal('season.changed') }),
   z.object({ kind: z.literal('presence.changed') }),
   z.object({ kind: z.literal('document.changed'), ids: z.array(z.string()).optional() }),
   z.object({ kind: z.literal('folder.changed'), ids: z.array(z.string()).optional() }),
