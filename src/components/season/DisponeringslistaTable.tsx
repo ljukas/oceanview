@@ -233,14 +233,18 @@ function YearCard({ schedule, isCurrent, ownedShareCodes }: YearCardProps) {
       </header>
       <div className="flex flex-col">
         {schedule.monthBands.map((band) => {
-          const cells = schedule.cells.filter(
-            (c) => c.week >= band.firstWeek && c.week <= band.lastWeek,
+          const blocks = schedule.blocks.filter(
+            (b) => b.firstWeek >= band.firstWeek && b.firstWeek <= band.lastWeek,
           )
+          // A band holding only the tail week of a block (e.g. a 1-week Okt
+          // band after the 39–40 block) gets no section — the block's row
+          // already sits under its starting month.
+          if (blocks.length === 0) return null
           return (
             <MonthSection
               key={band.firstWeek}
               band={band}
-              cells={cells}
+              blocks={blocks}
               isCurrent={isCurrent}
               ownedShareCodes={ownedShareCodes}
             />
@@ -252,48 +256,39 @@ function YearCard({ schedule, isCurrent, ownedShareCodes }: YearCardProps) {
 }
 
 type MonthSectionProps = {
-  band: { month: number; firstWeek: number; lastWeek: number; span: number }
-  cells: Array<Cell>
+  band: MonthBand
+  blocks: Array<ShareBlock>
   isCurrent: boolean
   ownedShareCodes: ReadonlySet<ShareCode>
 }
 
-function MonthSection({ band, cells, isCurrent, ownedShareCodes }: MonthSectionProps) {
-  // Months with an odd number of weeks (e.g. 1-week Okt, 5-week Jul/Sep)
-  // would leave the last grid row half-empty, breaking the continuous
-  // vertical and horizontal dividers. Render an aria-hidden placeholder in
-  // that empty slot so the inner border lines run unbroken across the grid.
-  const needsPlaceholder = cells.length % 2 === 1
+function MonthSection({ band, blocks, isCurrent, ownedShareCodes }: MonthSectionProps) {
   return (
     <section className="border-b last:border-b-0">
       <h3 className="bg-muted/50 px-4 py-1 font-semibold text-muted-foreground text-xs uppercase tracking-wider">
         {MONTH_LABELS[band.month]?.()}
       </h3>
-      <div className="grid grid-cols-2">
-        {cells.map((cell, i) => {
-          const isMine = ownedShareCodes.has(cell.shareCode)
+      <div className="flex flex-col">
+        {blocks.map((block, i) => {
+          const isMine = ownedShareCodes.has(block.shareCode)
           return (
             <div
-              key={cell.week}
+              key={block.firstWeek}
               className={cn(
                 'flex items-center justify-between gap-2 px-4 py-2',
-                // Inner cell separators — every left-column cell carries the
-                // vertical divider to the right; rows past the first carry the
-                // horizontal divider on top.
-                i % 2 === 0 && 'border-r',
-                i >= 2 && 'border-t',
-                isCurrent && shareBackgroundClass[cell.shareCode],
+                i > 0 && 'border-t',
+                isCurrent && shareBackgroundClass[block.shareCode],
                 isMine && OWNED_RING,
               )}
             >
-              {isMine && <span className="sr-only">{m.season_my_week_prefix()} </span>}
+              {isMine && <span className="sr-only">{m.season_my_weeks_prefix()} </span>}
               <span
                 className={cn(
                   'tabular-nums',
                   isCurrent ? 'text-foreground/80' : 'text-muted-foreground',
                 )}
               >
-                {cell.week}
+                {block.firstWeek}–{block.lastWeek}
               </span>
               <span
                 className={cn(
@@ -301,12 +296,11 @@ function MonthSection({ band, cells, isCurrent, ownedShareCodes }: MonthSectionP
                   isCurrent ? 'font-bold text-foreground' : 'text-muted-foreground',
                 )}
               >
-                {cell.shareCode}
+                {block.shareCode}
               </span>
             </div>
           )
         })}
-        {needsPlaceholder && <div className={cn(cells.length >= 3 && 'border-t')} aria-hidden />}
       </div>
     </section>
   )

@@ -57,3 +57,30 @@ test('owned share renders one merged cell with a range label', async () => {
   // C owns weeks 39–40 in 2026: a single cell labelled with the whole range.
   await expect.element(screen.getByLabelText(m.season_my_weeks({ from: 39, to: 40 }))).toBeVisible()
 })
+
+test('mobile layout lists one row per block with a week range', async () => {
+  await page.viewport(390, 844)
+  const screen = await render(
+    <DisponeringslistaTable schedules={[y2026]} ownedShareCodes={NO_SHARES} />,
+  )
+  await expect.element(screen.getByText('21–22')).toBeVisible()
+  await expect.element(screen.getByText('39–40')).toBeVisible()
+})
+
+test('mobile layout skips a month heading that only holds a block tail', async () => {
+  const screen = await render(
+    <DisponeringslistaTable schedules={[y2026]} ownedShareCodes={NO_SHARES} />,
+  )
+  // 2026's Okt band is only week 40 — the tail of the 39–40 block, whose row
+  // lives under Sep. Month headings are the mobile layout's only <h3>s; the
+  // exact sequence pins the block grouping (and the Okt skip) without
+  // depending on CSS visibility (the browser test env loads no Tailwind).
+  const headings = [...screen.container.querySelectorAll('h3')].map((h) => h.textContent)
+  expect(headings).toEqual([
+    m.season_month_may(),
+    m.season_month_jun(),
+    m.season_month_jul(),
+    m.season_month_aug(),
+    m.season_month_sep(),
+  ])
+})
