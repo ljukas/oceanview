@@ -32,7 +32,6 @@ export type ShareBlock = {
   firstWeek: number
   lastWeek: number
   shareCode: ShareCode
-  span: number
 }
 
 export type YearSchedule = {
@@ -86,29 +85,20 @@ export function shareForWeek(
   return SHARE_CODES[shareIndex]
 }
 
-// Pure: chunks the season's weeks into whole-share blocks of
-// WEEKS_PER_SHARE consecutive weeks from startWeek.
+// Pure: the season's whole-share blocks — one per share, WEEKS_PER_SHARE
+// consecutive weeks each, rotating from startShare.
 export function shareBlocksForSeason(input: {
   startWeek: number
   startShare: ShareCode
 }): Array<ShareBlock> {
-  const blocks: Array<ShareBlock> = []
-  for (let offset = 0; offset < WEEKS_PER_SEASON; offset += WEEKS_PER_SHARE) {
-    const firstWeek = input.startWeek + offset
-    const shareCode = shareForWeek(input, firstWeek)
-    // Unreachable within the loop bounds — same backstop rationale as the
-    // cells loop in buildSchedules.
-    if (!shareCode) {
-      throw new Error(`shareForWeek returned null for week ${firstWeek}`)
-    }
-    blocks.push({
+  return SHARE_CODES.map((_, i) => {
+    const firstWeek = input.startWeek + i * WEEKS_PER_SHARE
+    return {
       firstWeek,
       lastWeek: firstWeek + WEEKS_PER_SHARE - 1,
-      shareCode,
-      span: WEEKS_PER_SHARE,
-    })
-  }
-  return blocks
+      shareCode: rotateShare(input.startShare, i),
+    }
+  })
 }
 
 // Pure: 0-indexed calendar month of the given ISO week, per the ISO 8601
