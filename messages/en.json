@@ -311,6 +311,8 @@
   "season_month_sep": "Sep",
   "season_my_week": "Your week {week}",
   "season_my_week_prefix": "Your week",
+  "season_my_weeks": "Your weeks {from}–{to}",
+  "season_my_weeks_prefix": "Your weeks",
   "share_assign_description": "The share is assigned in its entirety to one owner.",
   "share_assign_error": "Couldn't assign the share",
   "share_assign_pending": "Assigning…",
