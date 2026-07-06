@@ -390,24 +390,30 @@ test('mobile layout lists one row per block with a week range', async () => {
 })
 
 test('mobile layout skips a month heading that only holds a block tail', async () => {
-  await page.viewport(390, 844)
   const screen = await render(
     <DisponeringslistaTable schedules={[y2026]} ownedShareCodes={NO_SHARES} />,
   )
   // 2026's Okt band is only week 40 — the tail of the 39–40 block, whose row
-  // lives under Sep. The single 'Okt' in the DOM must be the wide layout's
-  // month band, hidden at this width. (Strict locator: a second, mobile 'Okt'
-  // heading would make getByText ambiguous and fail the test.)
-  await expect
-    .element(screen.getByText(m.season_month_oct(), { exact: true }))
-    .not.toBeVisible()
+  // lives under Sep. Month headings are the mobile layout's only <h3>s; the
+  // exact sequence pins the block grouping (and the Okt skip) without
+  // depending on CSS visibility (the browser test env loads no Tailwind).
+  const headings = [...screen.container.querySelectorAll('h3')].map((h) => h.textContent)
+  expect(headings).toEqual([
+    m.season_month_may(),
+    m.season_month_jun(),
+    m.season_month_jul(),
+    m.season_month_aug(),
+    m.season_month_sep(),
+  ])
 })
 ```
 
 - [ ] **Step 2: Run the tests to verify they fail**
 
 Run: `pnpm vitest run --project browser src/components/season/DisponeringslistaTable.browser.test.tsx`
-Expected: the two new tests FAIL — mobile currently renders per-week rows (`21` and `22` separately, no `21–22` text) and an Okt section heading (making the `Okt` locator ambiguous). Task 3's tests still PASS.
+Expected: the two new tests FAIL — mobile currently renders per-week rows (`21` and `22` separately, no `21–22` text) and an Okt section heading (a 6th `<h3>`, failing the 5-heading sequence). Task 3's tests still PASS.
+
+> **Execution amendment (2026-07-06):** the heading test was originally written as a CSS-visibility assertion (`.not.toBeVisible()` on the wide layout's hidden `Okt` band). The browser-test harness deliberately loads no Tailwind CSS, so `hidden`/`lg:hidden` have no effect there — the assertion was environmentally impossible. Replaced with the structural `<h3>` sequence above (same spec requirement); real responsive visibility is covered by Task 5's live browser pass.
 
 - [ ] **Step 3: Implement the mobile block rows**
 
