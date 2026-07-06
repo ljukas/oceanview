@@ -6,6 +6,14 @@ import { buildSchedules } from '~/lib/services/season/logic'
 import type { ShareCode } from '~/lib/shares/codes'
 import { m } from '~/paraglide/messages'
 
+// The browser test env loads no Tailwind CSS, so the component's responsive
+// classes (`hidden lg:block` / `lg:hidden`) have no effect here: BOTH layouts
+// are in the DOM at every viewport, and all assertions below are structural
+// (selectors scoped to markup only one layout produces). The page.viewport
+// calls document each test's intended breakpoint and become load-bearing if
+// the harness ever loads the app CSS; real responsive visibility is verified
+// live in the browser instead.
+
 const ERA = { fromYear: 2024, startWeek: 21, startShare: 'J' as const }
 const y2026 = buildSchedules([ERA], 2026).find((s) => s.year === 2026)
 if (!y2026) throw new Error('fixture: 2026 schedule missing')
