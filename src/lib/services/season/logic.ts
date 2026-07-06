@@ -25,9 +25,20 @@ export type ScheduleCell = {
   month: number
 }
 
+// A whole-share block: the WEEKS_PER_SHARE consecutive weeks one share
+// occupies (ADR-0018 — shares are indivisible, so this is the atomic
+// calendar unit the UI renders).
+export type ShareBlock = {
+  firstWeek: number
+  lastWeek: number
+  shareCode: ShareCode
+  span: number
+}
+
 export type YearSchedule = {
   year: number
   cells: Array<ScheduleCell>
+  blocks: Array<ShareBlock>
   monthBands: Array<MonthBand>
 }
 
@@ -73,6 +84,31 @@ export function shareForWeek(
   const shareOffset = Math.floor(offset / WEEKS_PER_SHARE)
   const shareIndex = (shareIndexOf(input.startShare) + shareOffset) % SHARE_CODES.length
   return SHARE_CODES[shareIndex]
+}
+
+// Pure: chunks the season's weeks into whole-share blocks of
+// WEEKS_PER_SHARE consecutive weeks from startWeek.
+export function shareBlocksForSeason(input: {
+  startWeek: number
+  startShare: ShareCode
+}): Array<ShareBlock> {
+  const blocks: Array<ShareBlock> = []
+  for (let offset = 0; offset < WEEKS_PER_SEASON; offset += WEEKS_PER_SHARE) {
+    const firstWeek = input.startWeek + offset
+    const shareCode = shareForWeek(input, firstWeek)
+    // Unreachable within the loop bounds — same backstop rationale as the
+    // cells loop in buildSchedules.
+    if (!shareCode) {
+      throw new Error(`shareForWeek returned null for week ${firstWeek}`)
+    }
+    blocks.push({
+      firstWeek,
+      lastWeek: firstWeek + WEEKS_PER_SHARE - 1,
+      shareCode,
+      span: WEEKS_PER_SHARE,
+    })
+  }
+  return blocks
 }
 
 // Pure: 0-indexed calendar month of the given ISO week, per the ISO 8601
@@ -141,6 +177,7 @@ export function buildSchedules(
     schedules.push({
       year,
       cells,
+      blocks: shareBlocksForSeason(season),
       monthBands: monthBandsForSeason({ year, startWeek: season.startWeek }),
     })
   }

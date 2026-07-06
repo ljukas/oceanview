@@ -1,5 +1,10 @@
 import { expect, test } from 'vitest'
-import { DEFAULT_YEAR_ROTATION, rotateShare } from '~/lib/shares/codes'
+import {
+  DEFAULT_YEAR_ROTATION,
+  rotateShare,
+  SHARE_CODES,
+  WEEKS_PER_SEASON,
+} from '~/lib/shares/codes'
 import {
   buildSchedules,
   eraForYear,
@@ -7,6 +12,7 @@ import {
   monthForISOWeek,
   type SeasonEra,
   seasonForYear,
+  shareBlocksForSeason,
   shareForWeek,
   startShareForYear,
 } from './logic'
@@ -160,4 +166,38 @@ test('buildSchedules ignores eras that only govern years beyond the range', () =
   )
   expect(schedules.map((s) => s.year)).toEqual([2024, 2025, 2026])
   expect(schedules.every((s) => s.cells[0]?.week === 21)).toBe(true)
+})
+
+test('shareBlocksForSeason pairs the 2026 season into 10 whole-share blocks', () => {
+  const blocks = shareBlocksForSeason({ startWeek: 21, startShare: 'D' })
+  expect(blocks).toHaveLength(SHARE_CODES.length)
+  expect(blocks[0]).toEqual({ firstWeek: 21, lastWeek: 22, shareCode: 'D', span: 2 })
+  expect(blocks[9]).toEqual({ firstWeek: 39, lastWeek: 40, shareCode: 'C', span: 2 })
+  // Blocks tile the whole season with no gaps or overlap.
+  expect(blocks.reduce((sum, b) => sum + b.span, 0)).toBe(WEEKS_PER_SEASON)
+  for (let i = 1; i < blocks.length; i++) {
+    expect(blocks[i]?.firstWeek).toBe((blocks[i - 1]?.lastWeek ?? 0) + 1)
+  }
+})
+
+test('buildSchedules emits blocks that agree with the per-week cells', () => {
+  const schedules = buildSchedules([ANCHOR_ERA], 2026)
+  for (const s of schedules) {
+    expect(s.blocks).toHaveLength(SHARE_CODES.length)
+    for (const block of s.blocks) {
+      const covered = s.cells.filter((c) => c.week >= block.firstWeek && c.week <= block.lastWeek)
+      expect(covered).toHaveLength(block.span)
+      for (const cell of covered) {
+        expect(cell.shareCode).toBe(block.shareCode)
+      }
+    }
+  }
+})
+
+test('a block can straddle a month boundary (2027: A = w21 Maj + w22 Jun)', () => {
+  const y2027 = buildSchedules([ANCHOR_ERA], 2026).find((s) => s.year === 2027)
+  expect(y2027?.blocks[0]).toEqual({ firstWeek: 21, lastWeek: 22, shareCode: 'A', span: 2 })
+  // The two weeks of that block fall in different calendar months.
+  expect(monthForISOWeek(2027, 21)).toBe(4) // Maj
+  expect(monthForISOWeek(2027, 22)).toBe(5) // Jun
 })
