@@ -27,7 +27,7 @@ function Calendar() {
   const passkeyPrompt = usePasskeySetupPrompt()
 
   return (
-    <PageContainer width="full" fill>
+    <PageContainer width="full" fill="lg">
       <h1 className="font-bold text-2xl tracking-tight text-balance md:text-3xl">
         {m.nav_calendar()}
       </h1>

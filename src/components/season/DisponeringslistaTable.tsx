@@ -40,7 +40,7 @@ export function DisponeringslistaTable({ schedules, ownedShareCodes }: Props) {
   const currentYear = new Date().getFullYear()
 
   return (
-    <section className="flex min-h-0 flex-1 flex-col gap-3">
+    <section className="flex flex-col gap-3 lg:min-h-0 lg:flex-1">
       <h2 className="text-center font-heading font-semibold text-lg tracking-tight">
         {m.season_disponeringslista_title()}
       </h2>
@@ -173,8 +173,10 @@ function YearBlock({
 }
 
 function MobileLayout({ schedules, ownedShareCodes, currentYear }: LayoutProps) {
+  // No inner scroll: below lg the PAGE scrolls (PageContainer fill="lg"), so
+  // the scrollbar sits at the panel edge instead of beside the cards.
   return (
-    <div className="flex min-h-0 flex-col gap-4 overflow-auto lg:hidden">
+    <div className="flex flex-col gap-4 lg:hidden">
       {schedules.map((s) => (
         <YearCard
           key={s.year}
@@ -194,15 +196,11 @@ type YearCardProps = {
 }
 
 function YearCard({ schedule, isCurrent, ownedShareCodes }: YearCardProps) {
-  // shrink-0 is load-bearing: overflow-hidden (rounded-corner clipping)
-  // disables the flexbox automatic minimum size, so inside the height-bounded
-  // PageContainer-fill column the cards would otherwise squish to fit instead
-  // of overflowing — leaving MobileLayout's overflow-auto with nothing to
-  // scroll. No ring on the current card: the star + colored rows already mark
-  // it, and a translucent ring stacked outside the hairline border rendered
-  // as a smudged double edge.
+  // No ring on the current card: the star + colored rows already mark it,
+  // and a translucent ring stacked outside the hairline border rendered as
+  // a smudged double edge.
   return (
-    <article className="shrink-0 overflow-hidden rounded-lg border bg-surface-raised">
+    <article className="overflow-hidden rounded-lg border bg-surface-raised">
       <header className="flex items-center gap-2 border-b bg-muted px-4 py-2">
         {isCurrent && <StarIcon className="size-4 text-primary" aria-hidden />}
         <span className="font-semibold tabular-nums">{schedule.year}</span>
