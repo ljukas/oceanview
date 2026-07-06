@@ -16,7 +16,7 @@ export const Route = createFileRoute('/_authenticated/')({
 })
 
 function Calendar() {
-  const { data: schedules } = useSuspenseQuery(orpc.season.listSchedules.queryOptions())
+  const { data: seasons } = useSuspenseQuery(orpc.season.listSchedules.queryOptions())
   const { data: ownedShares } = useSuspenseQuery(orpc.share.listMine.queryOptions())
 
   const ownedShareCodes = new Set(ownedShares)
@@ -31,7 +31,11 @@ function Calendar() {
       <h1 className="font-bold text-2xl tracking-tight text-balance md:text-3xl">
         {m.nav_calendar()}
       </h1>
-      <DisponeringslistaTable schedules={schedules} ownedShareCodes={ownedShareCodes} />
+      <DisponeringslistaTable
+        schedules={seasons.schedules}
+        currentYear={seasons.currentYear}
+        ownedShareCodes={ownedShareCodes}
+      />
       <PasskeySetupPrompt
         open={passkeyPrompt.open}
         pending={passkeyPrompt.pending}
