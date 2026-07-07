@@ -119,9 +119,14 @@ export function BookingStrip({
                 >
                   {popoverSlot && arrange ? (
                     <Popover
-                      open={arrange.popoverWeek === block.firstWeek}
+                      open={
+                        arrange.popover?.week === block.firstWeek &&
+                        arrange.popover.layout === 'strip'
+                      }
                       onOpenChange={(open) =>
-                        arrange.onPopoverWeekChange(open ? block.firstWeek : null)
+                        arrange.onPopoverChange(
+                          open ? { week: block.firstWeek, layout: 'strip' } : null,
+                        )
                       }
                     >
                       <PopoverTrigger asChild>{cellButton}</PopoverTrigger>

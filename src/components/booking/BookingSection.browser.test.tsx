@@ -215,6 +215,43 @@ test('arrange mode renders the seeded draft, suggestion panel and draft chip', a
   expect(cells[1]?.textContent).toContain('C')
 })
 
+test('opening an extra-block popover in arrange mode mounts exactly one panel', async () => {
+  // The harness renders BOTH responsive layouts (strip + cards, CSS-hidden).
+  // Radix portals PopoverContent to document.body, escaping the hidden
+  // wrapper — so a popover open-state keyed only by week opens both layouts'
+  // popovers at once. Clicking the visible (desktop) strip block must open
+  // exactly one panel, not a second detached copy from the hidden layout.
+  await page.viewport(1280, 800)
+  const suggestion = buildSuggestion({
+    season: SEASON_2027,
+    wishes: [],
+    assignedShares: new Set(ALL_CODES),
+  })
+  const queryClient = makeTestQueryClient()
+  queryClient.setQueryData(orpc.booking.getDraft.queryKey(), {
+    year: 2027,
+    draftExists: true,
+    slots: suggestion.slots,
+    suggestion,
+  })
+  const { screen } = await renderWithProviders(
+    <BookingSection data={makeData()} isAdmin ownedShareCodes={NO_SHARES} />,
+    { queryClient },
+  )
+  await screen.getByRole('button', { name: m.booking_arrange() }).click()
+  // Wait for the lazy draft to resolve so the extra block is a popover trigger.
+  await expect.element(screen.getByText(m.booking_draft_chip())).toBeVisible()
+  // The early extra (19–20) is popover-eligible. The harness ships no CSS, so
+  // both layouts render (the strip's trigger is first in the DOM); click it
+  // and assert only its own popover mounts — not the hidden cards' copy too.
+  const label = m.booking_arrange_block_aria({
+    from: EXTRAS.early.firstWeek,
+    to: EXTRAS.early.lastWeek,
+  })
+  await screen.getByRole('button', { name: label }).first().click()
+  await expect.poll(() => document.querySelectorAll('[data-slot="popover-content"]').length).toBe(1)
+})
+
 test('block clicks are ignored while the arrange draft is still loading', async () => {
   await page.viewport(1280, 800)
   // Admin who ALSO owns a share, so the owner wish path is live. Seed

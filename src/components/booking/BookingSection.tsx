@@ -35,6 +35,7 @@ import {
   type ArrangeControls,
   type BookingData,
   buildStripBlocks,
+  type PopoverLayout,
   type StripBlock,
 } from './stripModel'
 
@@ -112,7 +113,7 @@ export function BookingSection({ data, isAdmin, ownedShareCodes }: BookingSectio
 
   const [arranging, setArranging] = useState(false)
   const [selectedWeek, setSelectedWeek] = useState<number | null>(null)
-  const [popoverWeek, setPopoverWeek] = useState<number | null>(null)
+  const [popover, setPopover] = useState<{ week: number; layout: PopoverLayout } | null>(null)
   const [confirm, setConfirm] = useState<'lock' | 'unlock' | null>(null)
 
   // Draft fetched lazily on entering arrange mode — keeps the owner payload
@@ -198,7 +199,7 @@ export function BookingSection({ data, isAdmin, ownedShareCodes }: BookingSectio
         setConfirm(null)
         setArranging(false)
         setSelectedWeek(null)
-        setPopoverWeek(null)
+        setPopover(null)
       },
       onError: showMutationError,
       onSettled: invalidateBooking,
@@ -264,7 +265,7 @@ export function BookingSection({ data, isAdmin, ownedShareCodes }: BookingSectio
     const others = SHARE_CODES.filter((code) => !block.wishes.includes(code))
     const pick = (holder: ShareCode | null) => {
       setHolderMutation.mutate({ firstWeek: block.firstWeek, holder })
-      setPopoverWeek(null)
+      setPopover(null)
     }
     return (
       <div className="flex flex-col gap-1">
@@ -306,7 +307,7 @@ export function BookingSection({ data, isAdmin, ownedShareCodes }: BookingSectio
   }
 
   const arrangeControls: ArrangeControls | null = draft
-    ? { popoverWeek, onPopoverWeekChange: setPopoverWeek, renderHolderPicker }
+    ? { popover, onPopoverChange: setPopover, renderHolderPicker }
     : null
 
   const selectedBlock =
@@ -411,7 +412,7 @@ export function BookingSection({ data, isAdmin, ownedShareCodes }: BookingSectio
             onDone={() => {
               setArranging(false)
               setSelectedWeek(null)
-              setPopoverWeek(null)
+              setPopover(null)
             }}
           />
         </>

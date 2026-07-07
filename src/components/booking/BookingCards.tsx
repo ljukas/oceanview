@@ -93,9 +93,14 @@ export function BookingCards({
                   return popoverSlot && arrange ? (
                     <Popover
                       key={block.firstWeek}
-                      open={arrange.popoverWeek === block.firstWeek}
+                      open={
+                        arrange.popover?.week === block.firstWeek &&
+                        arrange.popover.layout === 'cards'
+                      }
                       onOpenChange={(open) =>
-                        arrange.onPopoverWeekChange(open ? block.firstWeek : null)
+                        arrange.onPopoverChange(
+                          open ? { week: block.firstWeek, layout: 'cards' } : null,
+                        )
                       }
                     >
                       <PopoverTrigger asChild>{rowButton}</PopoverTrigger>

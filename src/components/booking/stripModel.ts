@@ -50,10 +50,15 @@ export type StripBlock = {
 
 // Arrange-mode wiring passed to both layouts: which block's holder popover is
 // open, how to toggle it, and how to render the picker body (BookingSection
-// owns the picker so it can dispatch setSlotHolder).
+// owns the picker so it can dispatch setSlotHolder). The open-state carries
+// the layout that owns it: both layouts render (CSS-hidden) and Radix portals
+// PopoverContent out of the hidden wrapper, so keying by week alone would open
+// both layouts' popovers at once — one anchored, one floating detached.
+export type PopoverLayout = 'strip' | 'cards'
+
 export type ArrangeControls = {
-  popoverWeek: number | null
-  onPopoverWeekChange: (week: number | null) => void
+  popover: { week: number; layout: PopoverLayout } | null
+  onPopoverChange: (popover: { week: number; layout: PopoverLayout } | null) => void
   renderHolderPicker: (block: StripBlock) => ReactNode
 }
 
