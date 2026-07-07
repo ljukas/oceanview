@@ -50,8 +50,7 @@ export function BookingCards({
               </h3>
               <div className="flex flex-col">
                 {bandBlocks.map((block, i) => {
-                  const ownTarget =
-                    actingShare !== null && block.target.targetShare === actingShare
+                  const ownTarget = actingShare !== null && block.target.targetShare === actingShare
                   const disabled = arrange ? false : !interactive || ownTarget
                   const popoverSlot =
                     arrange !== null && (block.kind === 'extra' || !block.holderAssigned)

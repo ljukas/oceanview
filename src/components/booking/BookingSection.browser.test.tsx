@@ -1,10 +1,11 @@
 import { expect, test } from 'vitest'
 import { page } from 'vitest/browser'
-import { extraBlocksForSeason, type Slot } from '~/lib/services/booking/logic'
+import { orpc } from '~/lib/orpc/client'
+import { buildSuggestion, extraBlocksForSeason, type Slot } from '~/lib/services/booking/logic'
 import { monthBandsForRange, shareBlocksForSeason } from '~/lib/services/season/logic'
 import type { ShareCode } from '~/lib/shares/codes'
 import { m } from '~/paraglide/messages'
-import { renderWithProviders } from '~test/browser/render'
+import { makeTestQueryClient, renderWithProviders } from '~test/browser/render'
 import { BookingSection } from './BookingSection'
 import type { BookingData } from './stripModel'
 
@@ -165,4 +166,74 @@ test('a locked round renders the final schedule, hides wishes, and summarizes my
   await expect
     .element(screen.getByText(m.booking_locked_my_weeks({ year: 2027, weeks: '19–20 + 21–22' })))
     .toBeVisible()
+})
+
+test('admins see arrange and lock controls on an open round; owners do not', async () => {
+  const admin = await renderWithProviders(
+    <BookingSection data={makeData()} isAdmin ownedShareCodes={NO_SHARES} />,
+  )
+  await expect
+    .element(admin.screen.getByRole('button', { name: m.booking_arrange() }))
+    .toBeVisible()
+  await expect.element(admin.screen.getByRole('button', { name: m.booking_lock() })).toBeVisible()
+  const owner = await renderWithProviders(
+    <BookingSection data={makeData()} isAdmin={false} ownedShareCodes={NO_SHARES} />,
+  )
+  expect(owner.screen.container.textContent).not.toContain(m.booking_arrange())
+})
+
+test('arrange mode renders the seeded draft, suggestion panel and draft chip', async () => {
+  await page.viewport(1280, 800)
+  const wishes = [
+    { id: 'w1', shareCode: 'C' as const, targetKind: 'share' as const, targetShare: 'A' as const },
+    { id: 'w2', shareCode: 'A' as const, targetKind: 'share' as const, targetShare: 'C' as const },
+  ]
+  const suggestion = buildSuggestion({
+    season: SEASON_2027,
+    wishes,
+    assignedShares: new Set(ALL_CODES),
+  })
+  const queryClient = makeTestQueryClient()
+  queryClient.setQueryData(orpc.booking.getDraft.queryKey(), {
+    year: 2027,
+    draftExists: true,
+    slots: suggestion.slots,
+    suggestion,
+  })
+  const { screen } = await renderWithProviders(
+    <BookingSection data={makeData({ wishes })} isAdmin ownedShareCodes={NO_SHARES} />,
+    { queryClient },
+  )
+  await screen.getByRole('button', { name: m.booking_arrange() }).click()
+  await expect
+    .element(screen.getByText(m.booking_suggestion_summary({ satisfied: 2, total: 2 })))
+    .toBeVisible()
+  await expect.element(screen.getByText('A ↔ C')).toBeVisible()
+  await expect.element(screen.getByText(m.booking_draft_chip())).toBeVisible()
+  // The strip now shows the draft's holders: C on A's nominal block (21–22).
+  const cells = [...screen.container.querySelectorAll('td[colspan="2"] button')]
+  expect(cells[1]?.textContent).toContain('C')
+})
+
+test('a locked round gives admins an unlock menu behind the status chip', async () => {
+  const data = makeData({
+    lockedAt: new Date('2027-03-01T12:00:00Z'),
+    lockedSchedule: [
+      { ...EXTRAS.early, kind: 'extra', holder: null },
+      ...shareBlocksForSeason(SEASON_2027).map((b) => ({
+        firstWeek: b.firstWeek,
+        lastWeek: b.lastWeek,
+        kind: 'rotation' as const,
+        holder: b.shareCode,
+      })),
+      { ...EXTRAS.late, kind: 'extra', holder: null },
+    ],
+  })
+  const { screen } = await renderWithProviders(
+    <BookingSection data={data} isAdmin ownedShareCodes={NO_SHARES} />,
+  )
+  await screen
+    .getByRole('button', { name: new RegExp(m.booking_status_locked({ date: '' }).trim()) })
+    .click()
+  await expect.element(screen.getByRole('menuitem', { name: m.booking_unlock() })).toBeVisible()
 })

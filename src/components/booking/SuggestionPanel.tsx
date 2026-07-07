@@ -1,5 +1,5 @@
-import type { Suggestion } from '~/lib/services/booking/logic'
 import { Button } from '~/components/ui/button'
+import type { Suggestion } from '~/lib/services/booking/logic'
 import { m } from '~/paraglide/messages'
 
 type SuggestionPanelProps = {
@@ -14,9 +14,7 @@ type SuggestionPanelProps = {
 export function SuggestionPanel({ suggestion, onApply, applying }: SuggestionPanelProps) {
   const pills = [
     ...suggestion.cycles.map((cycle) =>
-      cycle.length === 2
-        ? `${cycle[0]} ↔ ${cycle[1]}`
-        : [...cycle, cycle[0]].join(' → '),
+      cycle.length === 2 ? `${cycle[0]} ↔ ${cycle[1]}` : [...cycle, cycle[0]].join(' → '),
     ),
     ...suggestion.autoExtras.map((x) => `${x.firstWeek}–${x.lastWeek} → ${x.holder}`),
   ]

@@ -74,7 +74,8 @@ export function BookingStrip({
               const disabled = arrange ? false : !interactive || ownTarget
               // Extras and unassigned-held rotation slots are popover-assigned
               // in arrange mode; assigned rotation slots use select-then-act.
-              const popoverSlot = arrange !== null && (block.kind === 'extra' || !block.holderAssigned)
+              const popoverSlot =
+                arrange !== null && (block.kind === 'extra' || !block.holderAssigned)
               const cellButton = (
                 <button
                   type="button"
