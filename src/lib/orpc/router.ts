@@ -2,6 +2,7 @@
 // /api/rpc HTTP path, where router.tsx (the SSR entry that otherwise loads it)
 // is never evaluated.
 import '~/lib/zodLocale'
+import { bookingRouter } from './procedures/booking'
 import { documentRouter } from './procedures/document'
 import { binRouter } from './procedures/documentBin'
 import { documentSearchRouter } from './procedures/documentSearch'
@@ -18,6 +19,7 @@ import { userRouter } from './procedures/user'
 
 export const appRouter = {
   bin: binRouter,
+  booking: bookingRouter,
   document: documentRouter,
   documentSearch: documentSearchRouter,
   folder: folderRouter,
