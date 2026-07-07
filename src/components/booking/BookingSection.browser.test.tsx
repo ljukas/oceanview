@@ -215,6 +215,31 @@ test('arrange mode renders the seeded draft, suggestion panel and draft chip', a
   expect(cells[1]?.textContent).toContain('C')
 })
 
+test('block clicks are ignored while the arrange draft is still loading', async () => {
+  await page.viewport(1280, 800)
+  // Admin who ALSO owns a share, so the owner wish path is live. Seed
+  // getActive with the SAME object rendered as the `data` prop so cache and
+  // render agree; seed NO getDraft data — entering arrange mode enables the
+  // lazy draft query but it never resolves in the harness, so `draft` stays
+  // null: the race window, held open deterministically.
+  const data = makeData()
+  const queryClient = makeTestQueryClient()
+  queryClient.setQueryData(orpc.booking.getActive.queryKey(), data)
+  const { screen } = await renderWithProviders(
+    <BookingSection data={data} isAdmin ownedShareCodes={new Set<ShareCode>(['C'])} />,
+    { queryClient },
+  )
+  await screen.getByRole('button', { name: m.booking_arrange() }).click()
+  const bBlock = screen.container.querySelector<HTMLButtonElement>(
+    `td[colspan="2"] button[aria-label="${m.booking_wish_block_aria({ share: 'B', from: 23, to: 24 })}"]`,
+  )
+  expect(bBlock).not.toBeNull()
+  if (bBlock) await page.elementLocator(bBlock).click()
+  // A fall-through to the owner branch would optimistically append C's wish
+  // to the seeded getActive cache; the guard leaves it untouched.
+  expect(queryClient.getQueryData(orpc.booking.getActive.queryKey())?.wishes).toEqual([])
+})
+
 test('a locked round gives admins an unlock menu behind the status chip', async () => {
   const data = makeData({
     lockedAt: new Date('2027-03-01T12:00:00Z'),

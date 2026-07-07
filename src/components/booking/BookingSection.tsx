@@ -242,6 +242,10 @@ export function BookingSection({ data, isAdmin, ownedShareCodes }: BookingSectio
       setSelectedWeek(null)
       return
     }
+    // Arrange mode entered but the draft hasn't loaded yet: do nothing.
+    // Without this, an admin who also owns a share would fall through to the
+    // wish toggle below during the fetch window.
+    if (arranging) return
     if (!interactive || !actingShare || block.target.targetShare === actingShare) return
     const vars = { shareCode: actingShare, ...block.target }
     if (block.myWish) removeWishMutation.mutate(vars)
