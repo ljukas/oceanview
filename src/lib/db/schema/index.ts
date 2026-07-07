@@ -1,4 +1,5 @@
 export * from './betterAuth'
+export * from './booking'
 export * from './document'
 export * from './documentEvent'
 export * from './file'
