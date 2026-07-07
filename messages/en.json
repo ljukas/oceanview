@@ -67,6 +67,8 @@
   "booking_suggestion_none": "No trades to suggest yet",
   "booking_suggestion_open_extras": "To assign manually: {list}",
   "booking_suggestion_summary": "The suggestion satisfies {satisfied} of {total} trade wishes",
+  "booking_suggestion_wish_met_sr": "Trade wish for {share} is fulfilled",
+  "booking_suggestion_wish_unmet_sr": "Trade wish for {share} is not fulfilled",
   "booking_title": "Booking {year}",
   "booking_unlock": "Unlock…",
   "booking_unlock_confirm_body": "The schedule is hidden and the wish round reopens.",

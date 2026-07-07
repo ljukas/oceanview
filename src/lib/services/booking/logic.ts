@@ -115,6 +115,9 @@ export type Suggestion = {
   // Assigned shares with >= 1 trade edge: the "av {total}" denominator in
   // the suggestion panel.
   tradeWishShares: Array<ShareCode>
+  // The trade edges of shares no cycle moved — what the "X av Y" gap
+  // consists of, in canonical A→J order (by wisher, then target).
+  unsatisfiedTradeWishes: Array<{ shareCode: ShareCode; targetShare: ShareCode }>
   autoExtras: Array<AutoExtra>
   openExtras: Array<OpenExtra>
 }
@@ -228,6 +231,16 @@ export function buildSuggestion(input: SuggestionInput): Suggestion {
     const idx = indexOf.get(v)
     return idx !== undefined && (adjacency[idx]?.length ?? 0) > 0
   })
+  // Vertices and their adjacency lists are already canonical, so the
+  // unmoved shares' edges come out A→J by wisher, then target.
+  const covered = new Set(cycles.flat())
+  const unsatisfiedTradeWishes = tradeWishShares
+    .filter((v) => !covered.has(v))
+    .flatMap((v) => {
+      const idx = indexOf.get(v)
+      const targets = idx === undefined ? [] : (adjacency[idx] ?? [])
+      return targets.map((t) => ({ shareCode: v, targetShare: vertices[t] as ShareCode }))
+    })
 
   // ---- Steps 2 + 3: extras ------------------------------------------------
   const autoExtras: Array<AutoExtra> = []
@@ -310,5 +323,13 @@ export function buildSuggestion(input: SuggestionInput): Suggestion {
     }
   }
 
-  return { slots, cycles, satisfiedShares, tradeWishShares, autoExtras, openExtras }
+  return {
+    slots,
+    cycles,
+    satisfiedShares,
+    tradeWishShares,
+    unsatisfiedTradeWishes,
+    autoExtras,
+    openExtras,
+  }
 }

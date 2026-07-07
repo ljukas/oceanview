@@ -221,3 +221,36 @@ test('buildSuggestion: tradeWishShares counts assigned shares with at least one 
   expect(s.tradeWishShares).toEqual(['A', 'B', 'D'])
   expect(s.satisfiedShares).toEqual(['A', 'D']) // B's wish isn't reciprocated
 })
+
+test('buildSuggestion: unsatisfied trade wishes are listed with their targets', () => {
+  const s = buildSuggestion({
+    season: SEASON_2026,
+    wishes: [tradeWish('A', 'D'), tradeWish('D', 'A'), tradeWish('B', 'E'), tradeWish('B', 'C')],
+    assignedShares: ALL_ASSIGNED,
+  })
+  expect(s.satisfiedShares).toEqual(['A', 'D'])
+  // B moved nowhere: every one of its edges surfaces, in canonical A→J
+  // order (by wisher, then target) regardless of insertion order.
+  expect(s.unsatisfiedTradeWishes).toEqual([
+    { shareCode: 'B', targetShare: 'C' },
+    { shareCode: 'B', targetShare: 'E' },
+  ])
+})
+
+test('buildSuggestion: unsatisfiedTradeWishes is empty when all wishes resolve, and skips non-edges', () => {
+  const allSatisfied = buildSuggestion({
+    season: SEASON_2026,
+    wishes: [tradeWish('A', 'D'), tradeWish('D', 'A')],
+    assignedShares: ALL_ASSIGNED,
+  })
+  expect(allSatisfied.unsatisfiedTradeWishes).toEqual([])
+  // A wish targeting an unassigned share is extra-interest, not a trade
+  // edge — it must not be reported as an unsatisfied trade.
+  const assigned: ReadonlySet<ShareCode> = new Set(SHARE_CODES.filter((c) => c !== 'E'))
+  const nonEdge = buildSuggestion({
+    season: SEASON_2026,
+    wishes: [tradeWish('A', 'E')],
+    assignedShares: assigned,
+  })
+  expect(nonEdge.unsatisfiedTradeWishes).toEqual([])
+})

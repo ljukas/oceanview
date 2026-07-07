@@ -187,6 +187,9 @@ test('arrange mode renders the seeded draft, suggestion panel and draft chip', a
   const wishes = [
     { id: 'w1', shareCode: 'C' as const, targetKind: 'share' as const, targetShare: 'A' as const },
     { id: 'w2', shareCode: 'A' as const, targetKind: 'share' as const, targetShare: 'C' as const },
+    // Unreciprocated: B wants A's weeks but nobody wants B's — no cycle can
+    // move B, so its wish must surface as explicitly not fulfilled.
+    { id: 'w3', shareCode: 'B' as const, targetKind: 'share' as const, targetShare: 'A' as const },
   ]
   const suggestion = buildSuggestion({
     season: SEASON_2027,
@@ -206,9 +209,15 @@ test('arrange mode renders the seeded draft, suggestion panel and draft chip', a
   )
   await screen.getByRole('button', { name: m.booking_arrange() }).click()
   await expect
-    .element(screen.getByText(m.booking_suggestion_summary({ satisfied: 2, total: 2 })))
+    .element(screen.getByText(m.booking_suggestion_summary({ satisfied: 2, total: 3 })))
     .toBeVisible()
   await expect.element(screen.getByText('A ↔ C')).toBeVisible()
+  // Per-share wish status: A and C are fulfilled, B is explicitly not —
+  // its chip names what B wished for.
+  await expect.element(screen.getByText('B → A')).toBeVisible()
+  expect(screen.container.textContent).toContain(m.booking_suggestion_wish_met_sr({ share: 'A' }))
+  expect(screen.container.textContent).toContain(m.booking_suggestion_wish_met_sr({ share: 'C' }))
+  expect(screen.container.textContent).toContain(m.booking_suggestion_wish_unmet_sr({ share: 'B' }))
   await expect.element(screen.getByText(m.booking_draft_chip())).toBeVisible()
   // The strip now shows the draft's holders: C on A's nominal block (21–22).
   const cells = [...screen.container.querySelectorAll('td[colspan="2"] button')]

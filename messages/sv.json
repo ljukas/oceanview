@@ -67,6 +67,8 @@
   "booking_suggestion_none": "Inga byten att föreslå ännu",
   "booking_suggestion_open_extras": "Att fördela manuellt: {list}",
   "booking_suggestion_summary": "Förslaget uppfyller {satisfied} av {total} bytesönskemål",
+  "booking_suggestion_wish_met_sr": "Bytesönskemål för {share} uppfylls",
+  "booking_suggestion_wish_unmet_sr": "Bytesönskemål för {share} uppfylls inte",
   "booking_title": "Bokning {year}",
   "booking_unlock": "Lås upp…",
   "booking_unlock_confirm_body": "Schemat döljs och önskerundan öppnas igen.",
