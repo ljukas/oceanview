@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import type { BookingTarget, Slot } from '~/lib/services/booking/logic'
 import type { MonthBand, ShareBlock } from '~/lib/services/season/logic'
 import type { ShareCode } from '~/lib/shares/codes'
@@ -45,6 +46,15 @@ export type StripBlock = {
   wishes: Array<ShareCode>
   myWish: boolean
   target: WishTarget
+}
+
+// Arrange-mode wiring passed to both layouts: which block's holder popover is
+// open, how to toggle it, and how to render the picker body (BookingSection
+// owns the picker so it can dispatch setSlotHolder).
+export type ArrangeControls = {
+  popoverWeek: number | null
+  onPopoverWeekChange: (week: number | null) => void
+  renderHolderPicker: (block: StripBlock) => ReactNode
 }
 
 export function buildStripBlocks(
@@ -108,13 +118,16 @@ export function buildStripBlocks(
   ]
 }
 
-// The block button's accessible name. While wishable it announces the
-// action; otherwise (locked, or the acting share's own block) it announces
-// ownership like the Disponeringslista does.
+// The block button's accessible name. Arrange mode announces selection;
+// while wishable it announces the action; otherwise (locked, or the acting
+// share's own block) it announces ownership like the Disponeringslista.
 export function blockAriaLabel(
   block: StripBlock,
-  input: { showWishes: boolean; actingShare: ShareCode | null },
+  input: { showWishes: boolean; actingShare: ShareCode | null; arranging: boolean },
 ): string | undefined {
+  if (input.arranging) {
+    return m.booking_arrange_block_aria({ from: block.firstWeek, to: block.lastWeek })
+  }
   const ownTarget = input.actingShare !== null && block.target.targetShare === input.actingShare
   if (input.showWishes && !ownTarget) {
     return block.target.targetKind === 'share' && block.target.targetShare

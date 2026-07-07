@@ -1,9 +1,10 @@
 import { MONTH_LABELS, OWNED_RING } from '~/components/season/calendar'
+import { Popover, PopoverContent, PopoverTrigger } from '~/components/ui/popover'
 import type { MonthBand } from '~/lib/services/season/logic'
 import type { ShareCode } from '~/lib/shares/codes'
 import { shareBackgroundClass } from '~/lib/shares/colors'
 import { cn } from '~/lib/utils'
-import { blockAriaLabel, type StripBlock } from './stripModel'
+import { type ArrangeControls, blockAriaLabel, type StripBlock } from './stripModel'
 import { WishChips } from './WishChips'
 
 type BookingCardsProps = {
@@ -15,6 +16,7 @@ type BookingCardsProps = {
   interactive: boolean
   onBlockClick: (block: StripBlock) => void
   selectedWeek: number | null
+  arrange: ArrangeControls | null
 }
 
 export function BookingCards({
@@ -26,6 +28,7 @@ export function BookingCards({
   interactive,
   onBlockClick,
   selectedWeek,
+  arrange,
 }: BookingCardsProps) {
   return (
     <article className="overflow-hidden rounded-lg border bg-surface-raised lg:hidden">
@@ -47,15 +50,22 @@ export function BookingCards({
               </h3>
               <div className="flex flex-col">
                 {bandBlocks.map((block, i) => {
-                  const ownTarget = actingShare !== null && block.target.targetShare === actingShare
-                  const disabled = !interactive || ownTarget
-                  return (
+                  const ownTarget =
+                    actingShare !== null && block.target.targetShare === actingShare
+                  const disabled = arrange ? false : !interactive || ownTarget
+                  const popoverSlot =
+                    arrange !== null && (block.kind === 'extra' || !block.holderAssigned)
+                  const rowButton = (
                     <button
                       key={block.firstWeek}
                       type="button"
                       disabled={disabled}
-                      aria-pressed={showWishes ? block.myWish : undefined}
-                      aria-label={blockAriaLabel(block, { showWishes, actingShare })}
+                      aria-pressed={showWishes && !arrange ? block.myWish : undefined}
+                      aria-label={blockAriaLabel(block, {
+                        showWishes,
+                        actingShare,
+                        arranging: arrange !== null,
+                      })}
                       onClick={() => onBlockClick(block)}
                       className={cn(
                         'flex items-center justify-between gap-2 px-4 py-2 text-left',
@@ -63,7 +73,7 @@ export function BookingCards({
                         i > 0 && 'border-t',
                         block.holder && shareBackgroundClass[block.holder],
                         block.isMine && OWNED_RING,
-                        !block.isMine && block.myWish && 'ring-2 ring-brand ring-inset',
+                        !block.isMine && block.myWish && !arrange && 'ring-2 ring-brand ring-inset',
                         selectedWeek === block.firstWeek && 'ring-2 ring-brand ring-inset',
                       )}
                     >
@@ -80,6 +90,22 @@ export function BookingCards({
                         {block.holder ?? '–'}
                       </span>
                     </button>
+                  )
+                  return popoverSlot && arrange ? (
+                    <Popover
+                      key={block.firstWeek}
+                      open={arrange.popoverWeek === block.firstWeek}
+                      onOpenChange={(open) =>
+                        arrange.onPopoverWeekChange(open ? block.firstWeek : null)
+                      }
+                    >
+                      <PopoverTrigger asChild>{rowButton}</PopoverTrigger>
+                      <PopoverContent align="start" className="w-52 p-1.5">
+                        {arrange.renderHolderPicker(block)}
+                      </PopoverContent>
+                    </Popover>
+                  ) : (
+                    rowButton
                   )
                 })}
               </div>

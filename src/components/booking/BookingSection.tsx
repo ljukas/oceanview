@@ -117,6 +117,7 @@ export function BookingSection({ data, isAdmin, ownedShareCodes }: BookingSectio
     interactive,
     onBlockClick,
     selectedWeek: null,
+    arrange: null,
   }
 
   return (
