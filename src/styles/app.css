@@ -137,16 +137,20 @@
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
-  --share-a: oklch(0.90 0.05 30);
-  --share-b: oklch(0.90 0.05 66);
-  --share-c: oklch(0.90 0.05 102);
-  --share-d: oklch(0.90 0.05 138);
-  --share-e: oklch(0.90 0.05 174);
-  --share-f: oklch(0.90 0.05 210);
-  --share-g: oklch(0.90 0.05 246);
-  --share-h: oklch(0.90 0.05 282);
-  --share-i: oklch(0.90 0.05 318);
-  --share-j: oklch(0.90 0.05 354);
+  /* Share palette ("signal flags"): hues are assigned so consecutive letters
+     alternate warm/cool and light/dark — neighbouring calendar blocks stay
+     distinct, including under red-green color blindness. The letter→hue order
+     is deliberate, not spectral; keep A–J pairs in both themes in sync. */
+  --share-a: oklch(0.83 0.094 25);
+  --share-b: oklch(0.87 0.086 225);
+  --share-c: oklch(0.9 0.13 92);
+  --share-d: oklch(0.83 0.08 258);
+  --share-e: oklch(0.87 0.11 150);
+  --share-f: oklch(0.82 0.11 328);
+  --share-g: oklch(0.88 0.079 60);
+  --share-h: oklch(0.83 0.11 183);
+  --share-i: oklch(0.905 0.058 350);
+  --share-j: oklch(0.83 0.09 296);
 }
 
 .dark {
@@ -196,16 +200,17 @@
   --sidebar-accent-foreground: oklch(0.97 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.556 0 0);
-  --share-a: oklch(0.40 0.05 30);
-  --share-b: oklch(0.40 0.05 66);
-  --share-c: oklch(0.40 0.05 102);
-  --share-d: oklch(0.40 0.05 138);
-  --share-e: oklch(0.40 0.05 174);
-  --share-f: oklch(0.40 0.05 210);
-  --share-g: oklch(0.40 0.05 246);
-  --share-h: oklch(0.40 0.05 282);
-  --share-i: oklch(0.40 0.05 318);
-  --share-j: oklch(0.40 0.05 354);
+  /* Share palette dark variants — same hues as :root, L alternating 0.44/0.50. */
+  --share-a: oklch(0.44 0.1 25);
+  --share-b: oklch(0.5 0.095 225);
+  --share-c: oklch(0.44 0.091 92);
+  --share-d: oklch(0.5 0.1 258);
+  --share-e: oklch(0.44 0.1 150);
+  --share-f: oklch(0.5 0.1 328);
+  --share-g: oklch(0.44 0.1 60);
+  --share-h: oklch(0.5 0.089 183);
+  --share-i: oklch(0.44 0.1 350);
+  --share-j: oklch(0.5 0.1 296);
 }
 
 @layer base {
