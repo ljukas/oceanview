@@ -1,5 +1,6 @@
 import { useSuspenseQuery } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
+import { BookingSection } from '~/components/booking/BookingSection'
 import { PageContainer } from '~/components/layout/PageContainer'
 import { PasskeySetupPrompt } from '~/components/passkey/PasskeySetupPrompt'
 import { DisponeringslistaTable } from '~/components/season/DisponeringslistaTable'
@@ -11,13 +12,16 @@ export const Route = createFileRoute('/_authenticated/')({
   loader: async ({ context: { queryClient } }) => {
     await queryClient.ensureQueryData(orpc.season.listSchedules.queryOptions())
     await queryClient.ensureQueryData(orpc.share.listMine.queryOptions())
+    await queryClient.ensureQueryData(orpc.booking.getActive.queryOptions())
   },
   component: Calendar,
 })
 
 function Calendar() {
+  const { user } = Route.useRouteContext()
   const { data: seasons } = useSuspenseQuery(orpc.season.listSchedules.queryOptions())
   const { data: ownedShares } = useSuspenseQuery(orpc.share.listMine.queryOptions())
+  const { data: booking } = useSuspenseQuery(orpc.booking.getActive.queryOptions())
 
   const ownedShareCodes = new Set(ownedShares)
 
@@ -31,6 +35,11 @@ function Calendar() {
       <h1 className="font-bold text-2xl tracking-tight text-balance md:text-3xl">
         {m.nav_calendar()}
       </h1>
+      <BookingSection
+        data={booking}
+        isAdmin={user.role === 'admin'}
+        ownedShareCodes={ownedShareCodes}
+      />
       <DisponeringslistaTable
         schedules={seasons.schedules}
         currentYear={seasons.currentYear}
