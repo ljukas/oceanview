@@ -91,9 +91,6 @@ export const seasonSlot = pgTable(
     check('season_slot_first_week_range', sql`${table.firstWeek} BETWEEN 1 AND 53`),
     check('season_slot_last_week_range', sql`${table.lastWeek} BETWEEN 1 AND 53`),
     check('season_slot_week_order', sql`${table.lastWeek} > ${table.firstWeek}`),
-    check(
-      'season_slot_rotation_held',
-      sql`${table.kind} = 'extra' OR ${table.holder} IS NOT NULL`,
-    ),
+    check('season_slot_rotation_held', sql`${table.kind} = 'extra' OR ${table.holder} IS NOT NULL`),
   ],
 )
