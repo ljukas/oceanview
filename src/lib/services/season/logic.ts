@@ -92,13 +92,16 @@ export type MonthBand = {
   span: number
 }
 
-// Pure: collapses the 20 season weeks into contiguous same-month bands.
-// Each band carries its calendar month (0-indexed), the inclusive week
-// range, and the span (so callers can drive `<td colSpan>` directly).
-export function monthBandsForSeason(input: { year: number; startWeek: number }): Array<MonthBand> {
+// Pure: collapses an arbitrary inclusive ISO-week range into contiguous
+// same-month bands (generalizes the season variant — the booking strip
+// spans the season plus both shoulder blocks, ADR-0020).
+export function monthBandsForRange(input: {
+  year: number
+  firstWeek: number
+  lastWeek: number
+}): Array<MonthBand> {
   const bands: Array<MonthBand> = []
-  for (let i = 0; i < WEEKS_PER_SEASON; i++) {
-    const week = input.startWeek + i
+  for (let week = input.firstWeek; week <= input.lastWeek; week++) {
     const month = monthForISOWeek(input.year, week)
     const last = bands[bands.length - 1]
     if (last && last.month === month) {
@@ -109,6 +112,17 @@ export function monthBandsForSeason(input: { year: number; startWeek: number }):
     }
   }
   return bands
+}
+
+// Pure: collapses the 20 season weeks into contiguous same-month bands.
+// Each band carries its calendar month (0-indexed), the inclusive week
+// range, and the span (so callers can drive `<td colSpan>` directly).
+export function monthBandsForSeason(input: { year: number; startWeek: number }): Array<MonthBand> {
+  return monthBandsForRange({
+    year: input.year,
+    firstWeek: input.startWeek,
+    lastWeek: input.startWeek + WEEKS_PER_SEASON - 1,
+  })
 }
 
 // One YearSchedule per year from min(fromYear) through currentYear + 1 —

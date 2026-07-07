@@ -4,6 +4,7 @@ import { ANCHOR_ERA } from '~test/fixtures/season'
 import {
   buildSchedules,
   eraForYear,
+  monthBandsForRange,
   monthBandsForSeason,
   monthForISOWeek,
   type SeasonEra,
@@ -153,4 +154,15 @@ test('a block can straddle a month boundary (2027: A = w21 Maj + w22 Jun)', () =
   // The two weeks of that block fall in different calendar months.
   expect(monthForISOWeek(2027, 21)).toBe(4) // Maj
   expect(monthForISOWeek(2027, 22)).toBe(5) // Jun
+})
+
+test('monthBandsForRange bands an arbitrary range and the season variant delegates', () => {
+  const range = monthBandsForRange({ year: 2026, firstWeek: 19, lastWeek: 42 })
+  expect(range.reduce((sum, b) => sum + b.span, 0)).toBe(24)
+  expect(range[0]?.firstWeek).toBe(19)
+  expect(range[range.length - 1]?.lastWeek).toBe(42)
+  // The season slice is exactly the range variant over the season weeks.
+  expect(monthBandsForSeason({ year: 2026, startWeek: 21 })).toEqual(
+    monthBandsForRange({ year: 2026, firstWeek: 21, lastWeek: 40 }),
+  )
 })
