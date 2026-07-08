@@ -70,13 +70,13 @@ The season *structure* stays a code-level physical truth per ADR-0018: 10 shares
 ### Service (`src/lib/services/season/`)
 
 - `season.ts` — `listEras()`: the only DB access (ADR-0002).
-- `logic.ts` — pure era math, every function taking era rows as arguments (testable without a DB): `eraForYear`, `startShareForYear`, `shareForWeek`, `monthForISOWeek`, `monthBandsForSeason`, `buildSchedules(eras, currentYear)`.
+- `logic.ts` — pure era math, every function taking era rows as arguments (testable without a DB): `eraForYear`, `startShareForYear`, `shareBlocksForSeason`, `monthForISOWeek`, `monthBandsForSeason`, `buildSchedules(eras, currentYear)`. (2026-07-06: `shareForWeek` and the per-week `cells` were retired with the whole-share-block rendering — blocks are the atomic calendar unit per ADR-0018, and month bands derive every rendered week.)
 - `errors.ts` — deleted. No mutations remain, so no domain errors. (ADR-0002's "every error code tested" rule is trivially satisfied.)
 - `ANCHOR_START_SHARE` leaves `src/lib/shares/codes.ts` — the seed row carries the anchor now. `WEEKS_PER_SHARE`, `WEEKS_PER_SEASON`, `YEAR_WEEK_SLIP`, `DEFAULT_YEAR_ROTATION`, and `rotateShare` stay: calendar structure, not anchoring.
 
 ### Procedure (`src/lib/orpc/procedures/season.ts`)
 
-`listSchedules` only: `listEras()` → `buildSchedules(eras, new Date().getFullYear())` → `[{ year, cells: [{ week, shareCode, month }], monthBands }]` — today's wire shape minus the now-meaningless `startWeek`. Loader prefetch + `useSuspenseQuery` flow unchanged.
+`listSchedules` only: `listEras()` → `buildSchedules(eras, currentYear)` → `{ currentYear, schedules: [{ year, blocks: [{ firstWeek, lastWeek, shareCode }], monthBands }] }` (2026-07-06: per-week `cells` dropped — blocks + month bands derive every rendered week; `currentYear` ships with the payload so SSR and hydration share one clock for the current-year highlight, closing the New-Year UTC/Stockholm window noted under Consequences; `buildSchedules` returns chronological order, the component reverses for display). Loader prefetch + `useSuspenseQuery` flow unchanged.
 
 ### UI
 
@@ -132,7 +132,7 @@ When the group decides on a new start week or re-anchors the rotation:
 
 ## Verification
 
-- `pnpm test` green: logic tests cover era resolution across a boundary (year before / at / after a second era's `from_year`), rotation from the era anchor (2024 → J, 2025 → G, wrap-around), month bands, and the `shareForWeek` window edges; the service test asserts `listEras()` returns the seeded anchor.
+- `pnpm test` green: logic tests cover era resolution across a boundary (year before / at / after a second era's `from_year`), rotation from the era anchor (2024 → J, 2025 → G, wrap-around), month bands, and the golden 2026 block row (2026-07-06: formerly the `shareForWeek` window edges); the service test asserts `listEras()` returns the seeded anchor.
 - Browser pass: calendar shows 2024 … currentYear+1 starting at week 21 with the J/G/D rotation; owned-week rings intact; no admin affordances for any role.
 
 ## Revisit triggers

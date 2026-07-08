@@ -4,7 +4,7 @@ Internal web app for a sailboat co-ownership group (10–20 users: owners + a co
 
 **State**: scaffold + auth + DB + services + file storage + email all wired. Resend is live in prod (sender domain `mail.lukaslindqvist.se`, verified 2026-06-11; see ADR-0008).
 
-**Architecture lives in `docs/adr/`** (ADRs 0001–0019). This file is a router: rules + commands + gotchas. For *why* a pattern exists, follow the ADR link.
+**Architecture lives in `docs/adr/`** (ADRs 0001–0020). This file is a router: rules + commands + gotchas. For *why* a pattern exists, follow the ADR link.
 
 **How we work lives in `docs/*-workflow.md`** — [feature-workflow.md](docs/feature-workflow.md) (new features) and [refactor-workflow.md](docs/refactor-workflow.md) (behavior-preserving change): the phase-by-phase process from spark to merge, and which skills/agents to reach for at each phase.
 
@@ -41,6 +41,7 @@ Load on demand, not eagerly. The `pnpm dlx @tanstack/intent` block at the bottom
 | Organization rules (social invariants the schema can't express) | `docs/adr/0009-organization-rules.md` |
 | Shares & ownership (indivisible shares, assignment history) | `docs/adr/0018-indivisible-shares.md` |
 | Seasons & Disponeringslista (era table, computed schedules) | `docs/adr/0019-season-eras.md` |
+| Season booking, trade wishes, locking | `docs/adr/0020-season-booking-and-trades.md` |
 | User invitations + invitee onboarding wizard (invite/accept, resend, expiry countdown, 3-step `/onboarding`) | `docs/adr/0017-user-invitation-flow.md` |
 | Reviewing React components | `vercel:react-best-practices` |
 | React component tests (browser-mode, render helpers, cache-seeding) | `test/browser/README.md` |
@@ -87,14 +88,14 @@ src/
       context.ts                base / public / protected / admin procedures
       router.ts                 appRouter; SERVER-ONLY
       client.ts                 isomorphic client + TanStack Query utils
-      procedures/               health, user, image, share, season, document,
+      procedures/               health, user, image, share, season, booking, document,
                                 documentBin, documentSearch, folder, presence, realtime
     db/
       index.ts                  drizzle(postgres(DATABASE_URL)), snake_case
       schema/
         betterAuth.ts           CLI-regenerated; DO NOT hand-edit
         index.ts                barrel
-    services/                   per-entity folders (user, season, share, file,
+    services/                   per-entity folders (user, season, share, booking, file,
                                 document, folder, documentSearch, documentEvent)
                                 each: <entity>.ts, errors.ts (when invariants), .test.ts, index.ts barrel
                                 see ADR-0002
@@ -109,7 +110,7 @@ src/
   hooks/                        useMobile, usePasskeys, useSavedLogin, form
   components/
     {DefaultCatchBoundary,NotFound,AppSidebar,ModeToggle,ThemeProvider}.tsx
-    user/  passkey/  document/  contact/  share/  form/  onboarding/  ui/
+    user/  passkey/  document/  contact/  share/  season/  booking/  form/  onboarding/  ui/
   emails/                       React Email templates (MagicLink, InviteUser); preview with `pnpm email:dev`
   data/passkeyAaguids.json      static AAGUID registry
   utils/seo.ts                  meta-tag helper
@@ -317,6 +318,7 @@ One line each. Reasoning in `git log CLAUDE.md` and in the linked ADR.
 - **Component tests run in Vitest Browser Mode** (2026-06-27). Real Chromium via Playwright (`@vitest/browser-playwright` + `vitest-browser-react`), not jsdom — the Radix surface (dialogs, dropdowns, cmdk, tooltips) needs real pointer/portal behaviour and jsdom would mean a permanent polyfill pile. Two-project Vitest config (`test.projects` in `vite.config.ts`): the `node` project (`extends: true`, distinct `sequence.groupOrder`) keeps the DB suite unchanged; a standalone `vitest.browser.config.ts` carries its own plugins — Paraglide + the **TanStack Start** plugin (rewrites `createServerFn` so server-fn-coupled components and the isomorphic oRPC client bundle) + React; Nitro/Tailwind/devtools omitted. Tests are `*.browser.test.tsx`, `render` is async, assert via retry-able `expect.element`, and get data by cache-seeding a fresh `QueryClient` (`renderWithProviders` in `test/browser/render.tsx`). Components using `useRouter`/route hooks need the hook mocked (no `RouterProvider` yet); MSW + route/loader-level tests deferred. See `test/browser/README.md`.
 - **Sidebar breakpoints**: drawer <768px (`md`); persistent icon rail (expandable inline) from `md` (768px) up. `MOBILE_BREAKPOINT` (768) in `src/hooks/useMobile.ts` aligns with the sidebar primitive's own `md:` show/hide. Pages step at `md:`. Icon-rail tooltips are the canonical exception to the "skip tooltips on self-evident icons" rule.
 - **Seasons are computed from eras** (2026-07-05). The per-year `season` table and its CRUD (dialogs, mutations, domain errors, `season.changed`) are gone; an append-only `season_era` table (seeded 2024/21/J) fixes start week + rotation anchor per era, and `season.listSchedules` computes min(from_year)..currentYear+1 on read. Convention changes are one-row data migrations (runbook in the ADR). Supersedes ADR-0009 Rule 2 (now structural). See ADR-0019.
+- **Season booking per ADR-0020** (2026-07-06). A per-season booking round above the nominal Disponeringslista ("convention below, reality above"): consent-based trade wishes + extra-period marks per share (`season_wish`), a pure max-coverage cycle-solver suggestion, a persisted admin-only 12-slot draft with concrete weeks (`season_slot`, ADR-0019's revisit trigger consumed), reversible lock (`season_booking.locked_at`) publishing the final schedule. Active round = next season, flipping at ISO week 43; year always server-derived. `booking.changed` realtime kind; code-only `BookingDomainError` codes mapped in `bookingErrorMessage.ts`. See ADR-0020.
 
 ---
 

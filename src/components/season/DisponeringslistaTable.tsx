@@ -4,40 +4,20 @@ import { type ShareCode, WEEKS_PER_SHARE } from '~/lib/shares/codes'
 import { shareBackgroundClass } from '~/lib/shares/colors'
 import { cn } from '~/lib/utils'
 import { m } from '~/paraglide/messages'
+import { MONTH_LABELS, OWNED_RING } from './calendar'
 
 type Props = {
   schedules: Array<YearSchedule>
+  currentYear: number
   ownedShareCodes: ReadonlySet<ShareCode>
 }
 
-// Short month labels indexed 0..11 (Jan..Dec). The season only touches
-// positions 4..9 (May..Oct) in practice, but the array keeps the lookup
-// branchless. Message FUNCTIONS, called at render so the labels follow the
-// active locale (precedent: AppSidebar nav items).
-const MONTH_LABELS = [
-  m.season_month_jan,
-  m.season_month_feb,
-  m.season_month_mar,
-  m.season_month_apr,
-  m.season_month_may,
-  m.season_month_jun,
-  m.season_month_jul,
-  m.season_month_aug,
-  m.season_month_sep,
-  m.season_month_oct,
-  m.season_month_nov,
-  m.season_month_dec,
-] as const
-
-// Owned-cell highlight: 2px inset ring drawn inside the cell box so it
-// never collides with the table's month-divider `border-r` or the
-// year-block's heavy `border-t-2`. `--foreground` is the semantic
-// contrast token against both the light share-pastel backgrounds
-// (current-year cells) and the card background (other-year cells).
-const OWNED_RING = 'ring-2 ring-inset ring-foreground'
-
-export function DisponeringslistaTable({ schedules, ownedShareCodes }: Props) {
-  const currentYear = new Date().getFullYear()
+export function DisponeringslistaTable({ schedules, currentYear, ownedShareCodes }: Props) {
+  // Newest first: the seasons owners actually check (current + next) sit at
+  // the top of the Disponeringslista, history below. buildSchedules returns
+  // chronological order — ordering the list for the reader is this view's
+  // decision (precedent: the render-time toSorted() in DocumentTable).
+  const displaySchedules = schedules.toReversed()
 
   return (
     <section className="flex flex-col gap-3 lg:min-h-0 lg:flex-1">
@@ -45,12 +25,12 @@ export function DisponeringslistaTable({ schedules, ownedShareCodes }: Props) {
         {m.season_disponeringslista_title()}
       </h2>
       <WideLayout
-        schedules={schedules}
+        schedules={displaySchedules}
         ownedShareCodes={ownedShareCodes}
         currentYear={currentYear}
       />
       <MobileLayout
-        schedules={schedules}
+        schedules={displaySchedules}
         ownedShareCodes={ownedShareCodes}
         currentYear={currentYear}
       />
@@ -58,7 +38,7 @@ export function DisponeringslistaTable({ schedules, ownedShareCodes }: Props) {
   )
 }
 
-type LayoutProps = Props & { currentYear: number }
+type LayoutProps = Props
 
 function WideLayout({ schedules, ownedShareCodes, currentYear }: LayoutProps) {
   return (
@@ -130,17 +110,22 @@ function YearBlock({
         ))}
       </tr>
       <tr className="text-muted-foreground text-xs">
-        {s.cells.map((cell) => (
-          <td
-            key={cell.week}
-            className={cn(
-              'border-b bg-muted px-1 py-0.5 text-center font-normal tabular-nums',
-              monthEndWeeks.has(cell.week) && 'border-r',
-            )}
-          >
-            {cell.week}
-          </td>
-        ))}
+        {s.monthBands.flatMap((band) =>
+          Array.from({ length: band.span }, (_, i) => {
+            const week = band.firstWeek + i
+            return (
+              <td
+                key={week}
+                className={cn(
+                  'border-b bg-muted px-1 py-0.5 text-center font-normal tabular-nums',
+                  monthEndWeeks.has(week) && 'border-r',
+                )}
+              >
+                {week}
+              </td>
+            )
+          }),
+        )}
       </tr>
       <tr>
         {s.blocks.map((block) => {
@@ -151,7 +136,11 @@ function YearBlock({
               colSpan={WEEKS_PER_SHARE}
               aria-label={
                 isMine
-                  ? m.season_my_weeks({ from: block.firstWeek, to: block.lastWeek })
+                  ? m.season_my_weeks({
+                      from: block.firstWeek,
+                      to: block.lastWeek,
+                      share: block.shareCode,
+                    })
                   : undefined
               }
               className={cn(
@@ -255,8 +244,17 @@ function MonthSection({ band, blocks, isCurrent, ownedShareCodes }: MonthSection
                 isMine && OWNED_RING,
               )}
             >
-              {isMine && <span className="sr-only">{m.season_my_weeks_prefix()} </span>}
+              {isMine && (
+                <span className="sr-only">
+                  {m.season_my_weeks({
+                    from: block.firstWeek,
+                    to: block.lastWeek,
+                    share: block.shareCode,
+                  })}
+                </span>
+              )}
               <span
+                aria-hidden={isMine || undefined}
                 className={cn(
                   'tabular-nums',
                   isCurrent ? 'text-foreground/80' : 'text-muted-foreground',
@@ -265,6 +263,7 @@ function MonthSection({ band, blocks, isCurrent, ownedShareCodes }: MonthSection
                 {block.firstWeek}–{block.lastWeek}
               </span>
               <span
+                aria-hidden={isMine || undefined}
                 className={cn(
                   'font-semibold',
                   isCurrent ? 'font-bold text-foreground' : 'text-muted-foreground',

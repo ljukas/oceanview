@@ -14,6 +14,9 @@ export const realtimeEventSchema = z.discriminatedUnion('kind', [
   // soft-delete / restore / hard-delete, never by upload / rename / move.
   z.object({ kind: z.literal('bin.changed') }),
   z.object({ kind: z.literal('recommendation.changed'), ids: z.array(z.string()).optional() }),
+  // Booking round changed: wishes, draft slots, or lock state (ADR-0020).
+  // No ids — the round is one aggregate; coarse invalidation is right-sized.
+  z.object({ kind: z.literal('booking.changed') }),
   // Add per-entity variants here as they adopt.
 ])
 

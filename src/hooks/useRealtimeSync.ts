@@ -49,6 +49,9 @@ function dispatch(queryClient: QueryClient, event: RealtimeEvent) {
     case 'recommendation.changed':
       void queryClient.invalidateQueries({ queryKey: orpc.recommendation.key() })
       return
+    case 'booking.changed':
+      void queryClient.invalidateQueries({ queryKey: orpc.booking.key() })
+      return
   }
 }
 

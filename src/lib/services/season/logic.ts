@@ -4,7 +4,6 @@ import {
   rotateShare,
   SHARE_CODES,
   type ShareCode,
-  shareIndexOf,
   WEEKS_PER_SEASON,
   WEEKS_PER_SHARE,
 } from '~/lib/shares/codes'
@@ -19,12 +18,6 @@ export type SeasonEra = {
   startShare: ShareCode
 }
 
-export type ScheduleCell = {
-  week: number
-  shareCode: ShareCode
-  month: number
-}
-
 // A whole-share block: the WEEKS_PER_SHARE consecutive weeks one share
 // occupies (ADR-0018 — shares are indivisible, so this is the atomic
 // calendar unit the UI renders).
@@ -36,7 +29,6 @@ export type ShareBlock = {
 
 export type YearSchedule = {
   year: number
-  cells: Array<ScheduleCell>
   blocks: Array<ShareBlock>
   monthBands: Array<MonthBand>
 }
@@ -67,22 +59,6 @@ export function seasonForYear(
   const era = eraForYear(eras, year)
   if (!era) return null
   return { startWeek: era.startWeek, startShare: startShareForYear(era, year) }
-}
-
-// Pure: returns the share occupying `isoWeek` within the season, or null if
-// the week sits outside the 20-week window. Weeks map to shares in blocks of
-// WEEKS_PER_SHARE consecutive weeks, advancing from startShare and wrapping
-// mod 10.
-export function shareForWeek(
-  input: { startWeek: number; startShare: ShareCode },
-  isoWeek: number,
-): ShareCode | null {
-  const offset = isoWeek - input.startWeek
-  if (offset < 0 || offset >= WEEKS_PER_SEASON) return null
-
-  const shareOffset = Math.floor(offset / WEEKS_PER_SHARE)
-  const shareIndex = (shareIndexOf(input.startShare) + shareOffset) % SHARE_CODES.length
-  return SHARE_CODES[shareIndex]
 }
 
 // Pure: the season's whole-share blocks — one per share, WEEKS_PER_SHARE
@@ -116,13 +92,16 @@ export type MonthBand = {
   span: number
 }
 
-// Pure: collapses the 20 season weeks into contiguous same-month bands.
-// Each band carries its calendar month (0-indexed), the inclusive week
-// range, and the span (so callers can drive `<td colSpan>` directly).
-export function monthBandsForSeason(input: { year: number; startWeek: number }): Array<MonthBand> {
+// Pure: collapses an arbitrary inclusive ISO-week range into contiguous
+// same-month bands (generalizes the season variant — the booking strip
+// spans the season plus both shoulder blocks, ADR-0020).
+export function monthBandsForRange(input: {
+  year: number
+  firstWeek: number
+  lastWeek: number
+}): Array<MonthBand> {
   const bands: Array<MonthBand> = []
-  for (let i = 0; i < WEEKS_PER_SEASON; i++) {
-    const week = input.startWeek + i
+  for (let week = input.firstWeek; week <= input.lastWeek; week++) {
     const month = monthForISOWeek(input.year, week)
     const last = bands[bands.length - 1]
     if (last && last.month === month) {
@@ -135,10 +114,22 @@ export function monthBandsForSeason(input: { year: number; startWeek: number }):
   return bands
 }
 
+// Pure: collapses the 20 season weeks into contiguous same-month bands.
+// Each band carries its calendar month (0-indexed), the inclusive week
+// range, and the span (so callers can drive `<td colSpan>` directly).
+export function monthBandsForSeason(input: { year: number; startWeek: number }): Array<MonthBand> {
+  return monthBandsForRange({
+    year: input.year,
+    firstWeek: input.startWeek,
+    lastWeek: input.startWeek + WEEKS_PER_SEASON - 1,
+  })
+}
+
 // One YearSchedule per year from min(fromYear) through currentYear + 1 —
-// full history plus next season for planning (ADR-0019). Newest first:
-// the seasons owners actually check (current + next) sit at the top of the
-// Disponeringslista, history below.
+// full history plus next season for planning (ADR-0019). Chronological
+// (oldest first): this is a pure read-model, so how the list is ordered for
+// the reader (the Disponeringslista shows newest first) is a presentation
+// decision left to the component.
 export function buildSchedules(
   eras: ReadonlyArray<SeasonEra>,
   currentYear: number,
@@ -148,27 +139,14 @@ export function buildSchedules(
   const lastYear = currentYear + 1
 
   const schedules: Array<YearSchedule> = []
-  for (let year = lastYear; year >= firstYear; year--) {
+  for (let year = firstYear; year <= lastYear; year++) {
     const season = seasonForYear(eras, year)
     // Unreachable within [firstYear, lastYear] — firstYear is an era's
     // fromYear — but keeps the loop total if the range logic ever changes.
     if (!season) continue
 
-    const cells = Array.from({ length: WEEKS_PER_SEASON }, (_, i) => {
-      const week = season.startWeek + i
-      const shareCode = shareForWeek(season, week)
-      // Within [startWeek, startWeek + WEEKS_PER_SEASON) shareForWeek always
-      // resolves; this guard exists so a future change to WEEKS_PER_SEASON
-      // can't silently produce nulls.
-      if (!shareCode) {
-        throw new Error(`shareForWeek returned null for ${year} week ${week}`)
-      }
-      return { week, shareCode, month: monthForISOWeek(year, week) }
-    })
-
     schedules.push({
       year,
-      cells,
       blocks: shareBlocksForSeason(season),
       monthBands: monthBandsForSeason({ year, startWeek: season.startWeek }),
     })

@@ -155,6 +155,13 @@
       "when": 1783275530049,
       "tag": "0021_drop_season_table",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1783383667360,
+      "tag": "0022_add_season_booking",
+      "breakpoints": true
     }
   ]
 }
