@@ -35,9 +35,17 @@ export function useActivityGate({
   gracePeriodMs,
   idleTimeoutMs,
 }: ActivityGateConfig = ACTIVITY_GATE_CONFIG): boolean {
-  // Starts open and syncs to real visibility on mount — `document` doesn't
-  // exist during SSR, and nothing renders from this value, so there's no
-  // hydration mismatch to worry about.
+  // Must start `true` to match `createActivityGateState` below: the reducer is
+  // the single source of truth and this only mirrors its flips. Seeding it from
+  // `document.visibilityState` instead looks like an easy win for tabs opened in
+  // the background, but it desyncs the two — the reducer would still say
+  // `shouldStream: true`, so neither the `hidden` nor the later `visible` event
+  // flips anything, no `setShouldStream` ever fires, and the tab never connects
+  // for the rest of its life. A background-opened tab instead streams for one
+  // grace period and then stops, which is the same deal every hidden tab gets.
+  //
+  // Safe during SSR: `document` is only touched inside the effect, and nothing
+  // renders from this value, so there's no hydration mismatch either.
   const [shouldStream, setShouldStream] = useState(true)
 
   useEffect(() => {
