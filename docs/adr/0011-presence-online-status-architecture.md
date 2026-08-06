@@ -214,7 +214,7 @@ This subsystem is correctly wired when:
 Drift checks for this ADR itself:
 
 - `grep -rn "presence.acquire\|presence.release" src/` — production hits only in `src/lib/orpc/procedures/realtime.ts` (one `acquire`, one `release`); the rest are `effects/presence/presence.test.ts` exercising its own `createInMemoryPresence()` instance. Presence is acquired/released **only** by the SSE lifecycle; nowhere else may mint or drop presence.
-- `grep -rn "presence.changed" src/` — three load-bearing regions agree: the schema variant (`effects/realtime/types.ts`), the dispatch case (`hooks/useRealtimeSync.ts`), and the two publish sites (`procedures/realtime.ts`). The remaining hits are comments mentioning the event (`procedures/realtime.ts` header, `procedures/presence.ts`, `effects/presence/presence.ts`) — fine, but no new *code* hit may appear outside the three regions.
+- `grep -rn "presence.changed" src/` — four load-bearing regions agree: the schema variant (`effects/realtime/types.ts`), the dispatch case **and** the `ALL_EVENT_KINDS` entry (both in `hooks/useRealtimeSync.ts` — see the 2026-08-06 amendment), and the two publish sites (`procedures/realtime.ts`). The remaining hits are comments mentioning the event (`procedures/realtime.ts` header, `procedures/presence.ts`, `effects/presence/presence.ts`) — fine, but no new *code* hit may appear outside the four regions.
 - `grep -rn "listOnline" src/` — the effect (`effects/presence/`: interface, adapter, tests), the procedure (`procedures/presence.ts`), and one consuming route: `owners.tsx` (loader prefetch plus the `ActiveOwners` and `DeletedOwners` views). No service reads it.
 - `grep -rn "presence" src/lib/services/` — zero hits. Presence is an effect, not a service; services never touch it.
 

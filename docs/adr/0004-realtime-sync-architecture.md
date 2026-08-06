@@ -251,12 +251,20 @@ When an entity (e.g. a future `booking`) needs realtime sync:
    ```
    The `kind` literal must be `<namespace>.changed`, where `<namespace>` matches the top-level `appRouter` key.
 
-2. **Add a dispatch case.** Extend the `switch` in `src/hooks/useRealtimeSync.ts`:
+2. **Add a dispatch case *and* an `ALL_EVENT_KINDS` entry.** Both live in `src/hooks/useRealtimeSync.ts`:
    ```ts
    case 'booking.changed':
      void queryClient.invalidateQueries({ queryKey: orpc.booking.key() })
      return
    ```
+   ```ts
+   const ALL_EVENT_KINDS = Object.keys({
+     // …
+     'booking.changed': true,
+   } satisfies Record<RealtimeEventKind, true>) as RealtimeEventKind[]
+   ```
+   `ALL_EVENT_KINDS` drives the post-gap resync (a tab that was disconnected by the activity gate replays every kind on reconnect), and its `satisfies` is the **only** compile-time guard that the new kind was handled — the `switch` returns `void` and has no `default`, so a missing `case` compiles silently. Add the entry and `tsc` stops complaining; add the `case` because nothing will remind you twice.
+
    Blanket `key()` is the default; narrow to sub-namespace keys or add extra namespaces only with a reason, written as the `case` comment (see [Dispatch granularity](#dispatch-granularity)).
 
 3. **Publish from every mutation procedure** for that entity (`src/lib/orpc/procedures/booking.ts`):
