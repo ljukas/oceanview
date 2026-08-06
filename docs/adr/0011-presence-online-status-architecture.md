@@ -5,6 +5,14 @@
 - **Deciders**: Lukas
 - **Decision in one line**: Track who is online with a typed `presence` effect that is reference-counted off the SSE connection lifecycle — the realtime subscription procedure calls `presence.acquire(userId)` on connect and `presence.release(userId)` on disconnect, publishes a `presence.changed` realtime event only on the `0→1` and `1→0` transitions, and a single `presenceRouter.listOnline` read model feeds green "Ansluten" dots in the UI. The store is an in-process refcount `Map`, single-instance like the realtime bus it rides on.
 
+> **Amended 2026-08-06 — "online" now means visible and in use.** The client only holds its SSE stream open while the tab is actually being used: visible, or hidden for less than a 60s grace period, and not idle for 30 min while visible. The gate is `useActivityGate()` (`src/hooks/useActivityGate.ts`) over a pure reducer (`src/utils/activityGate.ts`); it feeds `useRealtimeSync`'s effect dependency array, so closing the gate runs the effect's existing `controller.abort()` and reopening it re-runs the same `backOff` loop. **Nothing on the server changed** — `acquire`/`release`, the transition-gated publish, and `listOnline` are all untouched; the refcount simply sees more connect/disconnect cycles, which it already handles correctly.
+>
+> **Why**: an always-open SSE stream is an in-flight request, and Vercel bills Fluid **Provisioned Memory** for an instance's entire lifetime — "billing continues until the last in-flight request completes". One tab left open 24/7 costs ~1,460 GB-hrs/month against a **360 GB-hr** Hobby allowance, so a single forgotten tab exhausts the monthly budget in 7.5 days. On 2026-08-05 this soft-blocked the whole Vercel account (`FAIR_USE_LIMITS_EXCEEDED`, `blockedDueToOverageType: 'fluidDuration'`).
+>
+> **This partially revisits [§D "Last active" / away states](#d-last-active--away-states-idle-detection) below**, which named "tab is backgrounded" as out of scope. What changed is only the *connection lifecycle*, not the data model: presence is still a binary refcount with no `last_seen` column and no three-state away/idle UI — those remain out of scope and still count as a redesign. The visible consequence is that a user idle for 30+ minutes, or with the tab backgrounded for 60+ seconds, now reads as offline. For a group of this size "is someone actually looking at the app right now" is arguably the more useful signal anyway.
+>
+> **Consequence for consumers**: gaps are wider and more frequent than before, so a reconnect must assume it missed events. TanStack Query's `refetchOnWindowFocus` covers the hidden→visible path but **only** that path — its `focusManager` listens solely to `visibilitychange` — so `useRealtimeSync` explicitly replays every event kind's invalidations on any reconnect that follows a gate-driven close. See `ALL_EVENT_KINDS` there.
+
 ---
 
 ## Context

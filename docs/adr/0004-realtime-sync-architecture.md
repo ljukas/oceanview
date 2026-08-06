@@ -216,6 +216,8 @@ The browser hook uses `exponential-backoff` with: starting delay 1s, ×2 multipl
 
 All other failures (network drop, server restart, function cold-restart between deploys) retry until the next attempt succeeds. The reconnect is intentionally noisy at `warn` level in the browser logger so client crashes mid-stream show up in `/api/log`.
 
+**Since 2026-08-06 the stream is also closed deliberately by the client**, not only held open until something breaks. `useActivityGate()` (`src/hooks/useActivityGate.ts`) gates the effect: a tab hidden for 60s, or visible but idle for 30 min, drops its connection and reconnects when it becomes visible or is used again. This reuses the abort path above verbatim — a third reason for the retry loop to stop, indistinguishable from unmount as far as this section is concerned. The rationale (Vercel Fluid Provisioned Memory billing for the whole instance lifetime) lives in the [ADR-0011 amendment](./0011-presence-online-status-architecture.md). One consequence lands here: because gaps are now routine, `useRealtimeSync` replays every event kind's invalidations on a reconnect that follows a gate-driven close — `refetchOnWindowFocus` alone is not enough, since its `focusManager` only listens to `visibilitychange` and therefore misses the idle-while-visible case.
+
 ### Shutdown teardown
 
 The server handler is `async function*`. oRPC wires `signal` to two sources: client disconnect (TCP RST or `AbortController` from the browser) and function shutdown (Vercel sending SIGTERM during a deploy). The handler's `try/finally` logs both ends:
@@ -278,7 +280,9 @@ That's the whole recipe. No new files in `effects/realtime/`. No changes to the 
 - `src/lib/orpc/procedures/realtime.ts` — SSE handler (`realtime.events`).
 - `src/lib/orpc/procedures/<entity>.ts` — publish sites (the publishes in `user.create` / `user.update` / `user.delete` / `user.restore` in `procedures/user.ts` are the canonical pattern).
 - `src/lib/orpc/router.ts` — registers `realtime: realtimeRouter`.
-- `src/hooks/useRealtimeSync.ts` — browser subscriber + dispatch + reconnect loop. **Extend the `switch` here for new event kinds.**
+- `src/hooks/useRealtimeSync.ts` — browser subscriber + dispatch + reconnect loop. **Extend the `switch` *and* `ALL_EVENT_KINDS` here for new event kinds.**
+- `src/hooks/useActivityGate.ts` — visibility/idle gate feeding that hook's effect deps (DOM listeners + timers).
+- `src/utils/activityGate.ts` + `activityGate.test.ts` — the gate's pure reducer and its `node`-project tests.
 - `src/routes/_authenticated.tsx` — the single `useRealtimeSync()` mount.
 
 ---
