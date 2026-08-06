@@ -1,13 +1,16 @@
 import { isDefinedError } from '@orpc/client'
 import { type QueryClient, useQueryClient } from '@tanstack/react-query'
 import { backOff } from 'exponential-backoff'
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
+import { useActivityGate } from '~/hooks/useActivityGate'
 import type { RealtimeEvent } from '~/lib/effects'
 import { logger } from '~/lib/logger/browser'
 import { client, orpc } from '~/lib/orpc/client'
 
-function dispatch(queryClient: QueryClient, event: RealtimeEvent) {
-  switch (event.kind) {
+type RealtimeEventKind = RealtimeEvent['kind']
+
+function dispatch(queryClient: QueryClient, kind: RealtimeEventKind) {
+  switch (kind) {
     case 'user.changed':
       void queryClient.invalidateQueries({ queryKey: orpc.user.key() })
       return
@@ -55,13 +58,45 @@ function dispatch(queryClient: QueryClient, event: RealtimeEvent) {
   }
 }
 
-// One SSE subscription per authenticated tab. Mounted from
-// `_authenticated.tsx` so the connection lives for the whole session and
-// every authenticated route benefits without re-subscribing.
+// Every event kind, so a post-gap resync can replay exactly the invalidations
+// the live stream would have performed — including the deliberate omissions
+// above (thumbnails stay cached). `satisfies` makes adding a variant to
+// `realtimeEventSchema` a build error until it is listed here too.
+const ALL_EVENT_KINDS = Object.keys({
+  'user.changed': true,
+  'presence.changed': true,
+  'share.changed': true,
+  'document.changed': true,
+  'folder.changed': true,
+  'bin.changed': true,
+  'recommendation.changed': true,
+  'booking.changed': true,
+} satisfies Record<RealtimeEventKind, true>) as RealtimeEventKind[]
+
+// One SSE subscription per authenticated tab, held open only while the tab is
+// actually in use (`useActivityGate`). Mounted from `_authenticated.tsx` so it
+// covers the whole session and every authenticated route without re-subscribing.
+//
+// Gating matters for cost, not just tidiness: an always-open stream is an
+// in-flight request, and Vercel bills Fluid Provisioned Memory for an
+// instance's entire lifetime — "until the last in-flight request completes".
+// See the 2026-08-06 amendment to ADR-0011.
 export function useRealtimeSync(): void {
   const queryClient = useQueryClient()
+  const shouldStream = useActivityGate()
+  // Set whenever the gate closes the stream, so the next successful open knows
+  // it has a gap to make up. TanStack Query's `refetchOnWindowFocus` listens
+  // only to `visibilitychange`, so it covers a hidden-tab gap but *not* an
+  // idle-while-visible one — without this, a tab that reconnects after going
+  // idle would render pre-gap data behind a live-looking connection.
+  const missedEvents = useRef(false)
 
   useEffect(() => {
+    if (!shouldStream) {
+      missedEvents.current = true
+      return
+    }
+
     const controller = new AbortController()
     const log = logger.child({ scope: 'realtime' })
 
@@ -69,8 +104,15 @@ export function useRealtimeSync(): void {
       async () => {
         const stream = await client.realtime.events(undefined, { signal: controller.signal })
         log.info('realtime subscription opened')
+        if (missedEvents.current) {
+          missedEvents.current = false
+          for (const kind of ALL_EVENT_KINDS) {
+            dispatch(queryClient, kind)
+          }
+          log.debug('resynced after realtime gap')
+        }
         for await (const event of stream) {
-          dispatch(queryClient, event)
+          dispatch(queryClient, event.kind)
         }
         throw new Error('realtime stream ended')
       },
@@ -98,5 +140,5 @@ export function useRealtimeSync(): void {
       controller.abort()
       log.debug('realtime subscription closed')
     }
-  }, [queryClient])
+  }, [queryClient, shouldStream])
 }
