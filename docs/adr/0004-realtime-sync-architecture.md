@@ -291,14 +291,14 @@ That's the whole recipe. No new files in `effects/realtime/`. No changes to the 
 
 Adding a new event kind is correctly wired when:
 
-- The new variant compiles cleanly in `realtimeEventSchema` — TypeScript narrows the `switch` and forces the new `case` in `useRealtimeSync`'s dispatch.
+- The new variant compiles cleanly in `realtimeEventSchema`, and `tsc --noEmit` then **fails** on `ALL_EVENT_KINDS` in `useRealtimeSync` until the kind is listed there (`satisfies Record<RealtimeEvent['kind'], true>`). That error is the reminder to add the matching `case` too. Note the `switch` itself does **not** enforce this — it returns `void` and has no `default`, so a missing `case` compiles silently; `ALL_EVENT_KINDS` is the only compile-time guard (verified 2026-08-06 by adding a throwaway variant: exactly one error, and it came from `ALL_EVENT_KINDS`).
 - `pnpm test` passes — no test change is required for new event kinds; the existing `realtime.test.ts` covers the publisher contract.
 - Grep `src/lib/orpc/procedures/<entity>.ts` for every mutation handler — each one ends with `await realtime.publish({ kind: '<namespace>.changed', ids: [...] })`.
 - `pnpm dev`, open the app in two tabs as an admin, mutate the entity in tab A — tab B's affected route refetches within a few hundred milliseconds with no manual reload.
 - Disconnect the network on tab B briefly, then restore — the browser console logs `realtime connection lost` (warn) and `realtime subscription opened` (info); the next mutation propagates.
 
 Drift checks for this ADR itself:
-- Grep `'.changed'` across `src/lib/effects/realtime/types.ts`, `src/hooks/useRealtimeSync.ts`, and `src/lib/orpc/procedures/` — counts must agree (one schema variant ↔ one dispatch case ↔ one or more publish sites).
+- Grep `'.changed'` across `src/lib/effects/realtime/types.ts`, `src/hooks/useRealtimeSync.ts`, and `src/lib/orpc/procedures/` — counts must agree (one schema variant ↔ one dispatch case ↔ one `ALL_EVENT_KINDS` entry ↔ one or more publish sites). Note each kind now appears **twice** in `useRealtimeSync.ts`.
 - Grep `src/lib/services/` for `realtime` — must return zero hits (services don't publish).
 - Grep `src/routes/` for `useRealtimeSync` — must return exactly one hit, in `_authenticated.tsx`.
 
