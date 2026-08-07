@@ -216,6 +216,8 @@ The browser hook uses `exponential-backoff` with: starting delay 1s, ×2 multipl
 
 All other failures (network drop, server restart, function cold-restart between deploys) retry until the next attempt succeeds. The reconnect is intentionally noisy at `warn` level in the browser logger so client crashes mid-stream show up in `/api/log`.
 
+**Since 2026-08-06 the stream is also closed deliberately by the client**, not only held open until something breaks. `useActivityGate()` (`src/hooks/useActivityGate.ts`) gates the effect: a tab hidden for 60s, or visible but idle for 30 min, drops its connection and reconnects when it becomes visible or is used again. This reuses the abort path above verbatim — a third reason for the retry loop to stop, indistinguishable from unmount as far as this section is concerned. The rationale (Vercel Fluid Provisioned Memory billing for the whole instance lifetime) lives in the [ADR-0011 amendment](./0011-presence-online-status-architecture.md). One consequence lands here: because gaps are now routine, `useRealtimeSync` replays every event kind's invalidations on a reconnect that follows a gate-driven close — `refetchOnWindowFocus` alone is not enough, since its `focusManager` only listens to `visibilitychange` and therefore misses the idle-while-visible case.
+
 ### Shutdown teardown
 
 The server handler is `async function*`. oRPC wires `signal` to two sources: client disconnect (TCP RST or `AbortController` from the browser) and function shutdown (Vercel sending SIGTERM during a deploy). The handler's `try/finally` logs both ends:
@@ -249,12 +251,20 @@ When an entity (e.g. a future `booking`) needs realtime sync:
    ```
    The `kind` literal must be `<namespace>.changed`, where `<namespace>` matches the top-level `appRouter` key.
 
-2. **Add a dispatch case.** Extend the `switch` in `src/hooks/useRealtimeSync.ts`:
+2. **Add a dispatch case *and* an `ALL_EVENT_KINDS` entry.** Both live in `src/hooks/useRealtimeSync.ts`:
    ```ts
    case 'booking.changed':
      void queryClient.invalidateQueries({ queryKey: orpc.booking.key() })
      return
    ```
+   ```ts
+   const ALL_EVENT_KINDS = Object.keys({
+     // …
+     'booking.changed': true,
+   } satisfies Record<RealtimeEventKind, true>) as RealtimeEventKind[]
+   ```
+   `ALL_EVENT_KINDS` drives the post-gap resync (a tab that was disconnected by the activity gate replays every kind on reconnect), and its `satisfies` is the **only** compile-time guard that the new kind was handled — the `switch` returns `void` and has no `default`, so a missing `case` compiles silently. Add the entry and `tsc` stops complaining; add the `case` because nothing will remind you twice.
+
    Blanket `key()` is the default; narrow to sub-namespace keys or add extra namespaces only with a reason, written as the `case` comment (see [Dispatch granularity](#dispatch-granularity)).
 
 3. **Publish from every mutation procedure** for that entity (`src/lib/orpc/procedures/booking.ts`):
@@ -278,7 +288,9 @@ That's the whole recipe. No new files in `effects/realtime/`. No changes to the 
 - `src/lib/orpc/procedures/realtime.ts` — SSE handler (`realtime.events`).
 - `src/lib/orpc/procedures/<entity>.ts` — publish sites (the publishes in `user.create` / `user.update` / `user.delete` / `user.restore` in `procedures/user.ts` are the canonical pattern).
 - `src/lib/orpc/router.ts` — registers `realtime: realtimeRouter`.
-- `src/hooks/useRealtimeSync.ts` — browser subscriber + dispatch + reconnect loop. **Extend the `switch` here for new event kinds.**
+- `src/hooks/useRealtimeSync.ts` — browser subscriber + dispatch + reconnect loop. **Extend the `switch` *and* `ALL_EVENT_KINDS` here for new event kinds.**
+- `src/hooks/useActivityGate.ts` — visibility/idle gate feeding that hook's effect deps (DOM listeners + timers).
+- `src/utils/activityGate.ts` + `activityGate.test.ts` — the gate's pure reducer and its `node`-project tests.
 - `src/routes/_authenticated.tsx` — the single `useRealtimeSync()` mount.
 
 ---
@@ -287,14 +299,14 @@ That's the whole recipe. No new files in `effects/realtime/`. No changes to the 
 
 Adding a new event kind is correctly wired when:
 
-- The new variant compiles cleanly in `realtimeEventSchema` — TypeScript narrows the `switch` and forces the new `case` in `useRealtimeSync`'s dispatch.
+- The new variant compiles cleanly in `realtimeEventSchema`, and `tsc --noEmit` then **fails** on `ALL_EVENT_KINDS` in `useRealtimeSync` until the kind is listed there (`satisfies Record<RealtimeEvent['kind'], true>`). That error is the reminder to add the matching `case` too. Note the `switch` itself does **not** enforce this — it returns `void` and has no `default`, so a missing `case` compiles silently; `ALL_EVENT_KINDS` is the only compile-time guard (verified 2026-08-06 by adding a throwaway variant: exactly one error, and it came from `ALL_EVENT_KINDS`).
 - `pnpm test` passes — no test change is required for new event kinds; the existing `realtime.test.ts` covers the publisher contract.
 - Grep `src/lib/orpc/procedures/<entity>.ts` for every mutation handler — each one ends with `await realtime.publish({ kind: '<namespace>.changed', ids: [...] })`.
 - `pnpm dev`, open the app in two tabs as an admin, mutate the entity in tab A — tab B's affected route refetches within a few hundred milliseconds with no manual reload.
 - Disconnect the network on tab B briefly, then restore — the browser console logs `realtime connection lost` (warn) and `realtime subscription opened` (info); the next mutation propagates.
 
 Drift checks for this ADR itself:
-- Grep `'.changed'` across `src/lib/effects/realtime/types.ts`, `src/hooks/useRealtimeSync.ts`, and `src/lib/orpc/procedures/` — counts must agree (one schema variant ↔ one dispatch case ↔ one or more publish sites).
+- Grep `'.changed'` across `src/lib/effects/realtime/types.ts`, `src/hooks/useRealtimeSync.ts`, and `src/lib/orpc/procedures/` — counts must agree (one schema variant ↔ one dispatch case ↔ one `ALL_EVENT_KINDS` entry ↔ one or more publish sites). Note each kind now appears **twice** in `useRealtimeSync.ts`.
 - Grep `src/lib/services/` for `realtime` — must return zero hits (services don't publish).
 - Grep `src/routes/` for `useRealtimeSync` — must return exactly one hit, in `_authenticated.tsx`.
 
